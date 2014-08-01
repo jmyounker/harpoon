@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -52,7 +53,7 @@ func main() {
 		api = newAPI(r)
 	)
 
-	receiveLogs(r)
+	go receiveLogs(r)
 	http.Handle("/", api)
 
 	go func() {
