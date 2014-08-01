@@ -7,6 +7,10 @@
 _obj
 _test
 
+# Dev tool droppings
+.projrc
+.idea
+
 # Architecture specific extensions/prefixes
 *.[568vq]
 [568vq].out
