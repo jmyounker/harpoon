@@ -24,7 +24,20 @@ import (
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
-type container struct {
+type container interface {
+	Create() error
+	Instance() agent.ContainerInstance
+	Destroy() error
+	Heartbeat(hb agent.Heartbeat) string
+	Restart(t time.Duration) error
+	Start() error
+    Stop(t time.Duration) error
+	Subscribe(ch chan<- agent.ContainerInstance)
+	Unsubscribe(ch chan<- agent.ContainerInstance)
+	Logs() *containerLog
+}
+
+type libContainer struct {
 	agent.ContainerInstance
 
 	config       *libcontainer.Config
@@ -41,8 +54,8 @@ type container struct {
 	quitc          chan struct{}
 }
 
-func newContainer(id string, config agent.ContainerConfig) *container {
-	c := &container{
+func newLibContainer(id string, config agent.ContainerConfig) *libContainer {
+	c := &libContainer{
 		ContainerInstance: agent.ContainerInstance{
 			ID:     id,
 			Status: agent.ContainerStatusStarting,
@@ -64,7 +77,7 @@ func newContainer(id string, config agent.ContainerConfig) *container {
 	return c
 }
 
-func (c *container) Create() error {
+func (c *libContainer) Create() error {
 	req := actionRequest{
 		action: containerCreate,
 		res:    make(chan error),
@@ -73,7 +86,7 @@ func (c *container) Create() error {
 	return <-req.res
 }
 
-func (c *container) Destroy() error {
+func (c *libContainer) Destroy() error {
 	req := actionRequest{
 		action: containerDestroy,
 		res:    make(chan error),
@@ -82,7 +95,11 @@ func (c *container) Destroy() error {
 	return <-req.res
 }
 
-func (c *container) Heartbeat(hb agent.Heartbeat) string {
+func (c *libContainer) Logs() *containerLog {
+	return c.logs
+}
+
+func (c *libContainer) Heartbeat(hb agent.Heartbeat) string {
 	req := heartbeatRequest{
 		heartbeat: hb,
 		res:       make(chan string),
@@ -91,11 +108,11 @@ func (c *container) Heartbeat(hb agent.Heartbeat) string {
 	return <-req.res
 }
 
-func (c *container) Instance() agent.ContainerInstance {
+func (c *libContainer) Instance() agent.ContainerInstance {
 	return c.ContainerInstance
 }
 
-func (c *container) Restart(t time.Duration) error {
+func (c *libContainer) Restart(t time.Duration) error {
 	req := actionRequest{
 		action:  containerRestart,
 		timeout: t,
@@ -105,7 +122,7 @@ func (c *container) Restart(t time.Duration) error {
 	return <-req.res
 }
 
-func (c *container) Start() error {
+func (c *libContainer) Start() error {
 	req := actionRequest{
 		action: containerStart,
 		res:    make(chan error),
@@ -114,7 +131,7 @@ func (c *container) Start() error {
 	return <-req.res
 }
 
-func (c *container) Stop(t time.Duration) error {
+func (c *libContainer) Stop(t time.Duration) error {
 	req := actionRequest{
 		action:  containerStop,
 		timeout: t,
@@ -124,15 +141,15 @@ func (c *container) Stop(t time.Duration) error {
 	return <-req.res
 }
 
-func (c *container) Subscribe(ch chan<- agent.ContainerInstance) {
+func (c *libContainer) Subscribe(ch chan<- agent.ContainerInstance) {
 	c.subc <- ch
 }
 
-func (c *container) Unsubscribe(ch chan<- agent.ContainerInstance) {
+func (c *libContainer) Unsubscribe(ch chan<- agent.ContainerInstance) {
 	c.unsubc <- ch
 }
 
-func (c *container) loop() {
+func (c *libContainer) loop() {
 	for {
 		select {
 		case req := <-c.actionRequestc:
@@ -163,7 +180,7 @@ func (c *container) loop() {
 	}
 }
 
-func (c *container) buildContainerConfig() {
+func (c *libContainer) buildContainerConfig() {
 	var (
 		env    = []string{}
 		mounts = mount.Mounts{
@@ -222,7 +239,7 @@ func (c *container) buildContainerConfig() {
 	}
 }
 
-func (c *container) create() error {
+func (c *libContainer) create() error {
 	var (
 		rundir = filepath.Join("/run/harpoon", c.ID)
 		logdir = filepath.Join("/srv/harpoon/log/", c.ID)
@@ -271,7 +288,7 @@ func (c *container) create() error {
 	return c.writeContainerJSON(filepath.Join(rundir, "container.json"))
 }
 
-func (c *container) destroy() error {
+func (c *libContainer) destroy() error {
 	var (
 		rundir = filepath.Join("/run/harpoon", c.ID)
 	)
@@ -295,7 +312,7 @@ func (c *container) destroy() error {
 	return nil
 }
 
-func (c *container) fetchArtifact() (string, error) {
+func (c *libContainer) fetchArtifact() (string, error) {
 	var (
 		artifactURL  = c.Config.ArtifactURL
 		artifactPath = getArtifactPath(artifactURL)
@@ -328,7 +345,7 @@ func (c *container) fetchArtifact() (string, error) {
 	return artifactPath, nil
 }
 
-func (c *container) heartbeat(hb agent.Heartbeat) string {
+func (c *libContainer) heartbeat(hb agent.Heartbeat) string {
 	type state struct{ want, is string }
 
 	switch (state{c.desired, hb.Status}) {
@@ -358,7 +375,7 @@ func (c *container) heartbeat(hb agent.Heartbeat) string {
 	return "UNKNOWN"
 }
 
-func (c *container) start() error {
+func (c *libContainer) start() error {
 	// TODO: validate that container is stopped
 
 	var (
@@ -407,14 +424,14 @@ func (c *container) start() error {
 	return nil
 }
 
-func (c *container) stop(t time.Duration) error {
+func (c *libContainer) stop(t time.Duration) error {
 	c.desired = "DOWN"
 	c.downDeadline = time.Now().Add(t).Add(heartbeatInterval)
 
 	return nil
 }
 
-func (c *container) updateStatus(status agent.ContainerStatus) {
+func (c *libContainer) updateStatus(status agent.ContainerStatus) {
 	c.ContainerInstance.Status = status
 
 	for subc := range c.subscribers {
@@ -422,7 +439,7 @@ func (c *container) updateStatus(status agent.ContainerStatus) {
 	}
 }
 
-func (c *container) writeContainerJSON(dst string) error {
+func (c *libContainer) writeContainerJSON(dst string) error {
 	data, err := json.Marshal(c.config)
 	if err != nil {
 		return err

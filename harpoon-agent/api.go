@@ -90,9 +90,9 @@ func (a *api) handleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	container := newContainer(id, config)
+	c := newLibContainer(id, config)
 
-	if ok := a.registry.Register(container); !ok {
+	if ok := a.registry.Register(c); !ok {
 		http.Error(w, "already exists", http.StatusConflict)
 		return
 	}
@@ -100,11 +100,11 @@ func (a *api) handleCreate(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
 
 	go func() {
-		err := container.Create()
+		err := c.Create()
 		if err != nil {
 			log.Printf("[%s] create: %s", id, err)
 		}
-		err = container.Start()
+		err = c.Start()
 		if err != nil {
 			log.Printf("[%s] start: %s", id, err)
 		}
@@ -283,8 +283,8 @@ func (a *api) handleLog(w http.ResponseWriter, r *http.Request) {
 
 	if isStreamAccept(r.Header.Get("Accept")) {
 		logLines := make(chan string, 2000)
-		container.logs.Notify(logLines)
-		defer container.logs.Stop(logLines)
+		container.Logs().Notify(logLines)
+		defer container.Logs().Stop(logLines)
 		for line := range logLines {
 			if _, err := w.Write([]byte(line)); err != nil {
 				return
@@ -293,7 +293,7 @@ func (a *api) handleLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	for _, line := range container.logs.Last(history) {
+	for _, line := range container.Logs().Last(history) {
 		if _, err := w.Write([]byte(line)); err != nil {
 			return
 		}
