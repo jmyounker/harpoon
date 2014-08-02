@@ -90,7 +90,7 @@ func (a *api) handleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c := newLibContainer(id, config)
+	c := newContainer(id, config)
 
 	if ok := a.registry.Register(c); !ok {
 		http.Error(w, "already exists", http.StatusConflict)

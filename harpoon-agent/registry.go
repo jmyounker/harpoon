@@ -7,9 +7,9 @@ import (
 )
 
 type registry struct {
-	m            map[string]container
-	stateChanges chan agent.ContainerInstance
-	subscribers  map[chan<- agent.ContainerInstance]struct{}
+	m           map[string]Container
+	statec      chan agent.ContainerInstance
+	subscribers map[chan<- agent.ContainerInstance]struct{}
 
 	acceptUpdates bool
 
@@ -18,9 +18,9 @@ type registry struct {
 
 func newRegistry() *registry {
 	r := &registry{
-		m:            map[string]container{},
-		stateChanges: make(chan agent.ContainerInstance),
-		subscribers:  map[chan<- agent.ContainerInstance]struct{}{},
+		m:           map[string]Container{},
+		statec:      make(chan agent.ContainerInstance),
+		subscribers: map[chan<- agent.ContainerInstance]struct{}{},
 	}
 
 	go r.loop()
@@ -35,7 +35,7 @@ func (r *registry) Remove(id string) {
 	delete(r.m, id)
 }
 
-func (r *registry) Get(id string) (container, bool) {
+func (r *registry) Get(id string) (Container, bool) {
 	r.RLock()
 	defer r.RUnlock()
 
@@ -43,7 +43,7 @@ func (r *registry) Get(id string) (container, bool) {
 	return c, ok
 }
 
-func (r *registry) Register(c container) bool {
+func (r *registry) Register(c Container) bool {
 	r.Lock()
 	defer r.Unlock()
 
@@ -54,29 +54,29 @@ func (r *registry) Register(c container) bool {
 	r.m[c.Instance().ID] = c
 
 	// Forward the container's state changes to all subscribers.
-	go func(c container, changesOut chan agent.ContainerInstance) {
+	go func(c Container, outStatec chan agent.ContainerInstance) {
 		var (
-			inc = make(chan agent.ContainerInstance)
+			inStatec = make(chan agent.ContainerInstance)
 		)
 		// The container sends us a copy of its associated ContainerInstance every
 		// time the container changes state.
-		c.Subscribe(inc)
-		defer c.Unsubscribe(inc)
+		c.Subscribe(inStatec)
+		defer c.Unsubscribe(inStatec)
 
-		// Then we forward the modified ContainerInstances to r.stateChanges for reporting
+		// Then we forward the modified ContainerInstances to r.statec for reporting
 		// to the registry's subscribers.
 		for {
 			select {
 			// The channel is closed when the registered container is deleted, so we exit
 			// the goroutine since there will be no more state changes.
-			case instance, ok := <-inc:
+			case instance, ok := <-inStatec:
 				if !ok {
 					return
 				}
-				changesOut <- instance
+				outStatec <- instance
 			}
 		}
-	}(c, r.stateChanges)
+	}(c, r.statec)
 
 	return true
 }
@@ -125,8 +125,8 @@ func (r *registry) Stop(c chan<- agent.ContainerInstance) {
 // Report state changes in any container to all of our subscribers.
 func (r *registry) loop() {
 	// Report state changes in any container to all of our subscribers.
-	for stateChange := range r.stateChanges {
-		r.notifySubscribers(stateChange)
+	for state := range r.statec {
+		r.notifySubscribers(state)
 	}
 }
 
