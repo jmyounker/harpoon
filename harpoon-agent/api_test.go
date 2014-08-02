@@ -35,7 +35,7 @@ func TestContainerList(t *testing.T) {
 		t.Fatal("unable to load containers json:", err)
 	}
 
-	registry.statec <- agent.ContainerInstance{ID: "123"}
+	registry.stateChanges <- agent.ContainerInstance{ID: "123"}
 
 	ev, err = es.Read()
 	if err != nil {

@@ -7,9 +7,9 @@ import (
 )
 
 type registry struct {
-	m           map[string]*container
-	statec      chan agent.ContainerInstance
-	subscribers map[chan<- agent.ContainerInstance]struct{}
+	m            map[string]*container
+	stateChanges chan agent.ContainerInstance
+	subscribers  map[chan<- agent.ContainerInstance]struct{}
 
 	acceptUpdates bool
 
@@ -18,9 +18,9 @@ type registry struct {
 
 func newRegistry() *registry {
 	r := &registry{
-		m:           map[string]*container{},
-		statec:      make(chan agent.ContainerInstance),
-		subscribers: map[chan<- agent.ContainerInstance]struct{}{},
+		m:            map[string]*container{},
+		stateChanges: make(chan agent.ContainerInstance),
+		subscribers:  map[chan<- agent.ContainerInstance]struct{}{},
 	}
 
 	go r.loop()
@@ -53,23 +53,32 @@ func (r *registry) Register(c *container) bool {
 
 	r.m[c.ID] = c
 
-	go func(c *container, outc chan agent.ContainerInstance) {
+	// Watch ContainerInstances for state changes and send these
+	// to r.statec.  The loop() function picks up these changes
+	// forwards them to the subscribers.
+	go func(c *container, changesOut chan agent.ContainerInstance) {
 		var (
 			inc = make(chan agent.ContainerInstance)
 		)
+		// The container sends us a copy of its associated ContainerInstance every
+		// time the container changes state.
 		c.Subscribe(inc)
 		defer c.Unsubscribe(inc)
 
+		// Then we forward the modified ContainerInstances to r.stateChanges for reporting
+		// to the registry's subscribers.
 		for {
 			select {
+			// The channel is closed when the registered container is deleted, so we exit
+			// the goroutine since there will be no more state changes.
 			case instance, ok := <-inc:
 				if !ok {
 					return
 				}
-				outc <- instance
+				changesOut <- instance
 			}
 		}
-	}(c, r.statec)
+	}(c, r.stateChanges)
 
 	return true
 }
@@ -115,14 +124,19 @@ func (r *registry) Stop(c chan<- agent.ContainerInstance) {
 	delete(r.subscribers, c)
 }
 
+// Report state changes in any container to all of our subscribers.
 func (r *registry) loop() {
-	for state := range r.statec {
-		r.RLock()
+	// Report state changes in any container to all of our subscribers.
+	for stateChange := range r.stateChanges {
+		r.notifySubscribers(stateChange)
+	}
+}
 
-		for subc := range r.subscribers {
-			subc <- state
-		}
+func (r *registry) notifySubscribers(stateChange agent.ContainerInstance) {
+	r.RLock()
+	defer r.RUnlock()
 
-		r.RUnlock()
+	for subc := range r.subscribers {
+		subc <- stateChange
 	}
 }
