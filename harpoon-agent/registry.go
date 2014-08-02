@@ -55,9 +55,7 @@ func (r *registry) Register(c Container) bool {
 
 	// Forward the container's state changes to all subscribers.
 	go func(c Container, outStatec chan agent.ContainerInstance) {
-		var (
-			inStatec = make(chan agent.ContainerInstance)
-		)
+		inStatec := make(chan agent.ContainerInstance)
 		// The container sends us a copy of its associated ContainerInstance every
 		// time the container changes state.
 		c.Subscribe(inStatec)
@@ -105,7 +103,7 @@ func (r *registry) AcceptStateUpdates() {
 	r.Lock()
 	defer r.Unlock()
 
-	r.acceptUpdates = true
+	r.acceptUpdates = true // TODO(pb): this isn't used anywhere
 }
 
 func (r *registry) Notify(c chan<- agent.ContainerInstance) {
