@@ -52,7 +52,7 @@ func main() {
 		api = newAPI(r)
 	)
 
-	receiveLogs(r)
+	go receiveLogs(r)
 	http.Handle("/", api)
 
 	go func() {
