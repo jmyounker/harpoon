@@ -54,9 +54,7 @@ func (r *registry) Register(c *container) bool {
 	r.m[c.ID] = c
 
 	go func(c *container, outc chan agent.ContainerInstance) {
-		var (
-			inc = make(chan agent.ContainerInstance)
-		)
+		inc := make(chan agent.ContainerInstance)
 		c.Subscribe(inc)
 		defer c.Unsubscribe(inc)
 
@@ -98,7 +96,7 @@ func (r *registry) AcceptStateUpdates() {
 	r.Lock()
 	defer r.Unlock()
 
-	r.acceptUpdates = true
+	r.acceptUpdates = true // TODO(pb): this isn't used anywhere
 }
 
 func (r *registry) Notify(c chan<- agent.ContainerInstance) {
