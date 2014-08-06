@@ -24,6 +24,8 @@ import (
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
+const maxContainerIDLength = 256 // TODO(pb): enforce this limit at creation-time
+
 type container struct {
 	agent.ContainerInstance
 
@@ -34,11 +36,11 @@ type container struct {
 
 	subscribers map[chan<- agent.ContainerInstance]struct{}
 
-	actionRequestc chan actionRequest
-	hbRequestc     chan heartbeatRequest
-	subc           chan chan<- agent.ContainerInstance
-	unsubc         chan chan<- agent.ContainerInstance
-	quitc          chan struct{}
+	actionc    chan actionRequest
+	heartbeatc chan heartbeatRequest
+	subc       chan chan<- agent.ContainerInstance
+	unsubc     chan chan<- agent.ContainerInstance
+	quitc      chan struct{}
 }
 
 func newContainer(id string, config agent.ContainerConfig) *container {
@@ -48,13 +50,13 @@ func newContainer(id string, config agent.ContainerConfig) *container {
 			Status: agent.ContainerStatusStarting,
 			Config: config,
 		},
-		logs:           NewContainerLog(10000),
-		subscribers:    map[chan<- agent.ContainerInstance]struct{}{},
-		actionRequestc: make(chan actionRequest),
-		hbRequestc:     make(chan heartbeatRequest),
-		subc:           make(chan chan<- agent.ContainerInstance),
-		unsubc:         make(chan chan<- agent.ContainerInstance),
-		quitc:          make(chan struct{}),
+		logs:        NewContainerLog(10000),
+		subscribers: map[chan<- agent.ContainerInstance]struct{}{},
+		actionc:     make(chan actionRequest),
+		heartbeatc:  make(chan heartbeatRequest),
+		subc:        make(chan chan<- agent.ContainerInstance),
+		unsubc:      make(chan chan<- agent.ContainerInstance),
+		quitc:       make(chan struct{}),
 	}
 
 	c.buildContainerConfig()
@@ -69,7 +71,7 @@ func (c *container) Create() error {
 		action: containerCreate,
 		res:    make(chan error),
 	}
-	c.actionRequestc <- req
+	c.actionc <- req
 	return <-req.res
 }
 
@@ -78,7 +80,7 @@ func (c *container) Destroy() error {
 		action: containerDestroy,
 		res:    make(chan error),
 	}
-	c.actionRequestc <- req
+	c.actionc <- req
 	return <-req.res
 }
 
@@ -87,7 +89,7 @@ func (c *container) Heartbeat(hb agent.Heartbeat) string {
 		heartbeat: hb,
 		res:       make(chan string),
 	}
-	c.hbRequestc <- req
+	c.heartbeatc <- req
 	return <-req.res
 }
 
@@ -95,32 +97,21 @@ func (c *container) Instance() agent.ContainerInstance {
 	return c.ContainerInstance
 }
 
-func (c *container) Restart(t time.Duration) error {
-	req := actionRequest{
-		action:  containerRestart,
-		timeout: t,
-		res:     make(chan error),
-	}
-	c.actionRequestc <- req
-	return <-req.res
-}
-
 func (c *container) Start() error {
 	req := actionRequest{
 		action: containerStart,
 		res:    make(chan error),
 	}
-	c.actionRequestc <- req
+	c.actionc <- req
 	return <-req.res
 }
 
-func (c *container) Stop(t time.Duration) error {
+func (c *container) Stop() error {
 	req := actionRequest{
-		action:  containerStop,
-		timeout: t,
-		res:     make(chan error),
+		action: containerStop,
+		res:    make(chan error),
 	}
-	c.actionRequestc <- req
+	c.actionc <- req
 	return <-req.res
 }
 
@@ -135,22 +126,21 @@ func (c *container) Unsubscribe(ch chan<- agent.ContainerInstance) {
 func (c *container) loop() {
 	for {
 		select {
-		case req := <-c.actionRequestc:
+		case req := <-c.actionc:
+			// All of these methods must be nonblocking
 			switch req.action {
 			case containerCreate:
 				req.res <- c.create()
 			case containerDestroy:
 				req.res <- c.destroy()
-			case containerRestart:
-				req.res <- fmt.Errorf("not yet implemented")
 			case containerStart:
 				req.res <- c.start()
 			case containerStop:
-				req.res <- c.stop(req.timeout)
+				req.res <- c.stop()
 			default:
 				panic("unknown action")
 			}
-		case req := <-c.hbRequestc:
+		case req := <-c.heartbeatc:
 			req.res <- c.heartbeat(req.heartbeat)
 		case ch := <-c.subc:
 			c.subscribers[ch] = struct{}{}
@@ -236,6 +226,7 @@ func (c *container) create() error {
 		return fmt.Errorf("mkdir all %s: %s", logdir, err)
 	}
 
+	// TODO(pb): it's a problem that this is blocking
 	rootfs, err := c.fetchArtifact()
 	if err != nil {
 		return err
@@ -328,38 +319,55 @@ func (c *container) fetchArtifact() (string, error) {
 	return artifactPath, nil
 }
 
+// heartbeat takes the Heartbeat from the container process (the actual
+// state), compares with our desired state, and returns a string that'll be
+// packaged and sent in the HeartbeatReply, to tell the container process what
+// to do next.
+//
+// This also potentially updates the ContainerInstance.Status, but it can only
+// possibly move to ContainerStatusFinished.
 func (c *container) heartbeat(hb agent.Heartbeat) string {
-	type state struct{ want, is string }
-
-	switch (state{c.desired, hb.Status}) {
-	case state{"UP", "UP"}:
+	switch want, have := c.desired, hb.Status; true {
+	case want == "UP" && have == "UP":
+		// Normal state, running
 		return "UP"
-	case state{"UP", "EXITING"}:
-		c.updateStatus(agent.ContainerStatusFinished)
-		return "EXIT"
 
-	case state{"DOWN", "UP"}:
+	case want == "UP" && have == "DOWN":
+		// Container stopped, for whatever reason
+		c.updateStatus(agent.ContainerStatusFinished)
+		return "DOWN" // TODO(pb): should it be a third state?
+
+	case want == "DOWN" && have == "UP":
+		// Waiting for the container to shutdown normally
 		if time.Now().After(c.downDeadline) {
-			return "EXIT"
+			return "FORCEDOWN" // too long: kill -9
 		}
+		return "DOWN" // keep waiting
 
-		return "DOWN"
-	case state{"DOWN", "EXITING"}:
+	case want == "DOWN" && have == "DOWN":
+		// Normal shutdown successful; won't receive more updates
 		c.updateStatus(agent.ContainerStatusFinished)
-		return "EXIT"
+		return "DOWN" // TODO(pb): this was FORCEDOWN, but DOWN makes more sense to me?
 
-	case state{"EXIT", "UP"}:
-		return "EXIT"
-	case state{"EXIT", "EXITING"}:
+	case want == "FORCEDOWN" && have == "UP":
+		// Waiting for the container to shutdown aggressively
+		return "FORCEDOWN"
+
+	case want == "FORCEDOWN" && have == "DOWN":
+		// Aggressive shutdown successful
 		c.updateStatus(agent.ContainerStatusFinished)
-		return "EXIT"
+		return "FORCEDOWN"
 	}
-
 	return "UNKNOWN"
 }
 
 func (c *container) start() error {
-	// TODO: validate that container is stopped
+	switch c.ContainerInstance.Status {
+	case agent.ContainerStatusFinished, agent.ContainerStatusFailed:
+		break // ok
+	default:
+		return fmt.Errorf("can't start container with status %s", c.ContainerInstance.Status)
+	}
 
 	var (
 		rundir = path.Join("/run/harpoon", c.ID)
@@ -403,13 +411,21 @@ func (c *container) start() error {
 	// reflect state
 	c.updateStatus(agent.ContainerStatusRunning)
 
-	// start
+	// TODO(pb): utilize Startup grace period somehow?
+
 	return nil
 }
 
-func (c *container) stop(t time.Duration) error {
+func (c *container) stop() error {
+	switch c.ContainerInstance.Status {
+	case agent.ContainerStatusStarting, agent.ContainerStatusRunning:
+		break // ok
+	default:
+		return fmt.Errorf("can't stop container with status %s", c.ContainerInstance.Status)
+	}
+
 	c.desired = "DOWN"
-	c.downDeadline = time.Now().Add(t).Add(heartbeatInterval)
+	c.downDeadline = time.Now().Add(time.Duration(c.Config.Grace.Shutdown) * time.Second).Add(heartbeatInterval)
 
 	return nil
 }
@@ -436,15 +452,13 @@ type containerAction string
 const (
 	containerCreate  containerAction = "create"
 	containerDestroy                 = "destroy"
-	containerRestart                 = "restart"
 	containerStart                   = "start"
 	containerStop                    = "stop"
 )
 
 type actionRequest struct {
-	action  containerAction
-	res     chan error
-	timeout time.Duration
+	action containerAction
+	res    chan error
 }
 
 type heartbeatRequest struct {
