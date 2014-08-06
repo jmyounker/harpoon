@@ -90,9 +90,9 @@ func (a *api) handleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c := newContainer(id, config)
+	container := newContainer(id, config)
 
-	if ok := a.registry.Register(c); !ok {
+	if ok := a.registry.Register(container); !ok {
 		http.Error(w, "already exists", http.StatusConflict)
 		return
 	}
@@ -100,11 +100,11 @@ func (a *api) handleCreate(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
 
 	go func() {
-		err := c.Create()
+		err := container.Create()
 		if err != nil {
 			log.Printf("[%s] create: %s", id, err)
 		}
-		err = c.Start()
+		err = container.Start()
 		if err != nil {
 			log.Printf("[%s] start: %s", id, err)
 		}

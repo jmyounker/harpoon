@@ -54,12 +54,12 @@ func (r *registry) Register(c Container) bool {
 	r.m[c.Instance().ID] = c
 
 	// Forward the container's state changes to all subscribers.
-	go func(c Container, outStatec chan agent.ContainerInstance) {
-		inStatec := make(chan agent.ContainerInstance)
+	go func(c Container, outc chan agent.ContainerInstance) {
+		inc := make(chan agent.ContainerInstance)
 		// The container sends us a copy of its associated ContainerInstance every
 		// time the container changes state.
-		c.Subscribe(inStatec)
-		defer c.Unsubscribe(inStatec)
+		c.Subscribe(inc)
+		defer c.Unsubscribe(inc)
 
 		// Then we forward the modified ContainerInstances to r.statec for reporting
 		// to the registry's subscribers.
@@ -67,11 +67,11 @@ func (r *registry) Register(c Container) bool {
 			select {
 			// The channel is closed when the registered container is deleted, so we exit
 			// the goroutine since there will be no more state changes.
-			case instance, ok := <-inStatec:
+			case instance, ok := <-inc:
 				if !ok {
 					return
 				}
-				outStatec <- instance
+				outc <- instance
 			}
 		}
 	}(c, r.statec)
@@ -123,16 +123,15 @@ func (r *registry) Stop(c chan<- agent.ContainerInstance) {
 // Report state changes in any container to all of our subscribers.
 func (r *registry) loop() {
 	// Report state changes in any container to all of our subscribers.
-	for state := range r.statec {
-		r.notifySubscribers(state)
+	for containerInstance := range r.statec {
+		func() {
+			r.RLock()
+			defer r.RUnlock()
+
+			for subc := range r.subscribers {
+				subc <- containerInstance
+			}
+		}()
 	}
 }
 
-func (r *registry) notifySubscribers(stateChange agent.ContainerInstance) {
-	r.RLock()
-	defer r.RUnlock()
-
-	for subc := range r.subscribers {
-		subc <- stateChange
-	}
-}
