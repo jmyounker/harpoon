@@ -16,7 +16,7 @@ func TestTransformerAgentEndpointUpdates(t *testing.T) {
 	log.SetOutput(ioutil.Discard) // use this when everything is copacetic
 
 	var (
-		registry       = newRegistry(nil)
+		registry       = newTestRegistry(t)
 		agentDiscovery = newMockAgentDiscovery()
 		numAgents      = 3
 	)
@@ -59,17 +59,18 @@ func TestTransformerScheduleUnschedule(t *testing.T) {
 	//log.SetFlags(log.Lmicroseconds) // use this when debugging problems
 	log.SetOutput(ioutil.Discard) // use this when everything is copacetic
 
-	s := httptest.NewServer(newMockAgent())
+	var (
+		s           = httptest.NewServer(newMockAgent())
+		registry    = newTestRegistry(t)
+		transformer = newTransformer(staticAgentDiscovery([]string{s.URL}), registry, 2*time.Millisecond)
+	)
 	defer s.Close()
-
-	registry := newRegistry(nil)
-	transformer := newTransformer(staticAgentDiscovery([]string{s.URL}), registry, 2*time.Millisecond)
 	defer transformer.stop()
 
 	var (
 		containerID  = "test-container-id"
 		testTaskSpec = taskSpec{
-			endpoint: s.URL,
+			Endpoint: s.URL,
 			ContainerConfig: agent.ContainerConfig{
 				JobName:  "test-job-name",
 				TaskName: "test-task-name",

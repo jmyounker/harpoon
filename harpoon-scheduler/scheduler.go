@@ -145,7 +145,7 @@ func placeJob(job scheduler.Job, placeContainer schedulingAlgorithm) (map[string
 				return map[string]taskSpec{}, fmt.Errorf("couldn't place instance %d/%d of %q: %s", instance+1, task.Scale, task.TaskName, err)
 			}
 			m[makeContainerID(job, task, instance)] = taskSpec{
-				endpoint:        endpoint,
+				Endpoint:        endpoint,
 				ContainerConfig: task.ContainerConfig,
 			}
 		}
@@ -175,7 +175,7 @@ func findJob(job scheduler.Job, agentStater agentStater) map[string]taskSpec {
 			}
 
 			m[containerInstance.ID] = taskSpec{
-				endpoint:        endpoint,
+				Endpoint:        endpoint,
 				ContainerConfig: containerInstance.Config,
 			}
 		}
@@ -308,18 +308,18 @@ func xsched(
 	for containerID, taskSpec := range taskSpecMap {
 		c := make(chan schedulingSignalWithContext)
 		if err := apply(containerID, taskSpec, c); err != nil {
-			log.Printf("scheduler: %s %s on %s: %s", what, containerID, taskSpec.endpoint, err)
+			log.Printf("scheduler: %s %s on %s: %s", what, containerID, taskSpec.Endpoint, err)
 			return err
 		}
 		select {
 		case sig := <-c:
-			log.Printf("scheduler: %s %s on %s: %s (%s)", what, containerID, taskSpec.endpoint, sig.schedulingSignal, sig.context)
+			log.Printf("scheduler: %s %s on %s: %s (%s)", what, containerID, taskSpec.Endpoint, sig.schedulingSignal, sig.context)
 			if sig.schedulingSignal != acceptable {
-				return fmt.Errorf("%s %s on %s: unacceptable signal, giving up", what, containerID, taskSpec.endpoint)
+				return fmt.Errorf("%s %s on %s: unacceptable signal, giving up", what, containerID, taskSpec.Endpoint)
 			}
 			undo = append(undo, func() { revert(containerID, taskSpec, nil) })
 		case <-time.After(2 * choose(taskSpec.Grace)):
-			return fmt.Errorf("%s %s on %s: timeout", what, containerID, taskSpec.endpoint)
+			return fmt.Errorf("%s %s on %s: timeout", what, containerID, taskSpec.Endpoint)
 		}
 	}
 
