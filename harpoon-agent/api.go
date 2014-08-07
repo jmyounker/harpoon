@@ -308,8 +308,8 @@ func (a *api) streamLog(logs *containerLog, enc *eventsource.Encoder, stop <-cha
 			}
 
 			enc.Encode(eventsource.Event{
-			Data: b,
-		})
+				Data: b,
+			})
 		}
 	}
 }

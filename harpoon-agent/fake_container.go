@@ -10,7 +10,7 @@ import (
 type fakeContainer struct {
 	agent.ContainerInstance
 
-	logs         *containerLog
+	logs *containerLog
 
 	subscribers map[chan<- agent.ContainerInstance]struct{}
 
@@ -24,21 +24,21 @@ type fakeContainer struct {
 func newFakeContainer(id string) *fakeContainer {
 	c := &fakeContainer{
 		ContainerInstance: agent.ContainerInstance{
-	ID:     id,
-	Status: agent.ContainerStatusStarting,
-},
-logs:           NewContainerLog(10000),
-subscribers:    map[chan<- agent.ContainerInstance]struct{}{},
-actionRequestc: make(chan actionRequest),
-hbRequestc:     make(chan heartbeatRequest),
-subc:           make(chan chan<- agent.ContainerInstance),
-unsubc:         make(chan chan<- agent.ContainerInstance),
-quitc:          make(chan struct{}),
-}
+			ID:     id,
+			Status: agent.ContainerStatusStarting,
+		},
+		logs:           NewContainerLog(10000),
+		subscribers:    map[chan<- agent.ContainerInstance]struct{}{},
+		actionRequestc: make(chan actionRequest),
+		hbRequestc:     make(chan heartbeatRequest),
+		subc:           make(chan chan<- agent.ContainerInstance),
+		unsubc:         make(chan chan<- agent.ContainerInstance),
+		quitc:          make(chan struct{}),
+	}
 
-go c.loop()
+	go c.loop()
 
-return c
+	return c
 }
 
 func (c *fakeContainer) Create() error {
@@ -119,20 +119,20 @@ func (c *fakeContainer) loop() {
 		case req := <-c.actionRequestc:
 			switch req.action {
 			case containerCreate:
-			req.res <- c.create()
+				req.res <- c.create()
 			case containerDestroy:
-			req.res <- c.destroy()
+				req.res <- c.destroy()
 			case containerRestart:
-			req.res <- fmt.Errorf("not yet implemented")
+				req.res <- fmt.Errorf("not yet implemented")
 			case containerStart:
-			req.res <- c.start()
+				req.res <- c.start()
 			case containerStop:
-			req.res <- c.stop(req.timeout)
+				req.res <- c.stop(req.timeout)
 			default:
 				panic("unknown action")
 			}
 		case req := <-c.hbRequestc:
-		req.res <- c.heartbeat(req.heartbeat)
+			req.res <- c.heartbeat(req.heartbeat)
 		case ch := <-c.subc:
 			c.subscribers[ch] = struct{}{}
 		case ch := <-c.unsubc:
@@ -181,4 +181,3 @@ func (c *fakeContainer) updateStatus(status agent.ContainerStatus) {
 		subc <- c.ContainerInstance
 	}
 }
-

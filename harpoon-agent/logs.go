@@ -154,7 +154,7 @@ func receiveLogs(r *registry) {
 		log.Fatal(err)
 	}
 	defer ln.Close()
-	ln.SetReadBuffer(10000*120)  // 100000 lines of "average" length
+	ln.SetReadBuffer(10000 * 120) // 100000 lines of "average" length
 
 	var buf = make([]byte, 50000+256) // max line length + container id
 

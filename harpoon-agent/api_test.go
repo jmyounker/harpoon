@@ -58,7 +58,6 @@ func TestContainerList(t *testing.T) {
 	}
 }
 
-
 func TestLogAPICanTailLogs(t *testing.T) {
 	var (
 		registry = newRegistry()
@@ -76,17 +75,16 @@ func TestLogAPICanTailLogs(t *testing.T) {
 	// UDP has some weirdness with processing, so we use the container log's subscription
 	// mechanism to ensure that we don't run the test until all the messages have been
 	// processed.
-	logLinec := make(chan string, 10)  // Plenty of room before anything gets dropped
+	logLinec := make(chan string, 10) // Plenty of room before anything gets dropped
 	c.Logs().Notify(logLinec)
 
 	// Send a log line that wil be lost
 	sendLog("container[123] m1")
 	waitForLogLine(t, logLinec, time.Second)
 
-
 	req, err := http.NewRequest("GET", server.URL+"/containers/123/log", nil)
 	if err != nil {
-		t.Fatal("unable to get log history: %s", err)
+		t.Fatalf("unable to get log history: %s", err)
 	}
 	es := eventsource.New(req, time.Second)
 	defer es.Close()
@@ -106,16 +104,16 @@ func TestLogAPICanTailLogs(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			var logLines[]string
+			var logLines []string
 			if err := json.Unmarshal(ev.Data, &logLines); err != nil {
-				t.Fatal("unable to load containers json:", err)
+				t.Fatalf("unable to load containers json: %s", err)
 			}
 			readResultc <- logLines
 		}
 	}()
 	defer close(readStepc)
 
-	readStepc <- struct{}{}   // Initial read causes a connection.
+	readStepc <- struct{}{} // Initial read causes a connection.
 	// Horrible, horrible hack to get ensure that the eventstream.Read() has time to connect.
 	time.Sleep(time.Second)
 
@@ -147,7 +145,7 @@ func TestLogAPICanRetrieveLastLines(t *testing.T) {
 	// UDP has some weirdness with processing, so we use the container log's subscription
 	// mechanism to ensure that we don't run the test until all the messages have been
 	// processed.
-	logLinec := make(chan string, 10)  // Plenty of room before anything gets dropped
+	logLinec := make(chan string, 10) // Plenty of room before anything gets dropped
 	c.Logs().Notify(logLinec)
 
 	// Send two log messages out, wait for their reception, and then check for them in the
@@ -158,13 +156,13 @@ func TestLogAPICanRetrieveLastLines(t *testing.T) {
 	waitForLogLine(t, logLinec, time.Second)
 	waitForLogLine(t, logLinec, time.Second)
 
-	resp, err := http.Get(server.URL+"/containers/123/log?history=3")
+	resp, err := http.Get(server.URL + "/containers/123/log?history=3")
 	if err != nil {
-		t.Fatal("unable to get log history: %s", err)
+		t.Fatalf("unable to get log history: %s", err)
 	}
 	logLines := []string{}
 	if err = json.NewDecoder(resp.Body).Decode(&logLines); err != nil {
-		t.Fatal("unable to read json response: %s", err)
+		t.Fatalf("unable to read json response: %s", err)
 	}
 
 	ExpectArraysEqual(t, logLines, []string{"container[123] m1", "container[123] m2"})
@@ -182,7 +180,7 @@ func TestMessagesGetWrittenToLogs(t *testing.T) {
 	// UDP has some weirdness with processing, so we use the container log's subscription
 	// mechanism to ensure that we don't run the test until all the messages have been
 	// processed.
-	logLinec := make(chan string, 10)  // Plenty of room before anything gets dropped
+	logLinec := make(chan string, 10) // Plenty of room before anything gets dropped
 	c.Logs().Notify(logLinec)
 
 	// Send two log messages out
@@ -206,36 +204,35 @@ func TestLogRoutingOfDefectiveMessages(t *testing.T) {
 	c := newFakeContainer("123")
 	registry.Register(c)
 
-	logLinec := make(chan string, 10)  // Plenty of room before anything gets dropped
+	logLinec := make(chan string, 10) // Plenty of room before anything gets dropped
 	c.Logs().Notify(logLinec)
 
-	sendLog("ilj;irtr")  // Should not be received
+	sendLog("ilj;irtr") // Should not be received
 
 	// TODO(jmy): In the future make sure that "unroutable message" counter goes up.
 	// For now a timeout is a workable substitute for verifying that a log message was
 	// not routed.  It's better than nothing.
-	expectNoLogLines(t, logLinec, 100 * time.Millisecond)
+	expectNoLogLines(t, logLinec, 100*time.Millisecond)
 }
-
 
 func waitForLogLine(t *testing.T, c chan string, timeout time.Duration) {
 	select {
-	case <- c:
-	case <- time.After(timeout):
+	case <-c:
+	case <-time.After(timeout):
 		t.Errorf("Did not receive an item within %s", timeout)
- 	}
+	}
 }
 
 func expectNoLogLines(t *testing.T, c chan string, timeout time.Duration) {
 	select {
-	case logLine := <- c:
-		t.Errorf("Nothing should have been received, but got: %s", logLine )
-	case <- time.After(timeout):
+	case logLine := <-c:
+		t.Errorf("Nothing should have been received, but got: %s", logLine)
+	case <-time.After(timeout):
 	}
 }
 
 func sendLog(logLine string) error {
-	conn, _ := net.Dial("udp", "localhost" + *logPort)
+	conn, _ := net.Dial("udp", "localhost"+*logPort)
 	buf := []byte(logLine)
 	_, err := conn.Write(buf)
 	return err
