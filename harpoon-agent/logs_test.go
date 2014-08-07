@@ -13,7 +13,7 @@ func TestLastRetrievesLastLogLines(t *testing.T) {
 	ExpectArraysEqual(t, cl.Last(1), []string{"m1"})
 }
 
-func TestListenersRecieveMessages(t *testing.T) {
+func TestListenersReceiveMessages(t *testing.T) {
 	var (
 		cl = NewContainerLog(3)
 		// A blocking channel will not receive messages.

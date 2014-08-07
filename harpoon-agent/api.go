@@ -39,8 +39,7 @@ func newAPI(r *registry) *api {
 	mux.Post("/containers/:id/heartbeat", http.HandlerFunc(api.handleHeartbeat))
 	mux.Post("/containers/:id/start", http.HandlerFunc(api.handleStart))
 	mux.Post("/containers/:id/stop", http.HandlerFunc(api.handleStop))
-	// TODO(jmy): Uncomment this when we've decided on the interface's final from.
-	// mux.Get("/containers/:id/log", http.HandlerFunc(api.handleLog))
+	mux.Get("/containers/:id/log", http.HandlerFunc(api.handleLog))
 	mux.Get("/containers", http.HandlerFunc(api.handleList))
 
 	mux.Get("/resources", http.HandlerFunc(api.handleResources))
@@ -282,20 +281,35 @@ func (a *api) handleLog(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if isStreamAccept(r.Header.Get("Accept")) {
-		logLines := make(chan string, 2000)
-		container.Logs().Notify(logLines)
-		defer container.Logs().Stop(logLines)
-		for line := range logLines {
-			if _, err := w.Write([]byte(line)); err != nil {
-				return
-			}
+		handleLogStream := func(_ string, enc *eventsource.Encoder, stop <-chan bool) {
+			a.streamLog(container.Logs(), enc, stop)
 		}
+		eventsource.Handler(handleLogStream).ServeHTTP(w, r)
 		return
 	}
 
-	for _, line := range container.Logs().Last(history) {
-		if _, err := w.Write([]byte(line)); err != nil {
+	json.NewEncoder(w).Encode(container.Logs().Last(history))
+}
+
+func (a *api) streamLog(logs *containerLog, enc *eventsource.Encoder, stop <-chan bool) {
+	logLinec := make(chan string, 1000)
+
+	logs.Notify(logLinec)
+	defer logs.Stop(logLinec)
+
+	for {
+		select {
+		case <-stop:
 			return
+		case logLine := <-logLinec:
+			b, err := json.Marshal([]string{logLine})
+			if err != nil {
+				return
+			}
+
+			enc.Encode(eventsource.Event{
+			Data: b,
+		})
 		}
 	}
 }

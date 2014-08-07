@@ -144,7 +144,7 @@ func (cl *containerLog) removeNotifiers() {
 // receiveLogs opens udp port 3334, listens for incoming log messages, and then
 // feeds these into the appropriate buffers.
 func receiveLogs(r *registry) {
-	laddr, err := net.ResolveUDPAddr("udp", ":3334")
+	laddr, err := net.ResolveUDPAddr("udp", *logPort)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -154,6 +154,7 @@ func receiveLogs(r *registry) {
 		log.Fatal(err)
 	}
 	defer ln.Close()
+	ln.SetReadBuffer(10000*120)  // 100000 lines of "average" length
 
 	var buf = make([]byte, 50000+256) // max line length + container id
 
@@ -164,7 +165,7 @@ func receiveLogs(r *registry) {
 	for {
 		n, addr, err := ln.ReadFromUDP(buf)
 		if err != nil {
-			log.Printf("LOGS: %s", err)
+			log.Printf("LOG: Error while reading from port: %s", err)
 			return
 		}
 
