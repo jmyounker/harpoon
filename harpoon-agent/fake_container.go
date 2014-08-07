@@ -1,11 +1,6 @@
 package main
 
-import (
-	"fmt"
-	"time"
-
-	"github.com/soundcloud/harpoon/harpoon-agent/lib"
-)
+import "github.com/soundcloud/harpoon/harpoon-agent/lib"
 
 type fakeContainer struct {
 	agent.ContainerInstance
@@ -76,16 +71,6 @@ func (c *fakeContainer) Instance() agent.ContainerInstance {
 	return c.ContainerInstance
 }
 
-func (c *fakeContainer) Restart(t time.Duration) error {
-	req := actionRequest{
-		action:  containerRestart,
-		timeout: t,
-		res:     make(chan error),
-	}
-	c.actionRequestc <- req
-	return <-req.res
-}
-
 func (c *fakeContainer) Start() error {
 	req := actionRequest{
 		action: containerStart,
@@ -95,11 +80,10 @@ func (c *fakeContainer) Start() error {
 	return <-req.res
 }
 
-func (c *fakeContainer) Stop(t time.Duration) error {
+func (c *fakeContainer) Stop() error {
 	req := actionRequest{
-		action:  containerStop,
-		timeout: t,
-		res:     make(chan error),
+		action: containerStop,
+		res:    make(chan error),
 	}
 	c.actionRequestc <- req
 	return <-req.res
@@ -122,12 +106,10 @@ func (c *fakeContainer) loop() {
 				req.res <- c.create()
 			case containerDestroy:
 				req.res <- c.destroy()
-			case containerRestart:
-				req.res <- fmt.Errorf("not yet implemented")
 			case containerStart:
 				req.res <- c.start()
 			case containerStop:
-				req.res <- c.stop(req.timeout)
+				req.res <- c.stop()
 			default:
 				panic("unknown action")
 			}
@@ -170,7 +152,7 @@ func (c *fakeContainer) start() error {
 	return nil
 }
 
-func (c *fakeContainer) stop(t time.Duration) error {
+func (c *fakeContainer) stop() error {
 	return nil
 }
 

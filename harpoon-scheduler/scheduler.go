@@ -86,13 +86,13 @@ func (s *basicScheduler) loop(
 	agentStater agentStater,
 	lost chan map[string]taskSpec,
 ) {
-	algoFactory := randomNonDirty
+	algo := randomNonDirty
 
 	for {
 		select {
 		case req := <-s.scheduleRequests:
 			incJobScheduleRequests(1)
-			taskSpecMap, err := placeJob(req.job, algoFactory(agentStater.agentStates()))
+			taskSpecMap, err := placeJob(req.job, algo, agentStater.agentStates())
 			if err != nil {
 				req.resp <- err
 				continue
@@ -111,14 +111,14 @@ func (s *basicScheduler) loop(
 			req.resp <- migrate(
 				req.existingJob,
 				makeJob(req.newJobConfig, artifactURL),
-				agentStater,
-				algoFactory(agentStater.agentStates()),
+				algo,
+				agentStater.agentStates(),
 				registryPublic,
 			)
 
 		case req := <-s.unscheduleRequests:
 			incJobUnscheduleRequests(1)
-			taskSpecMap := findJob(req.job, agentStater)
+			taskSpecMap := findJob(req.job, agentStater.agentStates())
 			log.Printf("scheduler: unschedule %q: %d taskSpec(s)", req.job.JobName, len(taskSpecMap))
 			req.resp <- unschedule(taskSpecMap, registryPublic)
 
@@ -136,16 +136,16 @@ func (s *basicScheduler) loop(
 // 1 job -> N tasks -> M taskSpecs: use the scheduling algorithm
 // (placeContainer) to find homes for all the instances of all the tasks, and
 // return a map of container ID to taskSpec.
-func placeJob(job scheduler.Job, placeContainer schedulingAlgorithm) (map[string]taskSpec, error) {
+func placeJob(job scheduler.Job, algo schedulingAlgorithm, agentStates map[string]agentState) (map[string]taskSpec, error) {
 	m := map[string]taskSpec{} // containerID: taskSpec
 	for _, task := range job.Tasks {
 		for instance := 0; instance < task.Scale; instance++ {
-			endpoint, err := placeContainer(task.ContainerConfig)
+			endpoint, err := algo(agentStates, task.ContainerConfig)
 			if err != nil {
 				return map[string]taskSpec{}, fmt.Errorf("couldn't place instance %d/%d of %q: %s", instance+1, task.Scale, task.TaskName, err)
 			}
 			m[makeContainerID(job, task, instance)] = taskSpec{
-				endpoint:        endpoint,
+				Endpoint:        endpoint,
 				ContainerConfig: task.ContainerConfig,
 			}
 		}
@@ -154,9 +154,9 @@ func placeJob(job scheduler.Job, placeContainer schedulingAlgorithm) (map[string
 	return m, nil
 }
 
-func findJob(job scheduler.Job, agentStater agentStater) map[string]taskSpec {
+func findJob(job scheduler.Job, agentStates map[string]agentState) map[string]taskSpec {
 	m := map[string]taskSpec{}
-	for endpoint, agentState := range agentStater.agentStates() {
+	for endpoint, agentState := range agentStates {
 		for _, containerInstance := range agentState.containerInstances {
 			// To be a container from this job, the container instance
 			// must match job name and one of our task names.
@@ -175,7 +175,7 @@ func findJob(job scheduler.Job, agentStater agentStater) map[string]taskSpec {
 			}
 
 			m[containerInstance.ID] = taskSpec{
-				endpoint:        endpoint,
+				Endpoint:        endpoint,
 				ContainerConfig: containerInstance.Config,
 			}
 		}
@@ -186,8 +186,8 @@ func findJob(job scheduler.Job, agentStater agentStater) map[string]taskSpec {
 // Unschedule oldJob and schedule newJob, one task instance at a time.
 func migrate(
 	oldJob, newJob scheduler.Job,
-	agentStater agentStater,
 	algo schedulingAlgorithm,
+	agentStates map[string]agentState,
 	registryPublic registryPublic,
 ) error {
 	undo := []func(){}
@@ -198,12 +198,12 @@ func migrate(
 	}()
 
 	// Get old/new taskSpecs grouped by name, so we can migrate in a safe way.
-	newTaskSpecMap, err := placeJob(newJob, algo)
+	newTaskSpecMap, err := placeJob(newJob, algo, agentStates)
 	if err != nil {
 		return fmt.Errorf("when placing tasks for new job: %s", err)
 	}
 	var (
-		oldTaskGroups = groupByTask(findJob(oldJob, agentStater))
+		oldTaskGroups = groupByTask(findJob(oldJob, agentStates))
 		newTaskGroups = groupByTask(newTaskSpecMap)
 	)
 
@@ -308,18 +308,18 @@ func xsched(
 	for containerID, taskSpec := range taskSpecMap {
 		c := make(chan schedulingSignalWithContext)
 		if err := apply(containerID, taskSpec, c); err != nil {
-			log.Printf("scheduler: %s %s on %s: %s", what, containerID, taskSpec.endpoint, err)
+			log.Printf("scheduler: %s %s on %s: %s", what, containerID, taskSpec.Endpoint, err)
 			return err
 		}
 		select {
 		case sig := <-c:
-			log.Printf("scheduler: %s %s on %s: %s (%s)", what, containerID, taskSpec.endpoint, sig.schedulingSignal, sig.context)
+			log.Printf("scheduler: %s %s on %s: %s (%s)", what, containerID, taskSpec.Endpoint, sig.schedulingSignal, sig.context)
 			if sig.schedulingSignal != acceptable {
-				return fmt.Errorf("%s %s on %s: unacceptable signal, giving up", what, containerID, taskSpec.endpoint)
+				return fmt.Errorf("%s %s on %s: unacceptable signal, giving up", what, containerID, taskSpec.Endpoint)
 			}
 			undo = append(undo, func() { revert(containerID, taskSpec, nil) })
 		case <-time.After(2 * choose(taskSpec.Grace)):
-			return fmt.Errorf("%s %s on %s: timeout", what, containerID, taskSpec.endpoint)
+			return fmt.Errorf("%s %s on %s: timeout", what, containerID, taskSpec.Endpoint)
 		}
 	}
 

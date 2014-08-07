@@ -4,12 +4,16 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"log"
+	"os"
 	"sync"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
+	"path/filepath"
 )
 
 // The registry needs to support three operations:
@@ -45,20 +49,31 @@ type registry struct {
 	signals           map[string]chan schedulingSignalWithContext
 	subscriptions     map[chan<- registryState]struct{}
 	lost              chan map[string]taskSpec
+	filename          string
 }
 
 // newRegistry produces a new registry. If lost is non-nil, it will receive
 // taskSpecs that have been lost by failed agents, under the assumption that
 // they will be re-scheduled.
-func newRegistry(lost chan map[string]taskSpec) *registry {
+func newRegistry(lost chan map[string]taskSpec, filename string) (*registry, error) {
+	scheduled := map[string]taskSpec{}
+	if filename != "" {
+		var err error
+		scheduled, err = load(filename)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return &registry{
 		pendingSchedule:   map[string]taskSpec{},
-		scheduled:         map[string]taskSpec{},
+		scheduled:         scheduled,
 		pendingUnschedule: map[string]taskSpec{},
 		signals:           map[string]chan schedulingSignalWithContext{},
 		subscriptions:     map[chan<- registryState]struct{}{},
 		lost:              lost,
-	}
+		filename:          filename,
+	}, nil
 }
 
 // schedule implements the registryPublic interface.
@@ -87,11 +102,9 @@ func (r *registry) schedule(containerID string, taskSpec taskSpec, c chan schedu
 		r.signals[containerID] = c
 	}
 
-	broadcastRegistryState(r.subscriptions, registryState{
-		pendingSchedule:   cp(r.pendingSchedule),
-		scheduled:         cp(r.scheduled),
-		pendingUnschedule: cp(r.pendingUnschedule),
-	})
+	if err := r.stateChange(); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -123,11 +136,9 @@ func (r *registry) unschedule(containerID string, taskSpec taskSpec, c chan sche
 		r.signals[containerID] = c
 	}
 
-	broadcastRegistryState(r.subscriptions, registryState{
-		pendingSchedule:   cp(r.pendingSchedule),
-		scheduled:         cp(r.scheduled),
-		pendingUnschedule: cp(r.pendingUnschedule),
-	})
+	if err := r.stateChange(); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -149,7 +160,7 @@ func (r *registry) signal(containerID string, schedulingSignal schedulingSignal)
 		}
 		r.scheduled[containerID] = spec
 		delete(r.pendingSchedule, containerID)
-		context = fmt.Sprintf("%s pending-schedule → scheduled: OK, on %s", containerID, spec.endpoint)
+		context = fmt.Sprintf("%s pending-schedule → scheduled: OK, on %s", containerID, spec.Endpoint)
 
 	case signalScheduleFailed:
 		incSignalScheduleFailed(1)
@@ -158,7 +169,7 @@ func (r *registry) signal(containerID string, schedulingSignal schedulingSignal)
 			panic("invalid state in scheduler registry")
 		}
 		delete(r.pendingSchedule, containerID)
-		context = fmt.Sprintf("%s pending-schedule → (deleted): schedule failed on %s", containerID, spec.endpoint)
+		context = fmt.Sprintf("%s pending-schedule → (deleted): schedule failed on %s", containerID, spec.Endpoint)
 
 	case signalUnscheduleSuccessful:
 		incSignalUnscheduleSuccessful(1)
@@ -176,7 +187,7 @@ func (r *registry) signal(containerID string, schedulingSignal schedulingSignal)
 		}
 		delete(r.pendingUnschedule, containerID)
 		r.scheduled[containerID] = spec
-		context = fmt.Sprintf("%s pending-unschedule → (deleted): unschedule failed on %s", containerID, spec.endpoint)
+		context = fmt.Sprintf("%s pending-unschedule → (deleted): unschedule failed on %s", containerID, spec.Endpoint)
 
 	case signalContainerLost:
 		incSignalContainerLost(1)
@@ -189,16 +200,16 @@ func (r *registry) signal(containerID string, schedulingSignal schedulingSignal)
 		if r.lost != nil {
 			r.lost <- map[string]taskSpec{containerID: spec}
 		}
-		context = fmt.Sprintf("%s LOST → abandoned, on %s", containerID, spec.endpoint)
+		context = fmt.Sprintf("%s LOST → abandoned, on %s", containerID, spec.Endpoint)
 
 	case signalAgentUnavailable:
 		incSignalAgentUnavailable(1)
 		if spec, exists := r.pendingSchedule[containerID]; exists {
 			delete(r.pendingSchedule, containerID)
-			context = fmt.Sprintf("%s pending-schedule → (deleted): agent (%s) unavailable", containerID, spec.endpoint)
+			context = fmt.Sprintf("%s pending-schedule → (deleted): agent (%s) unavailable", containerID, spec.Endpoint)
 		} else if spec, exists := r.pendingUnschedule[containerID]; exists {
 			delete(r.pendingUnschedule, containerID)
-			context = fmt.Sprintf("%s pending-unschedule → (deleted): agent (%q) unavailable", containerID, spec.endpoint)
+			context = fmt.Sprintf("%s pending-unschedule → (deleted): agent (%q) unavailable", containerID, spec.Endpoint)
 		} else {
 			panic("invalid state in scheduler registry")
 		}
@@ -210,7 +221,7 @@ func (r *registry) signal(containerID string, schedulingSignal schedulingSignal)
 			panic("invalid state in scheduler registry")
 		}
 		delete(r.pendingSchedule, containerID)
-		context = fmt.Sprintf("%s pending-schedule → (deleted): container PUT failed on %s", containerID, spec.endpoint)
+		context = fmt.Sprintf("%s pending-schedule → (deleted): container PUT failed on %s", containerID, spec.Endpoint)
 
 	case signalContainerStartFailed:
 		incSignalContainerStartFailed(1)
@@ -219,7 +230,7 @@ func (r *registry) signal(containerID string, schedulingSignal schedulingSignal)
 			panic("invalid state in scheduler registry")
 		}
 		delete(r.pendingSchedule, containerID)
-		context = fmt.Sprintf("%s pending-schedule → (deleted): container start failed on %s", containerID, spec.endpoint)
+		context = fmt.Sprintf("%s pending-schedule → (deleted): container start failed on %s", containerID, spec.Endpoint)
 
 	case signalContainerStopFailed:
 		incSignalContainerStopFailed(1)
@@ -229,7 +240,7 @@ func (r *registry) signal(containerID string, schedulingSignal schedulingSignal)
 		}
 		delete(r.pendingUnschedule, containerID)
 		r.scheduled[containerID] = spec // assume failed stop means container still runs; require another user action to move it away again
-		context = fmt.Sprintf("%s pending-unschedule → scheduled: container stop failed on %s", containerID, spec.endpoint)
+		context = fmt.Sprintf("%s pending-unschedule → scheduled: container stop failed on %s", containerID, spec.Endpoint)
 
 	case signalContainerDeleteFailed:
 		incSignalContainerDeleteFailed(1)
@@ -239,7 +250,7 @@ func (r *registry) signal(containerID string, schedulingSignal schedulingSignal)
 		}
 		delete(r.pendingUnschedule, containerID)
 		// assume failed delete isn't an error condition (for us, at least)
-		context = fmt.Sprintf("%s pending-unschedule → (deleted): OK, but delete container failed on %s", containerID, spec.endpoint)
+		context = fmt.Sprintf("%s pending-unschedule → (deleted): OK, but delete container failed on %s", containerID, spec.Endpoint)
 
 	default:
 		panic(fmt.Sprintf("%q got unknown scheduling signal %s (%d)", containerID, schedulingSignal, schedulingSignal))
@@ -255,19 +266,48 @@ func (r *registry) signal(containerID string, schedulingSignal schedulingSignal)
 		delete(r.signals, containerID)
 	}
 
-	broadcastRegistryState(r.subscriptions, registryState{
-		pendingSchedule:   cp(r.pendingSchedule),
-		scheduled:         cp(r.scheduled),
-		pendingUnschedule: cp(r.pendingUnschedule),
-	})
+	if err := r.stateChange(); err != nil {
+		log.Printf("registry: during signal: %s", err) // best we can do?
+	}
 
 	log.Printf("registry: signal: %s", context)
 }
 
-func broadcastRegistryState(subscriptions map[chan<- registryState]struct{}, registryState registryState) {
+// stateChange should be called whenever the registry state is mutated. It
+// handles everything that needs to happen. It should be called with a read
+// lock on the registry already held.
+func (r *registry) stateChange() error {
+	registryState := registryState{
+		pendingSchedule:   cp(r.pendingSchedule),
+		scheduled:         cp(r.scheduled),
+		pendingUnschedule: cp(r.pendingUnschedule),
+	}
+
+	if err := save(r.filename, registryState.scheduled); err != nil {
+		return err
+	}
+
+	for c := range r.subscriptions {
+		c <- registryState
+	}
+
+	return nil
+}
+
+// registryStateChange handles everything that needs to happen when the
+// registry mutates.
+func registryStateChange(
+	registryState registryState,
+	filename string,
+	subscriptions map[chan<- registryState]struct{},
+) error {
+	if err := save(filename, registryState.scheduled); err != nil {
+		return err
+	}
 	for c := range subscriptions {
 		c <- registryState
 	}
+	return nil
 }
 
 // notify implements the registryPrivate interface. Components that are
@@ -348,7 +388,7 @@ type schedulingSignalWithContext struct {
 }
 
 type taskSpec struct {
-	endpoint string
+	Endpoint string `json:"endpoint"` // public because we serialize these during persistence
 	agent.ContainerConfig
 }
 
@@ -356,4 +396,51 @@ type registryState struct {
 	pendingSchedule   map[string]taskSpec
 	scheduled         map[string]taskSpec
 	pendingUnschedule map[string]taskSpec
+}
+
+func save(filename string, scheduled map[string]taskSpec) error {
+	if filename == "" {
+		return nil // no file is allowed
+	}
+
+	// the tempfile needs to be on the same filesystem as the destination file
+	// to ensure that an atomic rename works.
+	f, err := ioutil.TempFile(filepath.Dir(filename), "harpoon-scheduler-registry_")
+	if err != nil {
+		return err
+	}
+
+	if err := json.NewEncoder(f).Encode(scheduled); err != nil {
+		f.Close()
+		return err
+	}
+
+	if err = f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
+
+	f.Close()
+
+	return os.Rename(f.Name(), filename) // atomic
+}
+
+func load(filename string) (map[string]taskSpec, error) {
+	if _, err := os.Stat(filename); os.IsNotExist(err) {
+		return map[string]taskSpec{}, nil // no file is OK
+	} else if err != nil {
+		return map[string]taskSpec{}, err
+	}
+
+	buf, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return map[string]taskSpec{}, err
+	}
+
+	var scheduled map[string]taskSpec
+	if err := json.Unmarshal(buf, &scheduled); err != nil {
+		return map[string]taskSpec{}, err
+	}
+
+	return scheduled, nil
 }

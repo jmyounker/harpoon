@@ -38,7 +38,6 @@ func TestMockAgent(t *testing.T) {
 		{"DELETE", apiVersionPrefix + r.Replace(apiDeleteContainerPath), &mockAgent.deleteContainerCount},
 		{"POST", apiVersionPrefix + strings.Replace(r.Replace(apiPostContainerPath), ":action", "start", 1), &mockAgent.postContainerCount},
 		{"POST", apiVersionPrefix + strings.Replace(r.Replace(apiPostContainerPath), ":action", "stop", 1), &mockAgent.postContainerCount},
-		{"POST", apiVersionPrefix + strings.Replace(r.Replace(apiPostContainerPath), ":action", "restart", 1), &mockAgent.postContainerCount},
 		{"GET", apiVersionPrefix + r.Replace(apiGetContainerLogPath), &mockAgent.getContainerLogCount},
 		{"GET", apiVersionPrefix + r.Replace(apiGetResourcesPath), &mockAgent.getResourcesCount},
 	} {
@@ -312,8 +311,6 @@ func (c *mockAgent) postContainer(w http.ResponseWriter, r *http.Request, p http
 		}()
 		return
 
-	case "restart":
-		writeError(w, http.StatusNotImplemented, fmt.Errorf("restart not yet implemented"))
 	default:
 		writeError(w, http.StatusBadRequest, fmt.Errorf("unknown action %q", action))
 	}

@@ -6,9 +6,9 @@ All paths should be prefixed with `/api/v0`.
 
 ## PUT /containers/{id}
 
-Uploads the config to the agent, making it available for start/stop/etc.
+Uploads the config to the agent, making it available for start, stop, etc.
 operations. Body should be a JSON-encoded [ContainerConfig][containerconfig].
-Returns 201 (Created) on success.
+Returns 201 (Created) on success. The container will be started.
 
 
 ## GET /containers/{id}
@@ -34,13 +34,8 @@ the container doesn't stop with in the shutdown grace period specified in the
 [TaskConfig][taskconfig], sends SIGKILL. Returns immediately with 202
 (Accepted) if the container exists.
 
-Note that a stopped container still retains its resource reservations.
-
-### POST /containers/{id}/restart
-
-Start the container if previously stopped, otherwise stop and then start.
-Returns immediately with 202 (Accepted) if container exists. To stop, follows
-the same procedure as `POST /container/{id}/stop`, above.
+Note that a stopped container still retains its resource reservations. To get
+rid of those, issue a delete.
 
 ### PUT /containers/{id}?replace={old_id}
 

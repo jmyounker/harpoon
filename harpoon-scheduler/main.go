@@ -23,6 +23,7 @@ func main() {
 	var (
 		listen            = flag.String("listen", ":8080", "HTTP listen address")
 		agentPollInterval = flag.Duration("agent.poll.interval", 250*time.Millisecond, "how often to poll agents when starting or stopping containers")
+		registryFilename  = flag.String("registry.filename", "harpoon-scheduler-registry.json", "where to persist registry state")
 		agents            = multiagent{}
 	)
 	flag.Var(&agents, "agent", "repeatable list of agent endpoints")
@@ -31,15 +32,19 @@ func main() {
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.Lmicroseconds)
 
-	// Should make agent discovery dynamic, likely via glimpse.
+	// TODO(pb): should make agent discovery dynamic, likely via glimpse.
 	agentDiscovery := staticAgentDiscovery(agents.slice())
 	for _, agentEndpoint := range agentDiscovery {
 		log.Printf("agent: %s", agentEndpoint)
 	}
 
+	lost := make(chan map[string]taskSpec)
+	registry, err := newRegistry(lost, *registryFilename)
+	if err != nil {
+		log.Fatalf("when constructing registry: %s", err)
+	}
+
 	var (
-		lost        = make(chan map[string]taskSpec)
-		registry    = newRegistry(lost)
 		transformer = newTransformer(agentDiscovery, registry, *agentPollInterval)
 		scheduler   = newBasicScheduler(registry, transformer, lost)
 		router      = httprouter.New()

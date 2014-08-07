@@ -9,6 +9,8 @@ import (
 	"syscall"
 )
 
+const maxLogLineLength = 50000
+
 var (
 	// persist container logs to disk
 	logConfig = `
@@ -93,9 +95,9 @@ func startLogger(name, logdir string) (io.WriteCloser, error) {
 	}
 
 	logger := exec.Command("svlogd",
-		"-tt",         // prefix each line with a UTC timestamp
-		"-l", "50000", // max line length
-		"-b", "50001", // buffer size for reading/writing
+		"-tt",                              // prefix each line with a UTC timestamp
+		"-l", fmt.Sprint(maxLogLineLength), // max line length
+		"-b", fmt.Sprint(maxLogLineLength+1), // buffer size for reading/writing
 		path.Join(logdir),
 		path.Join(logdir, "udp"),
 		path.Join(logdir, "runner"),

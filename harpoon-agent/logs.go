@@ -156,7 +156,7 @@ func receiveLogs(r *registry) {
 	defer ln.Close()
 	ln.SetReadBuffer(10000 * 120) // 100000 lines of "average" length
 
-	var buf = make([]byte, 50000+256) // max line length + container id
+	var buf = make([]byte, maxLogLineLength+maxContainerIDLength) // max line length + container id
 
 	// All log lines should start with the pattern container[FOO] where FOO
 	// is the container ID.
