@@ -174,7 +174,9 @@ func (a *api) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 
 	container, ok := a.registry.Get(r.URL.Query().Get(":id"))
 	if !ok {
-		json.NewEncoder(w).Encode(&agent.HeartbeatReply{Want: "DOWN"})
+		// Received heartbeat from a container we don't know about. That's
+		// relatively bad news: issue a stern rebuke.
+		json.NewEncoder(w).Encode(&agent.HeartbeatReply{Want: "FORCEDOWN"})
 		return
 	}
 
