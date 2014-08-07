@@ -25,7 +25,7 @@ func TestScheduler(t *testing.T) {
 	}
 
 	var (
-		registry    = newRegistry(nil)
+		registry    = newTestRegistry(t)
 		transformer = newTransformer(staticAgentDiscovery{s.URL}, registry, 2*time.Millisecond)
 		scheduler   = newBasicScheduler(registry, transformer, nil)
 	)
