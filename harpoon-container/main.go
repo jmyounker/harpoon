@@ -78,7 +78,7 @@ func main() {
 
 sync:
 
-	heartbeat.Status = "EXITING"
+	heartbeat.Status = "UP"
 
 	if c.err != nil {
 		heartbeat.Err = c.err.Error()
@@ -87,7 +87,7 @@ sync:
 
 	// container has exited; make sure that we're synchronized with the host
 	// agent.
-	for desired = ""; desired != "EXIT"; {
+	for desired = ""; desired != "DOWN"; {
 		want, err := client.sendHeartbeat(heartbeat)
 		if err == nil {
 			desired = want
