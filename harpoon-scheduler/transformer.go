@@ -101,12 +101,12 @@ func (t *transformer) loop(
 			incTaskUnscheduleRequests(len(toUnschedule))
 			for containerID, taskSpec := range toSchedule {
 				// Can be made concurrent.
-				log.Printf("transformer: triggering schedule %v on %s", containerID, taskSpec.endpoint)
+				log.Printf("transformer: triggering schedule %v on %s", containerID, taskSpec.Endpoint)
 				registryPrivate.signal(containerID, scheduleOne(containerID, taskSpec, stateMachines, agentPollInterval))
 			}
 			for containerID, taskSpec := range toUnschedule {
 				// Can be made concurrent.
-				log.Printf("transformer: triggering unschedule %v on %s", containerID, taskSpec.endpoint)
+				log.Printf("transformer: triggering unschedule %v on %s", containerID, taskSpec.Endpoint)
 				registryPrivate.signal(containerID, unscheduleOne(containerID, taskSpec, stateMachines, agentPollInterval))
 			}
 
@@ -165,13 +165,13 @@ func scheduleOne(
 	stateMachines map[string]*stateMachine,
 	agentPollInterval time.Duration,
 ) schedulingSignal {
-	stateMachine, ok := stateMachines[taskSpec.endpoint]
+	stateMachine, ok := stateMachines[taskSpec.Endpoint]
 	if !ok {
-		log.Printf("transformer: %s: agent unavailable", taskSpec.endpoint)
+		log.Printf("transformer: %s: agent unavailable", taskSpec.Endpoint)
 		return signalAgentUnavailable
 	}
 	if err := stateMachine.proxy().Put(containerID, taskSpec.ContainerConfig); err != nil {
-		log.Printf("transformer: %s: PUT container %s failed: %s", taskSpec.endpoint, containerID, err)
+		log.Printf("transformer: %s: PUT container %s failed: %s", taskSpec.Endpoint, containerID, err)
 		return signalContainerPutFailed
 	}
 	// If we don't block and wait for it to transition from starting to
@@ -210,7 +210,7 @@ func scheduleOne(
 			}
 		}
 	}(); err != nil {
-		log.Printf("transformer: %s: start container %s failed: %s", taskSpec.endpoint, containerID, err)
+		log.Printf("transformer: %s: start container %s failed: %s", taskSpec.Endpoint, containerID, err)
 		return signalContainerStartFailed
 	}
 	return signalScheduleSuccessful
@@ -226,15 +226,15 @@ func unscheduleOne(
 	//  1. POST /containers/{id}/stop
 	//  2. Poll GET /containers/{id} until it's terminated
 	//  3. DELETE /containers/{id}
-	stateMachine, ok := stateMachines[taskSpec.endpoint]
+	stateMachine, ok := stateMachines[taskSpec.Endpoint]
 	if !ok {
-		log.Printf("transformer: %s: agent unavailable", taskSpec.endpoint)
+		log.Printf("transformer: %s: agent unavailable", taskSpec.Endpoint)
 		return signalAgentUnavailable
 	}
 
 	// POST stop
 	if err := stateMachine.proxy().Stop(containerID); err != nil {
-		log.Printf("transformer: %s: stop container %s failed: %s", taskSpec.endpoint, containerID, err)
+		log.Printf("transformer: %s: stop container %s failed: %s", taskSpec.Endpoint, containerID, err)
 		return signalContainerStopFailed
 	}
 
@@ -261,13 +261,13 @@ func unscheduleOne(
 			}
 		}
 	}(); err != nil {
-		log.Printf("transformer: %s: stop container %s failed: %s", taskSpec.endpoint, containerID, err)
+		log.Printf("transformer: %s: stop container %s failed: %s", taskSpec.Endpoint, containerID, err)
 		return signalContainerStopFailed
 	}
 
 	// DELETE
 	if err := stateMachine.proxy().Delete(containerID); err != nil {
-		log.Printf("transformer: %s: DELETE container %s failed: %s", taskSpec.endpoint, containerID, err)
+		log.Printf("transformer: %s: DELETE container %s failed: %s", taskSpec.Endpoint, containerID, err)
 		return signalContainerDeleteFailed
 	}
 	return signalUnscheduleSuccessful
@@ -289,20 +289,20 @@ func diffRegistryStates(
 			// The only way task instances can be lost is if their agent
 			// disappears. Otherwise, we make our best effort to keep them
 			// running.
-			//log.Printf("transformer: %v is missing; scheduling on %s", containerID, desired.endpoint)
+			//log.Printf("transformer: %v is missing; scheduling on %s", containerID, desired.Endpoint)
 			toSchedule[containerID] = desired
 			continue
 		}
 		switch actual.Status {
 		case agent.ContainerStatusStarting, agent.ContainerStatusRunning:
 			// nothing to do
-			//log.Printf("transformer: %v is %s on %s; nothing to do", containerID, actual.Status, actual.endpoint)
+			//log.Printf("transformer: %v is %s on %s; nothing to do", containerID, actual.Status, actual.Endpoint)
 		case agent.ContainerStatusFailed:
-			//log.Printf("transformer: %v is %s on %s; will re-schedule", containerID, actual.Status, actual.endpoint)
+			//log.Printf("transformer: %v is %s on %s; will re-schedule", containerID, actual.Status, actual.Endpoint)
 			toSchedule[containerID] = desired
 		case agent.ContainerStatusFinished:
 			// nothing to do
-			//log.Printf("transformer: %v is %s on %s; nothing to do", containerID, actual.Status, actual.endpoint)
+			//log.Printf("transformer: %v is %s on %s; nothing to do", containerID, actual.Status, actual.Endpoint)
 		default:
 			panic(fmt.Sprintf("container status %q has no handler in transformer diffRegistryStates", actual.Status))
 		}
@@ -311,18 +311,18 @@ func diffRegistryStates(
 	// Things that exist but aren't desired should be unscheduled.
 	for containerID, actual := range actual {
 		taskSpec := taskSpec{
-			endpoint:        actual.endpoint,
+			Endpoint:        actual.endpoint,
 			ContainerConfig: actual.ContainerInstance.Config,
 		}
 		desired, ok := desired[containerID]
 		if !ok {
-			//log.Printf("transformer: %v exists on %s but shouldn't; unscheduling", containerID, actual.endpoint)
+			//log.Printf("transformer: %v exists on %s but shouldn't; unscheduling", containerID, actual.Endpoint)
 			toUnschedule[containerID] = taskSpec
 			continue
 		}
-		if desired.endpoint != actual.endpoint {
+		if desired.Endpoint != actual.endpoint {
 			// move
-			//log.Printf("transformer: %v exists on %s but should be on %s; unscheduling former, scheduling latter", containerID, actual.endpoint, desired.endpoint)
+			//log.Printf("transformer: %v exists on %s but should be on %s; unscheduling former, scheduling latter", containerID, actual.Endpoint, desired.Endpoint)
 			toUnschedule[containerID] = taskSpec
 			toSchedule[containerID] = desired
 		}

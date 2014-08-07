@@ -8,11 +8,10 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
-
-	"github.com/bmizerany/pat"
 
 	"github.com/bernerdschaefer/eventsource"
+	"github.com/bmizerany/pat"
+
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
@@ -52,13 +51,11 @@ func (a *api) Enable() {
 	a.Lock()
 	defer a.Unlock()
 
-	a.enabled = true
+	a.enabled = true // TODO(pb): this is never used
 }
 
 func (a *api) handleGet(w http.ResponseWriter, r *http.Request) {
-	var (
-		id = r.URL.Query().Get(":id")
-	)
+	id := r.URL.Query().Get(":id")
 
 	container, ok := a.registry.Get(id)
 	if !ok {
@@ -97,29 +94,23 @@ func (a *api) handleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusAccepted)
+	if err := container.Create(); err != nil {
+		log.Printf("[%s] create: %s", id, err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
-	go func() {
-		err := container.Create()
-		if err != nil {
-			log.Printf("[%s] create: %s", id, err)
-		}
-		err = container.Start()
-		if err != nil {
-			log.Printf("[%s] start: %s", id, err)
-		}
-	}()
+	if err := container.Start(); err != nil {
+		log.Printf("[%s] create, start: %s", id, err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
 }
 
 func (a *api) handleStop(w http.ResponseWriter, r *http.Request) {
-	var (
-		id = r.URL.Query().Get(":id")
-		t  = r.URL.Query().Get("t")
-	)
-
-	if t == "" {
-		t = "5"
-	}
+	id := r.URL.Query().Get(":id")
 
 	container, ok := a.registry.Get(id)
 	if !ok {
@@ -127,20 +118,17 @@ func (a *api) handleStop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	timeout, err := strconv.Atoi(t)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if err := container.Stop(); err != nil {
+		log.Printf("[%s] stop: %s", id, err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	container.Stop(time.Duration(timeout) * time.Second)
 	w.WriteHeader(http.StatusAccepted)
 }
 
 func (a *api) handleStart(w http.ResponseWriter, r *http.Request) {
-	var (
-		id = r.URL.Query().Get(":id")
-	)
+	id := r.URL.Query().Get(":id")
 
 	container, ok := a.registry.Get(id)
 	if !ok {
@@ -149,6 +137,7 @@ func (a *api) handleStart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := container.Start(); err != nil {
+		log.Printf("[%s] start: %s", id, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -167,7 +156,6 @@ func (a *api) handleDestroy(w http.ResponseWriter, r *http.Request) {
 
 	if err := container.Destroy(); err != nil {
 		log.Printf("[%s] destroy: %s", id, err)
-
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -178,29 +166,23 @@ func (a *api) handleDestroy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
-	var (
-		id        = r.URL.Query().Get(":id")
-		heartbeat agent.Heartbeat
-	)
-
+	var heartbeat agent.Heartbeat
 	if err := json.NewDecoder(r.Body).Decode(&heartbeat); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	container, ok := a.registry.Get(id)
+	container, ok := a.registry.Get(r.URL.Query().Get(":id"))
 	if !ok {
-		json.NewEncoder(w).Encode(&agent.HeartbeatReply{
-			Want: "EXIT",
-		})
+		// Received heartbeat from a container we don't know about. That's
+		// relatively bad news: issue a stern rebuke.
+		json.NewEncoder(w).Encode(&agent.HeartbeatReply{Want: "FORCEDOWN"})
 		return
 	}
 
 	want := container.Heartbeat(heartbeat)
 
-	json.NewEncoder(w).Encode(&agent.HeartbeatReply{
-		Want: want,
-	})
+	json.NewEncoder(w).Encode(&agent.HeartbeatReply{Want: want})
 }
 
 func (a *api) handleContainerStream(_ string, enc *eventsource.Encoder, stop <-chan bool) {
@@ -307,14 +289,21 @@ func (a *api) handleResources(w http.ResponseWriter, r *http.Request) {
 		volumes = append(volumes, vol)
 	}
 
+	var reservedMem, reservedCPU float64
+
+	for _, instance := range a.registry.Instances() {
+		reservedMem += float64(instance.Config.Resources.Memory)
+		reservedCPU += float64(instance.Config.Resources.CPUs)
+	}
+
 	json.NewEncoder(w).Encode(&agent.HostResources{
 		Memory: agent.TotalReserved{
 			Total:    float64(agentTotalMem),
-			Reserved: 0, // TODO: enumerate created containers
+			Reserved: reservedMem,
 		},
 		CPUs: agent.TotalReserved{
 			Total:    float64(agentTotalCPU),
-			Reserved: 0, // TODO: enumerate created containers
+			Reserved: reservedCPU,
 		},
 		Volumes: volumes,
 	})

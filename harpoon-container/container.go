@@ -7,7 +7,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/docker/docker/pkg/system"
 	"github.com/docker/libcontainer"
 	"github.com/docker/libcontainer/cgroups/fs"
 	"github.com/docker/libcontainer/namespaces"
@@ -32,7 +31,7 @@ func commandBuilder(cmd **exec.Cmd) namespaces.CreateCommand {
 		command := exec.Command(init, args...)
 		command.ExtraFiles = []*os.File{childPipe}
 
-		system.SetCloneFlags(command, uintptr(namespaces.GetNamespaceFlags(container.Namespaces)))
+		command.SysProcAttr.Cloneflags = uintptr(namespaces.GetNamespaceFlags(container.Namespaces))
 		command.SysProcAttr.Pdeathsig = syscall.SIGKILL
 
 		*cmd = command
@@ -130,7 +129,7 @@ func (c *Container) start(statusc chan agent.ContainerProcessStatus, transition 
 				statusc <- status
 
 			case desired = <-transition:
-				if (desired == "DOWN" || desired == "EXIT") && !status.Up {
+				if (desired == "DOWN" || desired == "FORCEDOWN") && !status.Up {
 					return
 				}
 
@@ -138,7 +137,7 @@ func (c *Container) start(statusc chan agent.ContainerProcessStatus, transition 
 				case "DOWN":
 					cmd.Process.Signal(syscall.SIGTERM)
 
-				case "EXIT":
+				case "FORCEDOWN":
 					cmd.Process.Signal(syscall.SIGKILL)
 				}
 
@@ -162,7 +161,7 @@ func (c *Container) start(statusc chan agent.ContainerProcessStatus, transition 
 				}
 
 				// we've been asked to shut down, don't restart
-				if desired == "DOWN" || desired == "EXIT" {
+				if desired == "DOWN" || desired == "FORCEDOWN" {
 					return
 				}
 
