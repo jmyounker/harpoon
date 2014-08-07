@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
@@ -402,7 +403,9 @@ func save(filename string, scheduled map[string]taskSpec) error {
 		return nil // no file is allowed
 	}
 
-	f, err := ioutil.TempFile(os.TempDir(), "harpoon-scheduler-registry_")
+	// Ensure that the temp file is in the same filesystem as the registry save
+	// file so that os.Rename() never crosses a filesystem boundary.
+	f, err := ioutil.TempFile(filepath.Dir(filename), "harpoon-scheduler-registry_")
 	if err != nil {
 		return err
 	}
