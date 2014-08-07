@@ -10,10 +10,10 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
-	"path/filepath"
 )
 
 // The registry needs to support three operations:
