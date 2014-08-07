@@ -78,24 +78,28 @@ func main() {
 
 sync:
 
-	heartbeat.Status = "EXITING"
+	heartbeat.Status = "DOWN"
 
 	if c.err != nil {
 		heartbeat.Err = c.err.Error()
 		heartbeat.ContainerProcessStatus = agent.ContainerProcessStatus{}
 	}
 
-	// container has exited; make sure that we're synchronized with the host
-	// agent.
-	for desired = ""; desired != "EXIT"; {
+	// The container process has exited and will not be restarted; send
+	// heartbeats to the agent until it replies with a terminal state (DOWN or
+	// FORCEDOWN).
+	for {
 		want, err := client.sendHeartbeat(heartbeat)
-		if err == nil {
-			desired = want
+		if err != nil {
+			log.Println("unable to reach host agent: ", err)
+
+			time.Sleep(time.Second)
 			continue
 		}
 
-		log.Println("unable to reach host agent: ", err)
-		time.Sleep(time.Second)
+		if want == "DOWN" || want == "FORCEDOWN" {
+			break
+		}
 	}
 
 	return

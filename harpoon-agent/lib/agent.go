@@ -17,7 +17,6 @@ type Agent interface {
 	Get(containerID string) (ContainerInstance, error)                   // GET /containers/{id}
 	Start(containerID string) error                                      // POST /containers/{id}/start
 	Stop(containerID string) error                                       // POST /containers/{id}/stop
-	Restart(containerID string) error                                    // POST /containers/{id}/restart
 	Replace(newContainerID, oldContainerID string) error                 // PUT /containers/{newID}?replace={oldID}
 	Delete(containerID string) error                                     // DELETE /containers/{id}
 	Containers() ([]ContainerInstance, error)                            // GET /containers
@@ -231,44 +230,58 @@ const (
 	ContainerStatusDeleted = "deleted"
 )
 
-// Heartbeat TODO
+// Heartbeat is information about a running container. It's sent from the
+// container process to the agent via HTTP POST. The agent replies with
+// HeartbeatReply.
+//
+// UP and DOWN are sent when the container has successfully reached those
+// states. Once a container successfully sends a heartbeat with status DOWN,
+// it won't send any more heartbeats (unless restarted).
 type Heartbeat struct {
-	// Status will be one of "UP" or "EXITING".
-	Status    string    `json:"status"`
+	Status    string    `json:"status"` // UP, DOWN
 	Err       string    `json:"err,omitempty"`
 	Timestamp time.Time `json:"timestamp"`
 
-	ContainerProcessStatus `json:"container_status"`
+	ContainerProcessStatus `json:"container_process_status"`
 }
 
-// HeartbeatReply TODO
+// HeartbeatReply is information about the desired state of a running
+// container.  It's sent from the agent to the container process as the
+// response to a heartbeat POST.
+//
+// UP and DOWN are sent as part of the normal container lifecycle. FORCEDOWN
+// is sent when the container hasn't transitioned from UP to DOWN within the
+// configured shutdown grace period.
 type HeartbeatReply struct {
-	// Want will be one of UP, DOWN, or EXIT.
-	Want string `json:"want"`
+	Want string `json:"want"` // UP, DOWN, FORCEDOWN
 	Err  string `json:"err,omitempty"`
 }
 
-// ContainerProcessStatus TODO
+// ContainerProcessStatus contains detailed information about the state of the
+// operating system process for a given container. All fields except
+// ContainerMetrics reflect the current instance state.
 type ContainerProcessStatus struct {
-	Up bool `json:"up,omitempty"`
+	Up bool `json:"up"`
 
 	// Exited is true when the container exited on its own, or in response to
 	// handling a signal. ExitStatus will be >= 0 when Exited is true.
 	Exited     bool `json:"exited,omitempty"`
 	ExitStatus int  `json:"exit_status,omitempty"`
 
-	// Signaled is true when the container was killed with a signal. Signal will
-	// be > 0 when Signaled is true.
+	// Signaled is true when the container was killed with a signal. Signal
+	// will be > 0 when Signaled is true.
 	Signaled bool `json:"signaled,omitempty"`
 	Signal   int  `json:"signal,omitempty"`
 
-	// OOMed is true if the container was killed for exceeding its memory limit.
+	// OOMed is true if the container was killed for exceeding its memory
+	// limit.
 	OOMed bool `json:"oomed,omitempty"`
 
-	*ContainerMetrics `json:"metrics"`
+	*ContainerMetrics `json:"container_metrics"`
 }
 
-// ContainerMetrics TODO
+// ContainerMetrics contains detailed historical information about a unique
+// container. ContainerMetrics are tracked across restarts.
 type ContainerMetrics struct {
 	Restarts    uint64 `json:"restarts"`     // counter of restarts
 	OOMs        uint64 `json:"ooms"`         // counter of ooms

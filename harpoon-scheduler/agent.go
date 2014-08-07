@@ -293,34 +293,6 @@ func (c remoteAgent) Stop(containerID string) error {
 	}
 }
 
-func (c remoteAgent) Restart(containerID string) error {
-	c.URL.Path = apiVersionPrefix + apiPostContainerPath
-	c.URL.Path = strings.Replace(c.URL.Path, ":id", containerID, 1)
-	c.URL.Path = strings.Replace(c.URL.Path, ":action", "restart", 1)
-	req, err := http.NewRequest("POST", c.URL.String(), nil)
-	if err != nil {
-		return fmt.Errorf("problem constructing HTTP request (%s)", err)
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("agent unavailable (%s)", err)
-	}
-	defer resp.Body.Close()
-
-	switch resp.StatusCode {
-	case http.StatusAccepted:
-		return nil
-
-	default:
-		var response errorResponse
-		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-			return fmt.Errorf("invalid agent response (%s) (HTTP %s)", err, resp.Status)
-		}
-		return fmt.Errorf("%s (HTTP %d %s)", response.Error, response.StatusCode, response.StatusText)
-	}
-}
-
 func (c remoteAgent) Replace(newContainerID, oldContainerID string) error {
 	return fmt.Errorf("replace is not implemented or used by the harpoon scheduler")
 }
