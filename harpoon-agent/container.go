@@ -363,10 +363,9 @@ func (c *container) heartbeat(hb agent.Heartbeat) string {
 
 func (c *container) start() error {
 	switch c.ContainerInstance.Status {
-	case agent.ContainerStatusFinished, agent.ContainerStatusFailed:
-		break // ok
 	default:
 		return fmt.Errorf("can't start container with status %s", c.ContainerInstance.Status)
+	case agent.ContainerStatusFinished, agent.ContainerStatusFailed:
 	}
 
 	var (
@@ -418,10 +417,9 @@ func (c *container) start() error {
 
 func (c *container) stop() error {
 	switch c.ContainerInstance.Status {
-	case agent.ContainerStatusStarting, agent.ContainerStatusRunning:
-		break // ok
 	default:
 		return fmt.Errorf("can't stop container with status %s", c.ContainerInstance.Status)
+	case agent.ContainerStatusStarting, agent.ContainerStatusRunning:
 	}
 
 	c.desired = "DOWN"
