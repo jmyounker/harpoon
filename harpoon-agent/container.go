@@ -267,7 +267,11 @@ func (c *container) destroy() error {
 		rundir = filepath.Join("/run/harpoon", c.ID)
 	)
 
-	// TODO: validate that container is stopped
+	switch c.ContainerInstance.Status {
+	default:
+	case agent.ContainerStatusCreated, agent.ContainerStatusRunning:
+		return fmt.Errorf("can't destroy container in status %s", c.ContainerInstance.Status)
+	}
 
 	c.updateStatus(agent.ContainerStatusDeleted)
 
