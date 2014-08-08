@@ -20,13 +20,13 @@ import (
 
 const (
 	apiVersionPrefix       = "/api/v0"
-	apiGetContainersPath   = "/containers/"
+	apiGetContainersPath   = "/containers"
 	apiPutContainerPath    = "/containers/:id"
 	apiGetContainerPath    = "/containers/:id"
 	apiDeleteContainerPath = "/containers/:id"
 	apiPostContainerPath   = "/containers/:id/:action"
 	apiGetContainerLogPath = "/containers/:id/log"
-	apiGetResourcesPath    = "/resources/"
+	apiGetResourcesPath    = "/resources"
 )
 
 // remoteAgent proxies for a remote endpoint that provides a v0 agent over

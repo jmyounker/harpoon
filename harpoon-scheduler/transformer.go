@@ -24,22 +24,21 @@ func newTransformer(
 		states: make(chan chan map[string]agentState),
 		quit:   make(chan chan struct{}),
 	}
+
 	stateMachines := map[string]*stateMachine{}
 	for _, endpoint := range agentDiscovery.endpoints() {
-		stateMachine, err := newStateMachine(endpoint)
-		if err != nil {
-			log.Printf("transformer: state machine for %s: %s", endpoint, err)
-			continue
-		}
-		stateMachines[endpoint] = stateMachine
+		stateMachines[endpoint] = newStateMachine(endpoint)
 	}
+
 	log.Printf("transformer: %d initial agent(s)", len(stateMachines))
+
 	go t.loop(
 		stateMachines,
 		agentDiscovery,
 		registryPrivate,
 		agentPollInterval,
 	)
+
 	return t
 }
 
@@ -78,8 +77,8 @@ func (t *transformer) loop(
 	// caches the most recent one. Whenever the main runloop for the
 	// transformer is ready, it receives the latest registry state. This is
 	// necessary because actions we take in our main runloop may have the side
-	// effect of emitting registry state signals back to us. If we don't
-	// receive them, we can deadlock.
+	// effect of emitting (intermediate) registry state signals back to us. If
+	// we don't receive them, we can deadlock.
 	registryStates0 := make(chan registryState)
 	registryPrivate.notify(registryStates0)
 	defer registryPrivate.stop(registryStates0)
@@ -149,6 +148,7 @@ func mergeRegistryStates(maps ...map[string]taskSpec) map[string]taskSpec {
 	return merged
 }
 
+// remoteState takes a snapshot of the complete remote state.
 func remoteState(stateMachines map[string]*stateMachine) map[string]endpointContainerInstance {
 	m := map[string]endpointContainerInstance{}
 	for endpoint, stateMachine := range stateMachines {
@@ -364,12 +364,7 @@ func diffAgents(incoming []string, previous map[string]*stateMachine) (surviving
 			next[endpoint] = stateMachine
 			delete(previous, endpoint)
 		} else {
-			stateMachine, err := newStateMachine(endpoint)
-			if err != nil {
-				log.Printf("transformer: when constructing new agent state machine: %s", err)
-				continue
-			}
-			next[endpoint] = stateMachine
+			next[endpoint] = newStateMachine(endpoint)
 		}
 	}
 	return next, previous
