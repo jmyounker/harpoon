@@ -138,14 +138,18 @@ func (c *container) loop() {
 			case containerStop:
 				req.res <- c.stop()
 			default:
-				panic("unknown action")
+				panic(fmt.Sprintf("unknown action %q", req.action))
 			}
+
 		case req := <-c.heartbeatc:
 			req.res <- c.heartbeat(req.heartbeat)
+
 		case ch := <-c.subc:
 			c.subscribers[ch] = struct{}{}
+
 		case ch := <-c.unsubc:
 			delete(c.subscribers, ch)
+
 		case <-c.quitc:
 			c.logs.Exit()
 			return
@@ -296,7 +300,7 @@ func (c *container) fetchArtifact() (string, error) {
 		artifactPath = getArtifactPath(artifactURL)
 	)
 
-	fmt.Fprintf(os.Stderr, "fetching url %s to %s\n", artifactURL, artifactPath)
+	log.Printf("fetching url %s to %s", artifactURL, artifactPath)
 
 	if !strings.HasSuffix(artifactURL, ".tar.gz") {
 		return "", fmt.Errorf("artifact must be .tar.gz")
@@ -392,7 +396,7 @@ func (c *container) start() error {
 
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, fmt.Sprintf(
-		"heartbeat_url=http://%s/containers/%s/heartbeat",
+		"heartbeat_url=http://%s/api/v0/containers/%s/heartbeat",
 		*addr,
 		c.ID,
 	))

@@ -41,7 +41,6 @@ func newAPI(r *registry) *api {
 	// TODO(jmy): Uncomment this when we've decided on the interface's final from.
 	// mux.Get("/containers/:id/log", http.HandlerFunc(api.handleLog))
 	mux.Get("/api/v0/containers", http.HandlerFunc(api.handleList))
-
 	mux.Get("/api/v0/resources", http.HandlerFunc(api.handleResources))
 
 	return api
