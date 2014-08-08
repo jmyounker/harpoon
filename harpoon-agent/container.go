@@ -24,6 +24,21 @@ import (
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
+// Container is a high level interface to an operating system container.  The api classes
+// interact directly with this class.  The interface was extracted so that containers could
+// be faked within tests.
+type Container interface {
+	Create() error
+	Instance() agent.ContainerInstance
+	Destroy() error
+	Heartbeat(hb agent.Heartbeat) string
+	Start() error
+	Stop() error
+	Subscribe(ch chan<- agent.ContainerInstance)
+	Unsubscribe(ch chan<- agent.ContainerInstance)
+	Logs() *containerLog
+}
+
 const maxContainerIDLength = 256 // TODO(pb): enforce this limit at creation-time
 
 type container struct {
@@ -82,6 +97,10 @@ func (c *container) Destroy() error {
 	}
 	c.actionc <- req
 	return <-req.res
+}
+
+func (c *container) Logs() *containerLog {
+	return c.logs
 }
 
 func (c *container) Heartbeat(hb agent.Heartbeat) string {

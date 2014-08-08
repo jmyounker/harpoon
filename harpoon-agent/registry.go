@@ -7,7 +7,7 @@ import (
 )
 
 type registry struct {
-	m           map[string]*container
+	m           map[string]Container
 	statec      chan agent.ContainerInstance
 	subscribers map[chan<- agent.ContainerInstance]struct{}
 
@@ -18,7 +18,7 @@ type registry struct {
 
 func newRegistry() *registry {
 	r := &registry{
-		m:           map[string]*container{},
+		m:           map[string]Container{},
 		statec:      make(chan agent.ContainerInstance),
 		subscribers: map[chan<- agent.ContainerInstance]struct{}{},
 	}
@@ -35,7 +35,7 @@ func (r *registry) Remove(id string) {
 	delete(r.m, id)
 }
 
-func (r *registry) Get(id string) (*container, bool) {
+func (r *registry) Get(id string) (Container, bool) {
 	r.RLock()
 	defer r.RUnlock()
 
@@ -43,29 +43,26 @@ func (r *registry) Get(id string) (*container, bool) {
 	return c, ok
 }
 
-func (r *registry) Register(c *container) bool {
+func (r *registry) Register(c Container) bool {
 	r.Lock()
 	defer r.Unlock()
 
-	if _, ok := r.m[c.ID]; ok {
+	if _, ok := r.m[c.Instance().ID]; ok {
 		return false
 	}
 
-	r.m[c.ID] = c
+	r.m[c.Instance().ID] = c
 
-	go func(c *container, outc chan agent.ContainerInstance) {
+	// Forward the container's state changes to all subscribers.
+	go func(c Container, outc chan agent.ContainerInstance) {
 		inc := make(chan agent.ContainerInstance)
+		// The container sends us a copy of its associated ContainerInstance every
+		// time the container changes state.
 		c.Subscribe(inc)
 		defer c.Unsubscribe(inc)
 
-		for {
-			select {
-			case instance, ok := <-inc:
-				if !ok {
-					return
-				}
-				outc <- instance
-			}
+		for instance := range inc {
+			outc <- instance
 		}
 	}(c, r.statec)
 
@@ -113,14 +110,17 @@ func (r *registry) Stop(c chan<- agent.ContainerInstance) {
 	delete(r.subscribers, c)
 }
 
+// Report state changes in any container to all of our subscribers.
 func (r *registry) loop() {
-	for state := range r.statec {
-		r.RLock()
+	// Report state changes in any container to all of our subscribers.
+	for containerInstance := range r.statec {
+		func() {
+			r.RLock()
+			defer r.RUnlock()
 
-		for subc := range r.subscribers {
-			subc <- state
-		}
-
-		r.RUnlock()
+			for subc := range r.subscribers {
+				subc <- containerInstance
+			}
+		}()
 	}
 }

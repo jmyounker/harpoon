@@ -267,8 +267,8 @@ func (a *api) handleLog(w http.ResponseWriter, r *http.Request) {
 
 	if isStreamAccept(r.Header.Get("Accept")) {
 		logLines := make(chan string, 2000)
-		container.logs.Notify(logLines)
-		defer container.logs.Stop(logLines)
+		container.Logs().Notify(logLines)
+		defer container.Logs().Stop(logLines)
 		for line := range logLines {
 			if _, err := w.Write([]byte(line)); err != nil {
 				return
@@ -277,7 +277,7 @@ func (a *api) handleLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	for _, line := range container.logs.Last(history) {
+	for _, line := range container.Logs().Last(history) {
 		if _, err := w.Write([]byte(line)); err != nil {
 			return
 		}
