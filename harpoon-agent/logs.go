@@ -16,6 +16,9 @@ import (
 	"sync"
 )
 
+var LogBufferSize int = 10000      // in log lines
+var AverageLogLineLength int = 120 // in characters
+
 type containerLog struct {
 	entries       *RingBuffer
 	notifications map[chan string]struct{}
@@ -144,7 +147,7 @@ func (cl *containerLog) removeNotifiers() {
 // receiveLogs opens udp port 3334, listens for incoming log messages, and then
 // feeds these into the appropriate buffers.
 func receiveLogs(r *registry) {
-	laddr, err := net.ResolveUDPAddr("udp", ":3334")
+	laddr, err := net.ResolveUDPAddr("udp", *logAddr)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -154,6 +157,7 @@ func receiveLogs(r *registry) {
 		log.Fatal(err)
 	}
 	defer ln.Close()
+	ln.SetReadBuffer(LogBufferSize * AverageLogLineLength)
 
 	var buf = make([]byte, maxLogLineLength+maxContainerIDLength) // max line length + container id
 
@@ -164,7 +168,7 @@ func receiveLogs(r *registry) {
 	for {
 		n, addr, err := ln.ReadFromUDP(buf)
 		if err != nil {
-			log.Printf("LOGS: %s", err)
+			log.Printf("LOG: Error while reading from port: %s", err)
 			return
 		}
 

@@ -18,6 +18,8 @@ var (
 	agentTotalCPU int64
 
 	hostname string
+
+	logAddr = flag.String("log.addr", ":3334", "address for log communications")
 )
 
 func init() {

@@ -38,8 +38,7 @@ func newAPI(r *registry) *api {
 	mux.Post("/api/v0/containers/:id/heartbeat", http.HandlerFunc(api.handleHeartbeat))
 	mux.Post("/api/v0/containers/:id/start", http.HandlerFunc(api.handleStart))
 	mux.Post("/api/v0/containers/:id/stop", http.HandlerFunc(api.handleStop))
-	// TODO(jmy): Uncomment this when we've decided on the interface's final from.
-	// mux.Get("/containers/:id/log", http.HandlerFunc(api.handleLog))
+	mux.Get("/api/v0/containers/:id/log", http.HandlerFunc(api.handleLog))
 	mux.Get("/api/v0/containers", http.HandlerFunc(api.handleList))
 	mux.Get("/api/v0/resources", http.HandlerFunc(api.handleResources))
 
@@ -266,20 +265,39 @@ func (a *api) handleLog(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if isStreamAccept(r.Header.Get("Accept")) {
-		logLines := make(chan string, 2000)
-		container.Logs().Notify(logLines)
-		defer container.Logs().Stop(logLines)
-		for line := range logLines {
-			if _, err := w.Write([]byte(line)); err != nil {
-				return
-			}
-		}
+		eventsource.Handler(func(_ string, enc *eventsource.Encoder, stop <-chan bool) {
+			a.streamLog(container.Logs(), enc, stop)
+		}).ServeHTTP(w, r)
 		return
 	}
 
-	for _, line := range container.Logs().Last(history) {
-		if _, err := w.Write([]byte(line)); err != nil {
+	json.NewEncoder(w).Encode(container.Logs().Last(history))
+}
+
+func (a *api) streamLog(logs *containerLog, enc *eventsource.Encoder, stop <-chan bool) {
+	// logs.Notify does not write to blocked channels, so the channel has to be
+	// buffered.  The capacity is chosen so that a burst of log lines won't
+	// immediately result in a loss of data during large surge of incoming log
+	// lines.
+	logLinec := make(chan string, LogBufferSize/10)
+
+	logs.Notify(logLinec)
+	defer logs.Stop(logLinec)
+
+	for {
+		select {
+		case <-stop:
 			return
+		case logLine := <-logLinec:
+			b, err := json.Marshal([]string{logLine})
+			if err != nil {
+				log.Printf("log stream: fatal error: %s", err)
+				return
+			}
+
+			if err = enc.Encode(eventsource.Event{Data: b}); err != nil {
+				log.Printf("log stream: non-fatal error: %s", err)
+			}
 		}
 	}
 }
