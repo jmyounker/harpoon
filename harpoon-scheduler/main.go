@@ -55,6 +55,7 @@ func main() {
 	router.POST(`/schedule`, noParams(report.JSON(logWriter{}, handleSchedule(scheduler))))
 	router.POST(`/migrate`, noParams(report.JSON(logWriter{}, handleMigrate(scheduler))))
 	router.POST(`/unschedule`, noParams(report.JSON(logWriter{}, handleUnschedule(scheduler))))
+	router.GET(`/`, noParams(report.JSON(logWriter{}, handleGet(registry))))
 	log.Printf("listening on %s", *listen)
 	go log.Print(http.ListenAndServe(*listen, router))
 
@@ -105,6 +106,14 @@ func handleUnschedule(scheduler scheduler.Scheduler) http.HandlerFunc {
 	}
 }
 
+func handleGet(registry *registry) http.HandlerFunc {
+	// TODO(pb): this could close over an interface, like registryStater or something
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		registry.dumpState(w)
+	}
+}
+
 func readJob(r io.Reader) (scheduler.Job, error) {
 	var job scheduler.Job
 	if err := json.NewDecoder(r).Decode(&job); err != nil {
@@ -117,6 +126,7 @@ func readJob(r io.Reader) (scheduler.Job, error) {
 }
 
 func writeError(w http.ResponseWriter, code int, err error) {
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	json.NewEncoder(w).Encode(errorResponse{
 		StatusCode: code,
@@ -126,6 +136,7 @@ func writeError(w http.ResponseWriter, code int, err error) {
 }
 
 func writeSuccess(w http.ResponseWriter, message string) {
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(successResponse{
 		Message: message,

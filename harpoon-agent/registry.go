@@ -61,18 +61,8 @@ func (r *registry) Register(c Container) bool {
 		c.Subscribe(inc)
 		defer c.Unsubscribe(inc)
 
-		// Then we forward the modified ContainerInstances to r.statec for reporting
-		// to the registry's subscribers.
-		for {
-			select {
-			// The channel is closed when the registered container is deleted, so we exit
-			// the goroutine since there will be no more state changes.
-			case instance, ok := <-inc:
-				if !ok {
-					return
-				}
-				outc <- instance
-			}
+		for instance := range inc {
+			outc <- instance
 		}
 	}(c, r.statec)
 
@@ -134,4 +124,3 @@ func (r *registry) loop() {
 		}()
 	}
 }
-

@@ -11,8 +11,8 @@ import (
 )
 
 type transformer struct {
-	states chan chan map[string]agentState
-	quit   chan chan struct{}
+	statesc chan chan map[string]agentState
+	quitc   chan chan struct{}
 }
 
 func newTransformer(
@@ -21,8 +21,8 @@ func newTransformer(
 	agentPollInterval time.Duration,
 ) *transformer {
 	t := &transformer{
-		states: make(chan chan map[string]agentState),
-		quit:   make(chan chan struct{}),
+		statesc: make(chan chan map[string]agentState),
+		quitc:   make(chan chan struct{}),
 	}
 
 	stateMachines := map[string]*stateMachine{}
@@ -44,7 +44,7 @@ func newTransformer(
 
 func (t *transformer) stop() {
 	q := make(chan struct{})
-	t.quit <- q
+	t.quitc <- q
 	<-q
 }
 
@@ -53,7 +53,7 @@ func (t *transformer) stop() {
 // current state of agents must be proxied.
 func (t *transformer) agentStates() map[string]agentState {
 	c := make(chan map[string]agentState)
-	t.states <- c
+	t.statesc <- c
 	return <-c
 }
 
@@ -79,21 +79,21 @@ func (t *transformer) loop(
 	// necessary because actions we take in our main runloop may have the side
 	// effect of emitting (intermediate) registry state signals back to us. If
 	// we don't receive them, we can deadlock.
-	registryStates0 := make(chan registryState)
-	registryPrivate.notify(registryStates0)
-	defer registryPrivate.stop(registryStates0)
-	registryStates := make(chan registryState)
-	go fwd(registryStates, registryStates0)
+	updatec0 := make(chan registryState)
+	registryPrivate.notify(updatec0)
+	defer registryPrivate.stop(updatec0)
+	updatec := make(chan registryState)
+	go fwd(updatec, updatec0)
 
 	for {
 		select {
 		case newAgentEndpoints := <-agentEndpoints:
 			stateMachines = migrateAgents(stateMachines, newAgentEndpoints, registryPrivate)
 
-		case registryState := <-registryStates:
+		case update := <-updatec:
 			var (
-				desired = mergeRegistryStates(registryState.pendingSchedule, registryState.scheduled)
-				actual  = remoteState(stateMachines)
+				desired = mergeRegistryStates(update.pendingSchedule, update.scheduled)
+				actual  = snapshot(stateMachines)
 			)
 			toSchedule, toUnschedule := diffRegistryStates(desired, actual)
 			incTaskScheduleRequests(len(toSchedule))
@@ -109,10 +109,10 @@ func (t *transformer) loop(
 				registryPrivate.signal(containerID, unscheduleOne(containerID, taskSpec, stateMachines, agentPollInterval))
 			}
 
-		case c := <-t.states:
+		case c := <-t.statesc:
 			c <- copyAgentStates(stateMachines)
 
-		case q := <-t.quit:
+		case q := <-t.quitc:
 			close(q)
 			return
 		}
@@ -148,8 +148,8 @@ func mergeRegistryStates(maps ...map[string]taskSpec) map[string]taskSpec {
 	return merged
 }
 
-// remoteState takes a snapshot of the complete remote state.
-func remoteState(stateMachines map[string]*stateMachine) map[string]endpointContainerInstance {
+// snapshot takes a snapshot of the complete remote state.
+func snapshot(stateMachines map[string]*stateMachine) map[string]endpointContainerInstance {
 	m := map[string]endpointContainerInstance{}
 	for endpoint, stateMachine := range stateMachines {
 		for _, containerInstance := range stateMachine.containerInstances() {

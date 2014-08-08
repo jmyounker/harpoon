@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -292,6 +293,35 @@ func (r *registry) stateChange() error {
 	}
 
 	return nil
+}
+
+// dumpState is meant as an introspection tool. It serializes the state of the
+// registry as JSON and writes it to the passed io.Writer.
+func (r *registry) dumpState(w io.Writer) {
+	r.RLock()
+	defer r.RUnlock()
+
+	var (
+		pendingSchedule   = map[string]string{}
+		pendingUnschedule = map[string]string{}
+		scheduled         = map[string]string{}
+	)
+
+	for endpoint, taskSpec := range r.pendingSchedule {
+		pendingSchedule[endpoint] = taskSpec.JobName + " " + taskSpec.TaskName
+	}
+	for endpoint, taskSpec := range r.pendingUnschedule {
+		pendingUnschedule[endpoint] = taskSpec.JobName + " " + taskSpec.TaskName
+	}
+	for endpoint, taskSpec := range r.scheduled {
+		scheduled[endpoint] = taskSpec.JobName + " " + taskSpec.TaskName
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"pending_schedule":   pendingSchedule,
+		"pending_unschedule": pendingUnschedule,
+		"scheduled":          scheduled,
+	})
 }
 
 // registryStateChange handles everything that needs to happen when the

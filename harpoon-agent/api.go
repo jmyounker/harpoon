@@ -191,12 +191,14 @@ func (a *api) handleContainerStream(_ string, enc *eventsource.Encoder, stop <-c
 
 	b, err := json.Marshal(a.registry.Instances())
 	if err != nil {
+		log.Printf("container stream: fatal error: %s", err)
 		return
 	}
 
-	enc.Encode(eventsource.Event{
-		Data: b,
-	})
+	if err := enc.Encode(eventsource.Event{Data: b}); err != nil {
+		log.Printf("container stream: fatal error: %s", err)
+		return
+	}
 
 	for {
 		select {
@@ -205,11 +207,12 @@ func (a *api) handleContainerStream(_ string, enc *eventsource.Encoder, stop <-c
 		case state := <-statec:
 			b, err := json.Marshal([]agent.ContainerInstance{state})
 			if err != nil {
+				log.Printf("container stream: fatal error: %s", err)
 				return
 			}
 
-			if err = enc.Encode(eventsource.Event{Data: b}); err != nil {
-				return
+			if err := enc.Encode(eventsource.Event{Data: b}); err != nil {
+				log.Printf("container stream: non-fatal error: %s", err)
 			}
 		}
 	}
@@ -288,11 +291,12 @@ func (a *api) streamLog(logs *containerLog, enc *eventsource.Encoder, stop <-cha
 		case logLine := <-logLinec:
 			b, err := json.Marshal([]string{logLine})
 			if err != nil {
+				log.Printf("log stream: fatal error: %s", err)
 				return
 			}
 
 			if err = enc.Encode(eventsource.Event{Data: b}); err != nil {
-				return
+				log.Printf("log stream: non-fatal error: %s", err)
 			}
 		}
 	}
