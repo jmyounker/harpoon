@@ -192,12 +192,14 @@ func (a *api) handleContainerStream(_ string, enc *eventsource.Encoder, stop <-c
 
 	b, err := json.Marshal(a.registry.Instances())
 	if err != nil {
+		log.Printf("container stream: fatal error: %s", err)
 		return
 	}
 
-	enc.Encode(eventsource.Event{
-		Data: b,
-	})
+	if err := enc.Encode(eventsource.Event{Data: b}); err != nil {
+		log.Printf("container stream: fatal error: %s", err)
+		return
+	}
 
 	for {
 		select {
@@ -206,12 +208,13 @@ func (a *api) handleContainerStream(_ string, enc *eventsource.Encoder, stop <-c
 		case state := <-statec:
 			b, err := json.Marshal([]agent.ContainerInstance{state})
 			if err != nil {
+				log.Printf("container stream: fatal error: %s", err)
 				return
 			}
 
-			enc.Encode(eventsource.Event{
-				Data: b,
-			})
+			if err := enc.Encode(eventsource.Event{Data: b}); err != nil {
+				log.Printf("container stream: non-fatal error: %s", err)
+			}
 		}
 	}
 }
