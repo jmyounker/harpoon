@@ -40,7 +40,6 @@ func newAPI(r *registry) *api {
 	mux.Post("/api/v0/containers/:id/stop", http.HandlerFunc(api.handleStop))
 	mux.Get("/api/v0/containers/:id/log", http.HandlerFunc(api.handleLog))
 	mux.Get("/api/v0/containers", http.HandlerFunc(api.handleList))
-
 	mux.Get("/api/v0/resources", http.HandlerFunc(api.handleResources))
 
 	return api
@@ -209,9 +208,9 @@ func (a *api) handleContainerStream(_ string, enc *eventsource.Encoder, stop <-c
 				return
 			}
 
-			enc.Encode(eventsource.Event{
-				Data: b,
-			})
+			if err = enc.Encode(eventsource.Event{Data: b}); err != nil {
+				return
+			}
 		}
 	}
 }
@@ -263,10 +262,9 @@ func (a *api) handleLog(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if isStreamAccept(r.Header.Get("Accept")) {
-		handleLogStream := func(_ string, enc *eventsource.Encoder, stop <-chan bool) {
+		eventsource.Handler(func(_ string, enc *eventsource.Encoder, stop <-chan bool) {
 			a.streamLog(container.Logs(), enc, stop)
-		}
-		eventsource.Handler(handleLogStream).ServeHTTP(w, r)
+		}).ServeHTTP(w, r)
 		return
 	}
 
@@ -274,7 +272,11 @@ func (a *api) handleLog(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) streamLog(logs *containerLog, enc *eventsource.Encoder, stop <-chan bool) {
-	logLinec := make(chan string, 1000)
+	// logs.Notify does not write to blocked channels, so the channel has to be
+	// buffered.  The capacity is chosen so that a burst of log lines won't
+	// immediately result in a loss of data during large surge of incoming log
+	// lines.
+	logLinec := make(chan string, LogBufferSize/10)
 
 	logs.Notify(logLinec)
 	defer logs.Stop(logLinec)
@@ -289,9 +291,9 @@ func (a *api) streamLog(logs *containerLog, enc *eventsource.Encoder, stop <-cha
 				return
 			}
 
-			enc.Encode(eventsource.Event{
-				Data: b,
-			})
+			if err = enc.Encode(eventsource.Event{Data: b}); err != nil {
+				return
+			}
 		}
 	}
 }

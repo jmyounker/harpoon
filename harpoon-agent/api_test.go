@@ -66,7 +66,7 @@ func TestLogAPICanTailLogs(t *testing.T) {
 	)
 	defer server.Close()
 
-	setLogPortRandomly(t)
+	setLogAddrRandomly(t)
 	go receiveLogs(registry)
 
 	c := newFakeContainer("123")
@@ -136,7 +136,7 @@ func TestLogAPICanRetrieveLastLines(t *testing.T) {
 	)
 	defer server.Close()
 
-	setLogPortRandomly(t)
+	setLogAddrRandomly(t)
 	go receiveLogs(registry)
 
 	c := newFakeContainer("123")
@@ -171,7 +171,7 @@ func TestLogAPICanRetrieveLastLines(t *testing.T) {
 func TestMessagesGetWrittenToLogs(t *testing.T) {
 	registry := newRegistry()
 
-	setLogPortRandomly(t)
+	setLogAddrRandomly(t)
 	go receiveLogs(registry)
 
 	c := newFakeContainer("123")
@@ -198,7 +198,7 @@ func TestMessagesGetWrittenToLogs(t *testing.T) {
 func TestLogRoutingOfDefectiveMessages(t *testing.T) {
 	registry := newRegistry()
 
-	setLogPortRandomly(t)
+	setLogAddrRandomly(t)
 	go receiveLogs(registry)
 
 	c := newFakeContainer("123")
@@ -232,18 +232,18 @@ func expectNoLogLines(t *testing.T, c chan string, timeout time.Duration) {
 }
 
 func sendLog(logLine string) error {
-	conn, _ := net.Dial("udp", "localhost"+*logPort)
+	conn, _ := net.Dial("udp", *logAddr)
 	buf := []byte(logLine)
 	_, err := conn.Write(buf)
 	return err
 }
 
-func setLogPortRandomly(t *testing.T) {
+func setLogAddrRandomly(t *testing.T) {
 	port, err := GetRandomUDPPort()
 	if err != nil {
 		t.Fatalf("Could not locate a random port: %s", err)
 	}
-	*logPort = ":" + strconv.Itoa(port)
+	*logAddr = "localhost:" + strconv.Itoa(port)
 }
 
 // GetRandomUDPPort identifies a UDP port by attempting to connect to port zero. This
