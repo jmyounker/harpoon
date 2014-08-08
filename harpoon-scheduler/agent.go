@@ -96,6 +96,10 @@ func (c remoteAgent) Events() (<-chan []agent.ContainerInstance, agent.Stopper, 
 	go func() {
 		defer close(statec)
 		for {
+
+			// TODO(pb): we need to configure the eventsource to let us know
+			// when the remote dies, somehow. See state machine loop().
+
 			event, err := es.Read()
 			if err != nil {
 				log.Printf("%s: %s", c.URL.String(), err)
@@ -169,7 +173,7 @@ func (c remoteAgent) Put(containerID string, containerConfig agent.ContainerConf
 	defer resp.Body.Close()
 
 	switch resp.StatusCode {
-	case http.StatusAccepted:
+	case http.StatusCreated:
 		return nil
 
 	default:

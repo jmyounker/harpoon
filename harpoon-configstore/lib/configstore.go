@@ -10,14 +10,16 @@ import (
 
 // ConfigStore defines read and write behavior expected from a config store.
 type ConfigStore interface {
-	Get(jobConfigRef string) (JobConfig, error)
-	Put(JobConfig) (jobConfigRef string, err error)
+	Get(ref string) (JobConfig, error)
+	Put(JobConfig) (ref string, err error)
 }
 
-// JobConfig defines a config for a given job (collection of tasks).
-// JobConfig is declared by the user and stored in the config store, probably with version semantics.
-// Combining a JobConfig with certain types of runtime config (e.g. scale) can produce a job definition.
-// That runtime state is maintained (persisted, etc.) by the scheduler.
+// JobConfig defines a config for a given job (collection of tasks). JobConfig
+// is declared by the user and stored in the config store, probably with
+// version semantics. JobConfigs are stored without certain dimensions of
+// runtime information (e.g. artifact URL), which must be provided at
+// execution time. Complete, executable JobConfigs are maintained and
+// persisted by the scheduler when they're scheduled.
 type JobConfig struct {
 	JobName      string            `json:"job_name"`      // job.Name, to which this cfg applies
 	Env          map[string]string `json:"env"`           // exported first, to all tasks
@@ -50,61 +52,63 @@ func (c JobConfig) Valid() error {
 // TaskConfig + jobName + artifact URL can fully define an agent.ContainerConfig.
 // TaskConfig + jobName + artifact URL + scale can fully define a scheduler.Job.
 type TaskConfig struct {
-	TaskName     string            `json:"task_name"`     // task.Name
-	Scale        int               `json:"scale"`         // task.Scale
-	HealthChecks []HealthCheck     `json:"health_checks"` // task.HealthChecks
-	Ports        map[string]uint16 `json:"ports"`         // task.ContainerConfig.Ports
-	Env          map[string]string `json:"env"`           // task.ContainerConfig.Env
-	Command      agent.Command     `json:"command"`       // task.ContainerConfig.Command
-	Resources    agent.Resources   `json:"resources"`     // task.ContainerConfig.Resources
-	Storage      agent.Storage     `json:"storage"`       // task.ContainerConfig.Storage
-	Grace        agent.Grace       `json:"grace"`         // task.ContainerConfig.Grace
+	TaskName              string        `json:"task_name"`     // task.Name
+	Scale                 int           `json:"scale"`         // task.Scale
+	HealthChecks          []HealthCheck `json:"health_checks"` // task.HealthChecks
+	agent.ContainerConfig               // must not contain artifact URL
 }
 
 // Valid performs a validation check, to ensure invalid structures may be
 // detected as early as possible.
 func (c TaskConfig) Valid() error {
 	var errs []string
+
 	if c.TaskName == "" {
 		errs = append(errs, fmt.Sprintf("task name not set"))
 	}
-	if err := c.Command.Valid(); err != nil {
-		errs = append(errs, fmt.Sprintf("command invalid: %s", err))
+
+	if c.Scale <= 0 || c.Scale >= 1000 {
+		errs = append(errs, fmt.Sprintf("invalid scale %d", c.Scale))
 	}
-	if err := c.Resources.Valid(); err != nil {
-		errs = append(errs, fmt.Sprintf("resources invalid: %s", err))
-	}
-	if err := c.Storage.Valid(); err != nil {
-		errs = append(errs, fmt.Sprintf("storage invalid: %s", err))
-	}
-	if err := c.Grace.Valid(); err != nil {
-		errs = append(errs, fmt.Sprintf("grace invalid: %s", err))
-	}
+
 	for i, healthCheck := range c.HealthChecks {
 		if err := healthCheck.Valid(); err != nil {
 			errs = append(errs, fmt.Sprintf("health check %d: %s", i, err))
 		}
 	}
+
+	if c.ArtifactURL != "" {
+		errs = append(errs, "task config must not specify artifact URL")
+	}
+
+	if err := c.Command.Valid(); err != nil {
+		errs = append(errs, fmt.Sprintf("command invalid: %s", err))
+	}
+
+	if err := c.Resources.Valid(); err != nil {
+		errs = append(errs, fmt.Sprintf("resources invalid: %s", err))
+	}
+
+	if err := c.Storage.Valid(); err != nil {
+		errs = append(errs, fmt.Sprintf("storage invalid: %s", err))
+	}
+
+	if err := c.Grace.Valid(); err != nil {
+		errs = append(errs, fmt.Sprintf("grace invalid: %s", err))
+	}
+
 	if len(errs) > 0 {
 		return fmt.Errorf(strings.Join(errs, "; "))
 	}
+
 	return nil
 }
 
 // MakeContainerConfig produces an agent.ContainerConfig from a TaskConfig by
-// combining it with a job name and artifact URL.
-func (c TaskConfig) MakeContainerConfig(jobName, artifactURL string) agent.ContainerConfig {
-	return agent.ContainerConfig{
-		JobName:     jobName,
-		TaskName:    c.TaskName,
-		ArtifactURL: artifactURL,
-		Ports:       c.Ports,
-		Env:         c.Env,
-		Command:     c.Command,
-		Resources:   c.Resources,
-		Storage:     c.Storage,
-		Grace:       c.Grace,
-	}
+// combining it with runtime information like artifact URL.
+func (c TaskConfig) MakeContainerConfig(artifactURL string) agent.ContainerConfig {
+	c.ArtifactURL = artifactURL
+	return c.ContainerConfig
 }
 
 // HealthCheck defines how a third party can determine if an instance of a

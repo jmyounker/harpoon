@@ -21,7 +21,11 @@ type stateMachine struct {
 	quit      chan chan struct{}
 }
 
-func newStateMachine(endpoint string) *stateMachine {
+type syncer interface {
+	sync()
+}
+
+func newStateMachine(endpoint string, syncer syncer) *stateMachine {
 	proxy, err := newRemoteAgent(endpoint)
 	if err != nil {
 		panic(fmt.Sprintf("when building agent proxy: %s", err))
@@ -41,7 +45,7 @@ func newStateMachine(endpoint string) *stateMachine {
 		quit:      make(chan chan struct{}),
 	}
 
-	go s.loop(proxy.URL.String(), updatec, stopper)
+	go s.loop(proxy.URL.String(), updatec, syncer, stopper)
 
 	return s
 }
@@ -71,8 +75,11 @@ func (s *stateMachine) stop() {
 func (s *stateMachine) loop(
 	endpoint string,
 	updatec <-chan []agent.ContainerInstance,
+	syncer syncer,
 	stopper agent.Stopper,
 ) {
+	log.Printf("state machine: %s: started", endpoint)
+	defer log.Printf("state machine: %s: stopped", endpoint)
 	defer stopper.Stop()
 
 	var (
@@ -83,6 +90,14 @@ func (s *stateMachine) loop(
 	for {
 		select {
 		case update, ok := <-updatec:
+
+			// TODO(pb): if the agent crashes and comes back, the eventsource
+			// lib hides that connection interruption from us. We don't see
+			// the disconnect, and the first event that comes to us after the
+			// restart is an empty array, which we interpret as a delta-zero
+			// and don't make any updates. We should instead wipe our
+			// instances. So, we need to get the disconnects forwarded to us.
+
 			if !ok {
 				log.Printf("state machine: %s: container events chan closed", endpoint)
 				log.Printf("state machine: %s: TODO: re-establish connection", endpoint)
@@ -101,11 +116,12 @@ func (s *stateMachine) loop(
 
 			dirty = false
 
+			syncer.sync()
+
 		case c := <-s.dirtyc:
 			c <- dirty
 
 		case c := <-s.snapshotc:
-			log.Printf("### %s snapshot request: %+v", endpoint, instances)
 			c <- instances // client should consider dirty flag
 
 		case q := <-s.quit:

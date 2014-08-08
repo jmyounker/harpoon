@@ -137,50 +137,61 @@ func (s *basicScheduler) loop(
 // (placeContainer) to find homes for all the instances of all the tasks, and
 // return a map of container ID to taskSpec.
 func placeJob(job scheduler.Job, algo schedulingAlgorithm, agentStates map[string]agentState) (map[string]taskSpec, error) {
-	m := map[string]taskSpec{} // containerID: taskSpec
+	out := map[string]taskSpec{} // containerID: taskSpec
+
 	for _, task := range job.Tasks {
 		for instance := 0; instance < task.Scale; instance++ {
 			endpoint, err := algo(agentStates, task.ContainerConfig)
 			if err != nil {
 				return map[string]taskSpec{}, fmt.Errorf("couldn't place instance %d/%d of %q: %s", instance+1, task.Scale, task.TaskName, err)
 			}
-			m[makeContainerID(job, task, instance)] = taskSpec{
+
+			out[makeContainerID(job, task, instance)] = taskSpec{
 				Endpoint:        endpoint,
+				JobName:         job.JobName,
+				TaskName:        task.TaskName,
 				ContainerConfig: task.ContainerConfig,
 			}
 		}
 	}
-	incContainersPlaced(len(m))
-	return m, nil
+
+	incContainersPlaced(len(out))
+
+	return out, nil
 }
 
+// findJob locates all of the taskSpecs for a job in a set of agent states.
 func findJob(job scheduler.Job, agentStates map[string]agentState) map[string]taskSpec {
-	m := map[string]taskSpec{}
+	type tuple struct{ jobName, taskName string }
+
+	var (
+		targets = map[string]tuple{} // container ID: { jobName, taskName }
+		out     = map[string]taskSpec{}
+	)
+
+	for _, task := range job.Tasks {
+		for instance := 0; instance < task.Scale; instance++ {
+			targets[makeContainerID(job, task, instance)] = tuple{job.JobName, task.TaskName}
+		}
+	}
+
 	for endpoint, agentState := range agentStates {
-		for _, containerInstance := range agentState.ContainerInstances {
-			// To be a container from this job, the container instance
-			// must match job name and one of our task names.
-			if containerInstance.Config.JobName != job.JobName {
-				continue
-			}
-			if _, ok := job.Tasks[containerInstance.Config.TaskName]; !ok {
+		for _, liveInstance := range agentState.ContainerInstances {
+			target, ok := targets[liveInstance.ID]
+			if !ok {
 				continue
 			}
 
-			// Just a safety check, as I'm not totally confident in the
-			// implementation yet. Remove this check eventually; definitely
-			// before shipping! :)
-			if !reflect.DeepEqual(job.Tasks[containerInstance.Config.TaskName].ContainerConfig, containerInstance.Config) {
-				panic("invalid state in findJob")
-			}
-
-			m[containerInstance.ID] = taskSpec{
+			out[liveInstance.ID] = taskSpec{
 				Endpoint:        endpoint,
-				ContainerConfig: containerInstance.Config,
+				JobName:         target.jobName,
+				TaskName:        target.taskName,
+				ContainerConfig: liveInstance.Config,
 			}
 		}
 	}
-	return m
+
+	return out
 }
 
 // Unschedule oldJob and schedule newJob, one task instance at a time.
@@ -307,17 +318,20 @@ func xsched(
 	// Could make this concurrent.
 	for containerID, taskSpec := range taskSpecMap {
 		c := make(chan schedulingSignalWithContext)
+
 		if err := apply(containerID, taskSpec, c); err != nil {
 			log.Printf("scheduler: %s %s on %s: %s", what, containerID, taskSpec.Endpoint, err)
 			return err
 		}
+
 		select {
 		case sig := <-c:
 			log.Printf("scheduler: %s %s on %s: %s (%s)", what, containerID, taskSpec.Endpoint, sig.schedulingSignal, sig.context)
 			if sig.schedulingSignal != acceptable {
-				return fmt.Errorf("%s %s on %s: unacceptable signal, giving up", what, containerID, taskSpec.Endpoint)
+				return fmt.Errorf("%s %s on %s: unacceptable signal (%s), giving up", what, containerID, taskSpec.Endpoint, sig.schedulingSignal)
 			}
 			undo = append(undo, func() { revert(containerID, taskSpec, nil) })
+
 		case <-time.After(2 * choose(taskSpec.Grace)):
 			return fmt.Errorf("%s %s on %s: timeout", what, containerID, taskSpec.Endpoint)
 		}
@@ -328,9 +342,9 @@ func xsched(
 }
 
 func makeJob(c configstore.JobConfig, artifactURL string) scheduler.Job {
-	tasks := map[string]scheduler.Task{}
+	tasks := []scheduler.Task{}
 	for _, taskConfig := range c.Tasks {
-		tasks[taskConfig.TaskName] = makeTask(taskConfig, c.JobName, artifactURL)
+		tasks = append(tasks, makeTask(taskConfig, c.JobName, artifactURL))
 	}
 	return scheduler.Job{
 		JobName: c.JobName,
@@ -343,7 +357,7 @@ func makeTask(c configstore.TaskConfig, jobName, artifactURL string) scheduler.T
 		TaskName:        c.TaskName,
 		Scale:           c.Scale,
 		HealthChecks:    c.HealthChecks,
-		ContainerConfig: c.MakeContainerConfig(jobName, artifactURL),
+		ContainerConfig: c.MakeContainerConfig(artifactURL),
 	}
 }
 
@@ -358,7 +372,7 @@ func refHash(v interface{}) string {
 	if err := json.NewEncoder(h).Encode(v); err != nil {
 		panic(fmt.Sprintf("%s: refHash error: %s", reflect.TypeOf(v), err))
 	}
-	return fmt.Sprintf("%x", h.Sum(nil))
+	return fmt.Sprintf("%x", h.Sum(nil))[:7]
 }
 
 // Extract the (hopefully common) artifact URL from the job. If it's not
@@ -378,12 +392,18 @@ func getArtifactURL(job scheduler.Job) (string, error) {
 }
 
 // Split 1 taskSpecMap into N taskSpecMaps by task name.
-func groupByTask(taskSpecMap map[string]taskSpec) map[string][]containerIDTaskSpec {
-	m := map[string][]containerIDTaskSpec{}
-	for containerID, taskSpec := range taskSpecMap {
-		m[taskSpec.ContainerConfig.TaskName] = append(m[taskSpec.ContainerConfig.TaskName], containerIDTaskSpec{containerID, taskSpec})
+func groupByTask(in map[string]taskSpec) map[string][]containerIDTaskSpec {
+	var out = map[string][]containerIDTaskSpec{}
+
+	for containerID, taskSpec := range in {
+		var (
+			key = taskSpec.TaskName
+			val = containerIDTaskSpec{containerID, taskSpec}
+		)
+		out[key] = append(out[key], val)
 	}
-	return m
+
+	return out
 }
 
 // Simple max integer.

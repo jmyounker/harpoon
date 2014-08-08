@@ -211,18 +211,18 @@ func (c *mockAgent) putContainer(w http.ResponseWriter, r *http.Request, p httpr
 	}
 	instance := agent.ContainerInstance{
 		ID:     id,
-		Status: agent.ContainerStatusRunning,
+		Status: agent.ContainerStatusRunning, // PUT also starts
 		Config: config,
 	}
 
-	// Just PUT, don't start.
+	// PUT also starts.
 	func() {
 		c.Lock()
 		defer c.Unlock()
 		c.instances[id] = instance
 		broadcastContainerInstance(c.subscribers, instance)
 	}()
-	w.WriteHeader(http.StatusAccepted)
+	w.WriteHeader(http.StatusCreated)
 }
 
 func (c *mockAgent) getContainer(w http.ResponseWriter, r *http.Request, p httprouter.Params) {

@@ -11,6 +11,7 @@ import (
 )
 
 type transformer struct {
+	syncc   chan struct{}
 	statesc chan chan map[string]agentState
 	quitc   chan chan struct{}
 }
@@ -21,13 +22,14 @@ func newTransformer(
 	agentPollInterval time.Duration,
 ) *transformer {
 	t := &transformer{
+		syncc:   make(chan struct{}),
 		statesc: make(chan chan map[string]agentState),
 		quitc:   make(chan chan struct{}),
 	}
 
 	stateMachines := map[string]*stateMachine{}
 	for _, endpoint := range agentDiscovery.endpoints() {
-		stateMachines[endpoint] = newStateMachine(endpoint)
+		stateMachines[endpoint] = newStateMachine(endpoint, t)
 	}
 
 	log.Printf("transformer: %d initial agent(s)", len(stateMachines))
@@ -46,6 +48,10 @@ func (t *transformer) stop() {
 	q := make(chan struct{})
 	t.quitc <- q
 	<-q
+}
+
+func (t *transformer) sync() {
+	t.syncc <- struct{}{}
 }
 
 // agentStates implements the agentStater interface. Since the transformer
@@ -69,6 +75,30 @@ func (t *transformer) loop(
 		}
 	}()
 
+	sync := func(latest registryState) {
+		var (
+			desired = mergeRegistryStates(latest.pendingSchedule, latest.scheduled)
+			actual  = groupByID(snapshot(stateMachines))
+		)
+
+		toSchedule, toUnschedule := diffRegistryStates(desired, actual)
+
+		incTaskScheduleRequests(len(toSchedule))
+		incTaskUnscheduleRequests(len(toUnschedule))
+
+		for containerID, taskSpec := range toSchedule {
+			// Can be made concurrent.
+			log.Printf("transformer: triggering schedule %v on %s", containerID, taskSpec.Endpoint)
+			registryPrivate.signal(containerID, scheduleOne(containerID, taskSpec, stateMachines, agentPollInterval))
+		}
+
+		for containerID, taskSpec := range toUnschedule {
+			// Can be made concurrent.
+			log.Printf("transformer: triggering unschedule %v on %s", containerID, taskSpec.Endpoint)
+			registryPrivate.signal(containerID, unscheduleOne(containerID, taskSpec, stateMachines, agentPollInterval))
+		}
+	}
+
 	agentEndpoints := make(chan []string)
 	agentDiscovery.notify(agentEndpoints)
 	defer agentDiscovery.stop(agentEndpoints)
@@ -83,31 +113,22 @@ func (t *transformer) loop(
 	registryPrivate.notify(updatec0)
 	defer registryPrivate.stop(updatec0)
 	updatec := make(chan registryState)
-	go fwd(updatec, updatec0)
+	go fwdState(updatec, updatec0)
+
+	// Similarly for sync signals.
+	syncc := make(chan struct{})
+	go fwdSync(syncc, t.syncc)
 
 	for {
 		select {
 		case newAgentEndpoints := <-agentEndpoints:
-			stateMachines = migrateAgents(stateMachines, newAgentEndpoints, registryPrivate)
+			stateMachines = migrateAgents(stateMachines, newAgentEndpoints, t, registryPrivate)
 
-		case update := <-updatec:
-			var (
-				desired = mergeRegistryStates(update.pendingSchedule, update.scheduled)
-				actual  = groupByID(snapshot(stateMachines))
-			)
-			toSchedule, toUnschedule := diffRegistryStates(desired, actual)
-			incTaskScheduleRequests(len(toSchedule))
-			incTaskUnscheduleRequests(len(toUnschedule))
-			for containerID, taskSpec := range toSchedule {
-				// Can be made concurrent.
-				log.Printf("transformer: triggering schedule %v on %s", containerID, taskSpec.Endpoint)
-				registryPrivate.signal(containerID, scheduleOne(containerID, taskSpec, stateMachines, agentPollInterval))
-			}
-			for containerID, taskSpec := range toUnschedule {
-				// Can be made concurrent.
-				log.Printf("transformer: triggering unschedule %v on %s", containerID, taskSpec.Endpoint)
-				registryPrivate.signal(containerID, unscheduleOne(containerID, taskSpec, stateMachines, agentPollInterval))
-			}
+		case <-syncc:
+			sync(registryPrivate.snapshot())
+
+		case latest := <-updatec:
+			sync(latest)
 
 		case c := <-t.statesc:
 			c <- snapshot(stateMachines)
@@ -120,7 +141,25 @@ func (t *transformer) loop(
 }
 
 // fwd is a single-value-caching forwarder between two chans.
-func fwd(dst chan<- registryState, src <-chan registryState) {
+func fwdState(dst chan<- registryState, src <-chan registryState) {
+	for s := range src {
+		func() {
+			for {
+				var ok bool
+				select {
+				case s, ok = <-src: // overwrite
+					if !ok {
+						return
+					}
+				case dst <- s: // successful fwd
+					return
+				}
+			}
+		}()
+	}
+}
+
+func fwdSync(dst chan<- struct{}, src <-chan struct{}) {
 	for s := range src {
 		func() {
 			for {
@@ -345,33 +384,40 @@ func diffRegistryStates(
 func migrateAgents(
 	existingStateMachines map[string]*stateMachine,
 	newAgentEndpoints []string,
+	syncer syncer,
 	registryPrivate registryPrivate, // to receive signals for lost containers
 ) map[string]*stateMachine {
-	stateMachines, lostStateMachines := diffAgents(newAgentEndpoints, existingStateMachines)
+	stateMachines, lostStateMachines := diffAgents(newAgentEndpoints, existingStateMachines, syncer)
+
 	for endpoint, stateMachine := range lostStateMachines {
 		containerInstances, err := stateMachine.Containers()
 		if err != nil {
 			log.Printf("transformer: when processing lost remote agent %s: %s", endpoint, err)
 			continue
 		}
+
 		for _, containerInstance := range containerInstances {
 			registryPrivate.signal(containerInstance.ID, signalContainerLost)
 		}
+
 		stateMachine.stop()
 	}
+
 	return stateMachines
 }
 
-func diffAgents(incoming []string, previous map[string]*stateMachine) (surviving, lost map[string]*stateMachine) {
+func diffAgents(incoming []string, previous map[string]*stateMachine, syncer syncer) (surviving, lost map[string]*stateMachine) {
 	next := map[string]*stateMachine{}
+
 	for _, endpoint := range incoming {
 		if stateMachine, ok := previous[endpoint]; ok {
 			next[endpoint] = stateMachine
 			delete(previous, endpoint)
 		} else {
-			next[endpoint] = newStateMachine(endpoint)
+			next[endpoint] = newStateMachine(endpoint, syncer)
 		}
 	}
+
 	return next, previous
 }
 

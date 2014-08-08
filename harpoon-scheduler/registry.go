@@ -32,6 +32,7 @@ type registryPublic interface {
 }
 
 type registryPrivate interface {
+	snapshot() registryState
 	signal(string, schedulingSignal)
 	notify(chan<- registryState)
 	stop(chan<- registryState)
@@ -102,7 +103,7 @@ func (r *registry) schedule(containerID string, taskSpec taskSpec, c chan schedu
 		r.signals[containerID] = c
 	}
 
-	if err := r.stateChange(); err != nil {
+	if err := r.stateChangeWithLock(); err != nil {
 		return err
 	}
 
@@ -136,11 +137,25 @@ func (r *registry) unschedule(containerID string, taskSpec taskSpec, c chan sche
 		r.signals[containerID] = c
 	}
 
-	if err := r.stateChange(); err != nil {
+	if err := r.stateChangeWithLock(); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func (r *registry) snapshot() registryState {
+	r.RLock()
+	defer r.RUnlock()
+	return r.snapshotWithLock()
+}
+
+func (r *registry) snapshotWithLock() registryState {
+	return registryState{
+		pendingSchedule:   cp(r.pendingSchedule),
+		scheduled:         cp(r.scheduled),
+		pendingUnschedule: cp(r.pendingUnschedule),
+	}
 }
 
 // signal implements the registryPrivate interface. It's called by components
@@ -154,13 +169,26 @@ func (r *registry) signal(containerID string, schedulingSignal schedulingSignal)
 	switch schedulingSignal {
 	case signalScheduleSuccessful:
 		incSignalScheduleSuccessful(1)
-		spec, exists := r.pendingSchedule[containerID]
-		if !exists {
+
+		specPending, existsPending := r.pendingSchedule[containerID]
+		specScheduled, existsScheduled := r.scheduled[containerID]
+
+		var (
+			from string
+			spec taskSpec
+		)
+		switch {
+		case existsPending && !existsScheduled:
+			from, spec = "pending-schedule", specPending
+		case !existsPending && existsScheduled:
+			from, spec = "scheduled (but not running)", specScheduled
+		default:
 			panic("invalid state in scheduler registry")
 		}
+
 		r.scheduled[containerID] = spec
 		delete(r.pendingSchedule, containerID)
-		context = fmt.Sprintf("%s pending-schedule → scheduled: OK, on %s", containerID, spec.Endpoint)
+		context = fmt.Sprintf("%s %s → scheduled: OK, on %s", containerID, from, spec.Endpoint)
 
 	case signalScheduleFailed:
 		incSignalScheduleFailed(1)
@@ -266,8 +294,8 @@ func (r *registry) signal(containerID string, schedulingSignal schedulingSignal)
 		delete(r.signals, containerID)
 	}
 
-	if err := r.stateChange(); err != nil {
-		log.Printf("registry: during signal: %s", err) // best we can do?
+	if err := r.stateChangeWithLock(); err != nil {
+		log.Printf("registry: during state change signaling/persisting: %s", err) // best we can do?
 	}
 
 	log.Printf("registry: signal: %s", context)
@@ -276,12 +304,8 @@ func (r *registry) signal(containerID string, schedulingSignal schedulingSignal)
 // stateChange should be called whenever the registry state is mutated. It
 // handles everything that needs to happen. It should be called with a read
 // lock on the registry already held.
-func (r *registry) stateChange() error {
-	registryState := registryState{
-		pendingSchedule:   cp(r.pendingSchedule),
-		scheduled:         cp(r.scheduled),
-		pendingUnschedule: cp(r.pendingUnschedule),
-	}
+func (r *registry) stateChangeWithLock() error {
+	registryState := r.snapshotWithLock()
 
 	if err := save(r.filename, registryState.scheduled); err != nil {
 		return err
@@ -301,25 +325,25 @@ func (r *registry) dumpState() map[string]interface{} {
 	defer r.RUnlock()
 
 	var (
-		pendingSchedule   = map[string]string{}
-		pendingUnschedule = map[string]string{}
-		scheduled         = map[string]string{}
+		toSched   = map[string][]string{} // endpoint: container IDs
+		toUnsched = map[string][]string{}
+		sched     = map[string][]string{}
 	)
 
-	for endpoint, taskSpec := range r.pendingSchedule {
-		pendingSchedule[endpoint] = taskSpec.JobName + " " + taskSpec.TaskName
+	for containerID, taskSpec := range r.pendingSchedule {
+		toSched[taskSpec.Endpoint] = append(toSched[taskSpec.Endpoint], containerID)
 	}
-	for endpoint, taskSpec := range r.pendingUnschedule {
-		pendingUnschedule[endpoint] = taskSpec.JobName + " " + taskSpec.TaskName
+	for containerID, taskSpec := range r.pendingUnschedule {
+		toUnsched[taskSpec.Endpoint] = append(toUnsched[taskSpec.Endpoint], containerID)
 	}
-	for endpoint, taskSpec := range r.scheduled {
-		scheduled[endpoint] = taskSpec.JobName + " " + taskSpec.TaskName
+	for containerID, taskSpec := range r.scheduled {
+		sched[taskSpec.Endpoint] = append(sched[taskSpec.Endpoint], containerID)
 	}
 
 	return map[string]interface{}{
-		"pending_schedule":   pendingSchedule,
-		"pending_unschedule": pendingUnschedule,
-		"scheduled":          scheduled,
+		"pending_schedule":   toSched,
+		"pending_unschedule": toUnsched,
+		"scheduled":          sched,
 	}
 }
 
@@ -416,8 +440,13 @@ type schedulingSignalWithContext struct {
 	context string
 }
 
+// taskSpecs are data types internal to the registry, always indexed by
+// container ID. Members are public, because we serialize these structs during
+// persistence.
 type taskSpec struct {
-	Endpoint string `json:"endpoint"` // public because we serialize these during persistence
+	Endpoint string `json:"endpoint"`
+	JobName  string `json:"job_name"`
+	TaskName string `json:"task_name"`
 	agent.ContainerConfig
 }
 

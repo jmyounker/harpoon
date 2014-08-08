@@ -28,8 +28,6 @@ type Agent interface {
 // ContainerConfig describes the information necessary to start a container on
 // an agent.
 type ContainerConfig struct {
-	JobName     string            `json:"job_name"`
-	TaskName    string            `json:"task_name"`
 	ArtifactURL string            `json:"artifact_url"`
 	Ports       map[string]uint16 `json:"ports"`
 	Env         map[string]string `json:"env"`
@@ -43,12 +41,6 @@ type ContainerConfig struct {
 // detected as early as possible.
 func (c ContainerConfig) Valid() error {
 	var errs []string
-	if c.JobName == "" {
-		errs = append(errs, "job name empty")
-	}
-	if c.TaskName == "" {
-		errs = append(errs, "task name empty")
-	}
 	if _, err := url.Parse(c.ArtifactURL); err != nil {
 		errs = append(errs, fmt.Sprintf("artifact URL %q invalid: %s", c.ArtifactURL, err))
 	}

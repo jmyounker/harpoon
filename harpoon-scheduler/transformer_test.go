@@ -7,8 +7,6 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
-
-	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
 func TestTransformerAgentEndpointUpdates(t *testing.T) {
@@ -71,10 +69,8 @@ func TestTransformerScheduleUnschedule(t *testing.T) {
 		containerID  = "test-container-id"
 		testTaskSpec = taskSpec{
 			Endpoint: s.URL,
-			ContainerConfig: agent.ContainerConfig{
-				JobName:  "test-job-name",
-				TaskName: "test-task-name",
-			},
+			JobName:  "test-job-name",
+			TaskName: "test-task-name",
 		}
 		do = func(f func(string, taskSpec, chan schedulingSignalWithContext) error, acceptable schedulingSignal) error {
 			// When we're done, we need to give the agent state machine some
@@ -136,13 +132,13 @@ func TestTransformerScheduleUnschedule(t *testing.T) {
 	log.Printf("☞ finished")
 }
 
-func TestFwd(t *testing.T) {
+func TestFwdState(t *testing.T) {
 	var (
 		in   = make(chan registryState)
 		out  = make(chan registryState)
 		done = make(chan struct{})
 	)
-	go func() { fwd(out, in); close(done) }()
+	go func() { fwdState(out, in); close(done) }()
 
 	go func() {
 		in <- registryState{}

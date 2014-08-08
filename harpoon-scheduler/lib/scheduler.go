@@ -22,8 +22,8 @@ type Scheduler interface {
 // stored/latent configuration that can produce jobs, see configstore's
 // JobConfig.
 type Job struct {
-	JobName string          `json:"job_name"` // job name, i.e. bazooka app
-	Tasks   map[string]Task `json:"tasks"`    // task name, i.e. bazooka proc: task
+	JobName string `json:"job_name"` // job name, i.e. bazooka app
+	Tasks   []Task `json:"tasks"`
 }
 
 // Valid performs a validation check, to ensure invalid structures may be
@@ -37,8 +37,8 @@ func (j Job) Valid() error {
 		index    = 1
 		numTasks = len(j.Tasks)
 	)
-	for taskName, task := range j.Tasks {
-		if taskName == "" {
+	for _, task := range j.Tasks {
+		if task.TaskName == "" {
 			errs = append(errs, fmt.Sprintf("task %d/%d has empty name", index, numTasks))
 		}
 		if err := task.Valid(); err != nil {
@@ -56,7 +56,7 @@ func (j Job) Valid() error {
 // Task includes the desired scale; 1 task definition maps to N identical task
 // instances (N unique container IDs). Tasks exist in the scheduler domain.
 type Task struct {
-	TaskName     string                    `json:"task_name"`
+	TaskName     string                    `json:"task_name"` // i.e. bazooka proc
 	Scale        int                       `json:"scale"`
 	HealthChecks []configstore.HealthCheck `json:"health_checks"`
 	agent.ContainerConfig
