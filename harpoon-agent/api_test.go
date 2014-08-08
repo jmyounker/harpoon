@@ -23,7 +23,7 @@ func TestContainerList(t *testing.T) {
 
 	defer server.Close()
 
-	req, _ := http.NewRequest("GET", server.URL+"/containers", nil)
+	req, _ := http.NewRequest("GET", server.URL+"/api/v0/containers", nil)
 	es := eventsource.New(req, -1)
 	defer es.Close()
 
@@ -82,7 +82,7 @@ func TestLogAPICanTailLogs(t *testing.T) {
 	sendLog("container[123] m1")
 	waitForLogLine(t, logLinec, time.Second)
 
-	req, err := http.NewRequest("GET", server.URL+"/containers/123/log", nil)
+	req, err := http.NewRequest("GET", server.URL+"/api/v0/containers/123/log", nil)
 	if err != nil {
 		t.Fatalf("unable to get log history: %s", err)
 	}
@@ -156,7 +156,7 @@ func TestLogAPICanRetrieveLastLines(t *testing.T) {
 	waitForLogLine(t, logLinec, time.Second)
 	waitForLogLine(t, logLinec, time.Second)
 
-	resp, err := http.Get(server.URL + "/containers/123/log?history=3")
+	resp, err := http.Get(server.URL + "/api/v0/containers/123/log?history=3")
 	if err != nil {
 		t.Fatalf("unable to get log history: %s", err)
 	}

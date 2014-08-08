@@ -32,16 +32,16 @@ func newAPI(r *registry) *api {
 		}
 	)
 
-	mux.Put("/containers/:id", http.HandlerFunc(api.handleCreate))
-	mux.Get("/containers/:id", http.HandlerFunc(api.handleGet))
-	mux.Del("/containers/:id", http.HandlerFunc(api.handleDestroy))
-	mux.Post("/containers/:id/heartbeat", http.HandlerFunc(api.handleHeartbeat))
-	mux.Post("/containers/:id/start", http.HandlerFunc(api.handleStart))
-	mux.Post("/containers/:id/stop", http.HandlerFunc(api.handleStop))
-	mux.Get("/containers/:id/log", http.HandlerFunc(api.handleLog))
-	mux.Get("/containers", http.HandlerFunc(api.handleList))
+	mux.Put("/api/v0/containers/:id", http.HandlerFunc(api.handleCreate))
+	mux.Get("/api/v0/containers/:id", http.HandlerFunc(api.handleGet))
+	mux.Del("/api/v0/containers/:id", http.HandlerFunc(api.handleDestroy))
+	mux.Post("/api/v0/containers/:id/heartbeat", http.HandlerFunc(api.handleHeartbeat))
+	mux.Post("/api/v0/containers/:id/start", http.HandlerFunc(api.handleStart))
+	mux.Post("/api/v0/containers/:id/stop", http.HandlerFunc(api.handleStop))
+	mux.Get("/api/v0/containers/:id/log", http.HandlerFunc(api.handleLog))
+	mux.Get("/api/v0/containers", http.HandlerFunc(api.handleList))
 
-	mux.Get("/resources", http.HandlerFunc(api.handleResources))
+	mux.Get("/api/v0/resources", http.HandlerFunc(api.handleResources))
 
 	return api
 }

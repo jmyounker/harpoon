@@ -32,6 +32,8 @@ func TestScheduler(t *testing.T) {
 	defer transformer.stop()
 	defer scheduler.stop()
 
+	waitForClean(transformer, 50*time.Millisecond)
+
 	var (
 		dummyArtifactURL = "http://filestore.berlin/sven-says-no.img"
 		firstJobConfig   = configstore.JobConfig{
@@ -129,4 +131,22 @@ func verifyContainerInstances(agent agent.Agent, jobConfig configstore.JobConfig
 		return fmt.Errorf("found %d unexpected containers from task %s", instanceCount, taskName)
 	}
 	return nil
+}
+
+func waitForClean(s agentStater, timeout time.Duration) error {
+	var (
+		attempts = 10
+		interval = timeout / time.Duration(attempts)
+	)
+	for i := 0; i < attempts; i++ {
+		clean := true // let's be optimistic
+		for _, s := range s.agentStates() {
+			clean = clean && !s.dirty
+		}
+		if clean {
+			return nil
+		}
+		time.Sleep(interval)
+	}
+	return fmt.Errorf("timeout waiting for clean state")
 }

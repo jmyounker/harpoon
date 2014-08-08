@@ -20,7 +20,7 @@ func newFakeContainer(id string) *fakeContainer {
 	c := &fakeContainer{
 		ContainerInstance: agent.ContainerInstance{
 			ID:     id,
-			Status: agent.ContainerStatusStarting,
+			Status: agent.ContainerStatusRunning,
 		},
 		logs:           NewContainerLog(10000),
 		subscribers:    map[chan<- agent.ContainerInstance]struct{}{},

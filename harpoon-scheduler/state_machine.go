@@ -21,23 +21,29 @@ type stateMachine struct {
 	quit          chan chan struct{}
 }
 
-func newStateMachine(endpoint string) (*stateMachine, error) {
+func newStateMachine(endpoint string) *stateMachine {
 	proxy, err := newRemoteAgent(endpoint)
 	if err != nil {
-		return nil, fmt.Errorf("when building agent proxy: %s", err)
+		panic(fmt.Sprintf("when building agent proxy: %s", err))
 	}
-	statec, stopper, err := proxy.Events()
+
+	// From here forward, we should be resilient, retry, etc.
+
+	updatec, stopper, err := proxy.Events()
 	if err != nil {
-		return nil, fmt.Errorf("when getting agent event stream: %s", err)
+		panic(fmt.Sprintf("when getting agent event stream: %s", err)) // TODO(pb): don't panic!
 	}
+
 	s := &stateMachine{
 		Agent:         proxy,
 		stateRequests: make(chan chan map[string]agent.ContainerInstance),
 		dirtyRequests: make(chan chan bool),
 		quit:          make(chan chan struct{}),
 	}
-	go s.loop(proxy.URL.String(), statec, stopper)
-	return s, nil
+
+	go s.loop(proxy.URL.String(), updatec, stopper)
+
+	return s
 }
 
 func (s *stateMachine) dirty() bool {
@@ -64,59 +70,72 @@ func (s *stateMachine) stop() {
 
 func (s *stateMachine) loop(
 	endpoint string,
-	statec <-chan []agent.ContainerInstance,
+	updatec <-chan []agent.ContainerInstance,
 	stopper agent.Stopper,
 ) {
 	defer stopper.Stop()
 
-	m := map[string]agent.ContainerInstance{} // ID: instance
-	updateWith := func(containerInstance agent.ContainerInstance) {
-		switch containerInstance.Status {
-		case agent.ContainerStatusStarting, agent.ContainerStatusRunning:
-			log.Printf("state machine: %s: %q: %s, adding", endpoint, containerInstance.ID, containerInstance.Status)
-			m[containerInstance.ID] = containerInstance
-		case agent.ContainerStatusFinished, agent.ContainerStatusFailed, agent.ContainerStatusDeleted:
-			log.Printf("state machine: %s: %q: %s, removing", endpoint, containerInstance.ID, containerInstance.Status)
-			delete(m, containerInstance.ID)
-		default:
-			panic(fmt.Sprintf("container status %q unrepresented in remote agent state machine", containerInstance.Status))
-		}
-	}
-
-	// dirty is set true whenever the state machine has reason to suspect it
-	// may not have the correct view of the remote agent, and reset to
-	// false when that trust is regained. It's used by scheduling algorithms,
-	// to influence decisions.
-	dirty := false
+	var (
+		dirty     = true             // indicator of trust
+		instances = agentInstances{} // initially empty, pending first update
+	)
 
 	for {
 		select {
-		case containerInstances, ok := <-statec:
+		case update, ok := <-updatec:
 			if !ok {
 				log.Printf("state machine: %s: container events chan closed", endpoint)
 				log.Printf("state machine: %s: TODO: re-establish connection", endpoint)
-				// Note to self: use streadway's channel-of-channels idiom to
-				// accomplish connection maintenance.
-				statec = nil // TODO re-establish connection, instead of this
-				dirty = true // TODO and some way to reset that
+				// TODO(pb): channel-of-channels idiom for connection mgmt
+				updatec = nil // TODO re-establish connection, instead of this
+				dirty = true  // TODO and some way to reset that
 				continue
 			}
+
 			incContainerEventsReceived(1)
-			//log.Printf("state machine: %s: state update: %d container instance(s)", endpoint, len(containerInstances))
-			for _, containerInstance := range containerInstances {
-				updateWith(containerInstance)
+
+			log.Printf("state machine: %s: state update: %d container instance(s)", endpoint, len(instances))
+			for _, ci := range update {
+				instances.update(ci)
 			}
+
 			dirty = false
 
 		case c := <-s.dirtyRequests:
 			c <- dirty
 
 		case c := <-s.stateRequests:
-			c <- m
+			c <- instances // client should consider dirty flag
 
 		case q := <-s.quit:
 			close(q)
 			return
 		}
 	}
+}
+
+type agentInstances map[string]agent.ContainerInstance
+
+func newAgentInstances(initial []agent.ContainerInstance) agentInstances {
+	agentInstances := agentInstances{}
+	for _, ci := range initial {
+		agentInstances[ci.ID] = ci
+	}
+	return agentInstances
+}
+
+func (ai agentInstances) update(ci agent.ContainerInstance) {
+	switch ci.Status {
+	case agent.ContainerStatusCreated, agent.ContainerStatusRunning:
+		ai[ci.ID] = ci
+	case agent.ContainerStatusFinished, agent.ContainerStatusFailed, agent.ContainerStatusDeleted:
+		delete(ai, ci.ID)
+	default:
+		panic(fmt.Sprintf("container status %q unhandled", ci.Status))
+	}
+}
+
+type stateRequest struct {
+	resp chan map[string]agent.ContainerInstance
+	err  chan error
 }
