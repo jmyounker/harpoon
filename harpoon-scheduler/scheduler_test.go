@@ -141,7 +141,7 @@ func waitForClean(s agentStater, timeout time.Duration) error {
 	for i := 0; i < attempts; i++ {
 		clean := true // let's be optimistic
 		for _, s := range s.agentStates() {
-			clean = clean && !s.dirty
+			clean = clean && !s.Dirty
 		}
 		if clean {
 			return nil

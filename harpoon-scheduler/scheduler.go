@@ -157,7 +157,7 @@ func placeJob(job scheduler.Job, algo schedulingAlgorithm, agentStates map[strin
 func findJob(job scheduler.Job, agentStates map[string]agentState) map[string]taskSpec {
 	m := map[string]taskSpec{}
 	for endpoint, agentState := range agentStates {
-		for _, containerInstance := range agentState.containerInstances {
+		for _, containerInstance := range agentState.ContainerInstances {
 			// To be a container from this job, the container instance
 			// must match job name and one of our task names.
 			if containerInstance.Config.JobName != job.JobName {

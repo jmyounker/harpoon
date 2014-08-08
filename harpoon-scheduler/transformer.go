@@ -93,7 +93,7 @@ func (t *transformer) loop(
 		case update := <-updatec:
 			var (
 				desired = mergeRegistryStates(update.pendingSchedule, update.scheduled)
-				actual  = snapshot(stateMachines)
+				actual  = groupByID(snapshot(stateMachines))
 			)
 			toSchedule, toUnschedule := diffRegistryStates(desired, actual)
 			incTaskScheduleRequests(len(toSchedule))
@@ -110,7 +110,7 @@ func (t *transformer) loop(
 			}
 
 		case c := <-t.statesc:
-			c <- copyAgentStates(stateMachines)
+			c <- snapshot(stateMachines)
 
 		case q := <-t.quitc:
 			close(q)
@@ -146,17 +146,6 @@ func mergeRegistryStates(maps ...map[string]taskSpec) map[string]taskSpec {
 		}
 	}
 	return merged
-}
-
-// snapshot takes a snapshot of the complete remote state.
-func snapshot(stateMachines map[string]*stateMachine) map[string]endpointContainerInstance {
-	m := map[string]endpointContainerInstance{}
-	for endpoint, stateMachine := range stateMachines {
-		for _, containerInstance := range stateMachine.containerInstances() {
-			m[containerInstance.ID] = endpointContainerInstance{endpoint, containerInstance}
-		}
-	}
-	return m
 }
 
 func scheduleOne(
@@ -386,7 +375,8 @@ func diffAgents(incoming []string, previous map[string]*stateMachine) (surviving
 	return next, previous
 }
 
-func copyAgentStates(stateMachines map[string]*stateMachine) map[string]agentState {
+// snapshot takes a snapshot of the complete remote state.
+func snapshot(stateMachines map[string]*stateMachine) map[string]agentState {
 	m := map[string]agentState{}
 	for endpoint, stateMachine := range stateMachines {
 		hostResources, err := stateMachine.proxy().Resources()
@@ -398,18 +388,30 @@ func copyAgentStates(stateMachines map[string]*stateMachine) map[string]agentSta
 			stateMachineDirty  = stateMachine.dirty()
 		)
 		m[endpoint] = agentState{
-			dirty:              hostResourcesDirty || stateMachineDirty,
-			hostResources:      hostResources,
-			containerInstances: stateMachine.containerInstances(),
+			Dirty:              hostResourcesDirty || stateMachineDirty,
+			HostResources:      hostResources,
+			ContainerInstances: stateMachine.snapshot(),
 		}
 	}
 	return m
 }
 
+func groupByID(snapshot map[string]agentState) map[string]endpointContainerInstance {
+	m := map[string]endpointContainerInstance{}
+	for endpoint, agentState := range snapshot {
+		for id, instance := range agentState.ContainerInstances {
+			m[id] = endpointContainerInstance{endpoint, instance}
+		}
+	}
+	return m
+}
+
+// agentState has exported members because we serialize it for introspection
+// endpoints in the scheduler.
 type agentState struct {
-	dirty              bool // if true, don't trust the report
-	hostResources      agent.HostResources
-	containerInstances map[string]agent.ContainerInstance
+	Dirty              bool                               `json:"dirty"` // if true, don't trust the report
+	HostResources      agent.HostResources                `json:"host_resources"`
+	ContainerInstances map[string]agent.ContainerInstance `json:"container_instances"`
 }
 
 type endpointContainerInstance struct {

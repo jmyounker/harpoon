@@ -39,6 +39,9 @@ for two reasons:
 2. It decouples intent from action, which allows us to more easily reason
    about each individual part of the scheduling workflow.
 
+Note that the registry represents only what the scheduler is responsible for,
+and not necessarily the complete state of the candidate agents.
+
 ### Transformer
 
 The intermediary between our desired/logical state, as represented by the

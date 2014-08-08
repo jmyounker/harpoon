@@ -55,7 +55,7 @@ func main() {
 	router.POST(`/schedule`, noParams(report.JSON(logWriter{}, handleSchedule(scheduler))))
 	router.POST(`/migrate`, noParams(report.JSON(logWriter{}, handleMigrate(scheduler))))
 	router.POST(`/unschedule`, noParams(report.JSON(logWriter{}, handleUnschedule(scheduler))))
-	router.GET(`/`, noParams(report.JSON(logWriter{}, handleGet(registry))))
+	router.GET(`/`, noParams(report.JSON(logWriter{}, handleGet(registry, transformer))))
 	log.Printf("listening on %s", *listen)
 	go log.Print(http.ListenAndServe(*listen, router))
 
@@ -106,11 +106,14 @@ func handleUnschedule(scheduler scheduler.Scheduler) http.HandlerFunc {
 	}
 }
 
-func handleGet(registry *registry) http.HandlerFunc {
+func handleGet(registry *registry, transformer *transformer) http.HandlerFunc {
 	// TODO(pb): this could close over an interface, like registryStater or something
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		registry.dumpState(w)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"registry": registry.dumpState(),
+			"agents":   transformer.agentStates(),
+		})
 	}
 }
 

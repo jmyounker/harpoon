@@ -16,9 +16,9 @@ import (
 
 type stateMachine struct {
 	agent.Agent
-	stateRequests chan chan map[string]agent.ContainerInstance
-	dirtyRequests chan chan bool
-	quit          chan chan struct{}
+	snapshotc chan chan map[string]agent.ContainerInstance
+	dirtyc    chan chan bool
+	quit      chan chan struct{}
 }
 
 func newStateMachine(endpoint string) *stateMachine {
@@ -35,10 +35,10 @@ func newStateMachine(endpoint string) *stateMachine {
 	}
 
 	s := &stateMachine{
-		Agent:         proxy,
-		stateRequests: make(chan chan map[string]agent.ContainerInstance),
-		dirtyRequests: make(chan chan bool),
-		quit:          make(chan chan struct{}),
+		Agent:     proxy,
+		snapshotc: make(chan chan map[string]agent.ContainerInstance),
+		dirtyc:    make(chan chan bool),
+		quit:      make(chan chan struct{}),
 	}
 
 	go s.loop(proxy.URL.String(), updatec, stopper)
@@ -48,7 +48,7 @@ func newStateMachine(endpoint string) *stateMachine {
 
 func (s *stateMachine) dirty() bool {
 	c := make(chan bool)
-	s.dirtyRequests <- c
+	s.dirtyc <- c
 	return <-c
 }
 
@@ -56,9 +56,9 @@ func (s *stateMachine) proxy() agent.Agent {
 	return s.Agent
 }
 
-func (s *stateMachine) containerInstances() map[string]agent.ContainerInstance {
+func (s *stateMachine) snapshot() map[string]agent.ContainerInstance {
 	c := make(chan map[string]agent.ContainerInstance)
-	s.stateRequests <- c
+	s.snapshotc <- c
 	return <-c
 }
 
@@ -77,7 +77,7 @@ func (s *stateMachine) loop(
 
 	var (
 		dirty     = true             // indicator of trust
-		instances = agentInstances{} // initially empty, pending first update
+		instances = agentInstances{} // initially empty, pending first update (clients, check dirty flag)
 	)
 
 	for {
@@ -94,17 +94,18 @@ func (s *stateMachine) loop(
 
 			incContainerEventsReceived(1)
 
-			log.Printf("state machine: %s: state update: %d container instance(s)", endpoint, len(update))
+			log.Printf("state machine: %s: update (%d)", endpoint, len(update))
 			for _, ci := range update {
 				instances.update(ci)
 			}
 
 			dirty = false
 
-		case c := <-s.dirtyRequests:
+		case c := <-s.dirtyc:
 			c <- dirty
 
-		case c := <-s.stateRequests:
+		case c := <-s.snapshotc:
+			log.Printf("### %s snapshot request: %+v", endpoint, instances)
 			c <- instances // client should consider dirty flag
 
 		case q := <-s.quit:

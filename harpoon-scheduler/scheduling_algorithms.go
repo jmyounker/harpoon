@@ -15,7 +15,7 @@ func randomNonDirty(agentStates map[string]agentState, tgt agent.ContainerConfig
 		endpoints = append(endpoints, key)
 	}
 	for _, index := range rand.Perm(len(endpoints)) {
-		if agentStates[endpoints[index]].dirty {
+		if agentStates[endpoints[index]].Dirty {
 			continue
 		}
 		return endpoints[index], nil
