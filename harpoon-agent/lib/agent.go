@@ -204,9 +204,10 @@ type ContainerInstance struct {
 type ContainerStatus string
 
 const (
-	// ContainerStatusStarting indicates a container has been accepted and is
-	// in the process of starting up.
-	ContainerStatusStarting ContainerStatus = "starting"
+	// ContainerStatusCreated indicates the container has been successfully
+	// PUT on the agent, but hasn't yet been started. Once a container leaves
+	// the created state, it will never come back.
+	ContainerStatusCreated ContainerStatus = "created"
 
 	// ContainerStatusRunning indicates the container is succesfully running
 	// from the perspective of the agent. It implies nothing about the

@@ -20,7 +20,7 @@ func TestContainerList(t *testing.T) {
 
 	defer server.Close()
 
-	req, _ := http.NewRequest("GET", server.URL+"/containers", nil)
+	req, _ := http.NewRequest("GET", server.URL+"/api/v0/containers", nil)
 	es := eventsource.New(req, -1)
 	defer es.Close()
 

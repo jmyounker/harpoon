@@ -20,13 +20,13 @@ import (
 
 const (
 	apiVersionPrefix       = "/api/v0"
-	apiGetContainersPath   = "/containers/"
+	apiGetContainersPath   = "/containers"
 	apiPutContainerPath    = "/containers/:id"
 	apiGetContainerPath    = "/containers/:id"
 	apiDeleteContainerPath = "/containers/:id"
 	apiPostContainerPath   = "/containers/:id/:action"
 	apiGetContainerLogPath = "/containers/:id/log"
-	apiGetResourcesPath    = "/resources/"
+	apiGetResourcesPath    = "/resources"
 )
 
 // remoteAgent proxies for a remote endpoint that provides a v0 agent over
@@ -101,11 +101,13 @@ func (c remoteAgent) Events() (<-chan []agent.ContainerInstance, agent.Stopper, 
 				log.Printf("%s: %s", c.URL.String(), err)
 				return
 			}
+
 			var containerInstances []agent.ContainerInstance
 			if err := json.Unmarshal(event.Data, &containerInstances); err != nil {
 				log.Printf("%s: %s", c.URL.String(), err)
 				continue
 			}
+
 			statec <- containerInstances
 		}
 	}()

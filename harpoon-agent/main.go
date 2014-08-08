@@ -70,6 +70,7 @@ func main() {
 		api.Enable()
 	}()
 
+	log.Printf("listening on %s", *addr)
 	log.Fatal(http.ListenAndServe(*addr, nil))
 }
 

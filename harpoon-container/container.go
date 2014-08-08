@@ -31,8 +31,10 @@ func commandBuilder(cmd **exec.Cmd) namespaces.CreateCommand {
 		command := exec.Command(init, args...)
 		command.ExtraFiles = []*os.File{childPipe}
 
-		command.SysProcAttr.Cloneflags = uintptr(namespaces.GetNamespaceFlags(container.Namespaces))
-		command.SysProcAttr.Pdeathsig = syscall.SIGKILL
+		command.SysProcAttr = &syscall.SysProcAttr{
+			Cloneflags: uintptr(namespaces.GetNamespaceFlags(container.Namespaces)),
+			Pdeathsig:  syscall.SIGKILL,
+		}
 
 		*cmd = command
 		return command
