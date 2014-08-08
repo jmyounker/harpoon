@@ -170,11 +170,13 @@ func scheduleOne(
 		log.Printf("transformer: %s: agent unavailable", taskSpec.Endpoint)
 		return signalAgentUnavailable
 	}
+
 	if err := stateMachine.proxy().Put(containerID, taskSpec.ContainerConfig); err != nil {
 		log.Printf("transformer: %s: PUT container %s failed: %s", taskSpec.Endpoint, containerID, err)
 		return signalContainerPutFailed
 	}
-	// If we don't block and wait for it to transition from starting to
+
+	// If we don't block and wait for it to transition from created to
 	// running, a client may sneak in a second schedule request to the
 	// registry before this one is complete, which will cause us to duplicate
 	// our scheduling effort, which will eventually propagate a duplicate
@@ -187,9 +189,11 @@ func scheduleOne(
 	// we want to support multiple transformers against the same registry, we
 	// can't rely on that kind of state.
 	if err := func() error {
-		checkTick := time.Tick(agentPollInterval)
-		checkTimeout := time.After(time.Duration(taskSpec.ContainerConfig.Grace.Startup)*time.Second + 500*time.Millisecond)
-		var status agent.ContainerStatus
+		var (
+			checkTick    = time.Tick(agentPollInterval)
+			checkTimeout = time.After(time.Duration(taskSpec.ContainerConfig.Grace.Startup)*time.Second + 500*time.Millisecond)
+			status       agent.ContainerStatus
+		)
 		for {
 			select {
 			case <-checkTick:
@@ -197,14 +201,16 @@ func scheduleOne(
 				if err != nil {
 					return fmt.Errorf("when making container GET: %s", err)
 				}
+
 				switch status = containerInstance.Status; status {
-				case agent.ContainerStatusStarting:
+				case agent.ContainerStatusCreated:
 					continue
 				case agent.ContainerStatusRunning:
 					return nil
 				default:
 					return fmt.Errorf("container status %s", status)
 				}
+
 			case <-checkTimeout:
 				return fmt.Errorf("container status %s after %ds: timeout", status, taskSpec.ContainerConfig.Grace.Startup)
 			}
@@ -213,6 +219,7 @@ func scheduleOne(
 		log.Printf("transformer: %s: start container %s failed: %s", taskSpec.Endpoint, containerID, err)
 		return signalContainerStartFailed
 	}
+
 	return signalScheduleSuccessful
 }
 
@@ -250,12 +257,14 @@ func unscheduleOne(
 				if err != nil {
 					return fmt.Errorf("when making container GET: %s", err)
 				}
+
 				switch status = containerInstance.Status; status {
 				case agent.ContainerStatusFailed, agent.ContainerStatusFinished:
 					return nil
 				default:
 					continue
 				}
+
 			case <-checkTimeout:
 				return fmt.Errorf("container status %s after %ds: timeout", status, taskSpec.ContainerConfig.Grace.Shutdown)
 			}
@@ -270,6 +279,7 @@ func unscheduleOne(
 		log.Printf("transformer: %s: DELETE container %s failed: %s", taskSpec.Endpoint, containerID, err)
 		return signalContainerDeleteFailed
 	}
+
 	return signalUnscheduleSuccessful
 }
 
@@ -293,16 +303,20 @@ func diffRegistryStates(
 			toSchedule[containerID] = desired
 			continue
 		}
+
 		switch actual.Status {
-		case agent.ContainerStatusStarting, agent.ContainerStatusRunning:
+		case agent.ContainerStatusCreated, agent.ContainerStatusRunning:
 			// nothing to do
 			//log.Printf("transformer: %v is %s on %s; nothing to do", containerID, actual.Status, actual.Endpoint)
+
 		case agent.ContainerStatusFailed:
 			//log.Printf("transformer: %v is %s on %s; will re-schedule", containerID, actual.Status, actual.Endpoint)
 			toSchedule[containerID] = desired
+
 		case agent.ContainerStatusFinished:
 			// nothing to do
 			//log.Printf("transformer: %v is %s on %s; nothing to do", containerID, actual.Status, actual.Endpoint)
+
 		default:
 			panic(fmt.Sprintf("container status %q has no handler in transformer diffRegistryStates", actual.Status))
 		}
@@ -314,12 +328,14 @@ func diffRegistryStates(
 			Endpoint:        actual.endpoint,
 			ContainerConfig: actual.ContainerInstance.Config,
 		}
+
 		desired, ok := desired[containerID]
 		if !ok {
 			//log.Printf("transformer: %v exists on %s but shouldn't; unscheduling", containerID, actual.Endpoint)
 			toUnschedule[containerID] = taskSpec
 			continue
 		}
+
 		if desired.Endpoint != actual.endpoint {
 			// move
 			//log.Printf("transformer: %v exists on %s but should be on %s; unscheduling former, scheduling latter", containerID, actual.Endpoint, desired.Endpoint)

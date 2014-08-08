@@ -47,7 +47,7 @@ func newContainer(id string, config agent.ContainerConfig) *container {
 	c := &container{
 		ContainerInstance: agent.ContainerInstance{
 			ID:     id,
-			Status: agent.ContainerStatusStarting,
+			Status: agent.ContainerStatusCreated,
 			Config: config,
 		},
 		logs:        NewContainerLog(10000),
@@ -365,7 +365,7 @@ func (c *container) start() error {
 	switch c.ContainerInstance.Status {
 	default:
 		return fmt.Errorf("can't start container with status %s", c.ContainerInstance.Status)
-	case agent.ContainerStatusFinished, agent.ContainerStatusFailed:
+	case agent.ContainerStatusCreated, agent.ContainerStatusFinished, agent.ContainerStatusFailed:
 	}
 
 	var (
@@ -408,7 +408,7 @@ func (c *container) start() error {
 	go cmd.Wait()
 
 	// reflect state
-	c.updateStatus(agent.ContainerStatusRunning)
+	c.updateStatus(agent.ContainerStatusRunning) // TODO(pb): intermediate Starting state?
 
 	// TODO(pb): utilize Startup grace period somehow?
 
@@ -419,7 +419,7 @@ func (c *container) stop() error {
 	switch c.ContainerInstance.Status {
 	default:
 		return fmt.Errorf("can't stop container with status %s", c.ContainerInstance.Status)
-	case agent.ContainerStatusStarting, agent.ContainerStatusRunning:
+	case agent.ContainerStatusRunning:
 	}
 
 	c.desired = "DOWN"

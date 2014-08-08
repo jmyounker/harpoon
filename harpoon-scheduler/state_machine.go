@@ -126,7 +126,7 @@ func newAgentInstances(initial []agent.ContainerInstance) agentInstances {
 
 func (ai agentInstances) update(ci agent.ContainerInstance) {
 	switch ci.Status {
-	case agent.ContainerStatusStarting, agent.ContainerStatusRunning:
+	case agent.ContainerStatusCreated, agent.ContainerStatusRunning:
 		ai[ci.ID] = ci
 	case agent.ContainerStatusFinished, agent.ContainerStatusFailed, agent.ContainerStatusDeleted:
 		delete(ai, ci.ID)
