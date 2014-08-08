@@ -101,11 +101,13 @@ func (c remoteAgent) Events() (<-chan []agent.ContainerInstance, agent.Stopper, 
 				log.Printf("%s: %s", c.URL.String(), err)
 				return
 			}
+
 			var containerInstances []agent.ContainerInstance
 			if err := json.Unmarshal(event.Data, &containerInstances); err != nil {
 				log.Printf("%s: %s", c.URL.String(), err)
 				continue
 			}
+
 			statec <- containerInstances
 		}
 	}()
