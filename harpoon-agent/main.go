@@ -69,7 +69,7 @@ func main() {
 			time.Sleep(3 * heartbeatInterval)
 		}
 
-		api.Enable()
+		api.enable()
 	}()
 
 	log.Printf("listening on %s", *addr)

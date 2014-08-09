@@ -45,7 +45,7 @@ func newAPI(r *registry) *api {
 	return api
 }
 
-func (a *api) Enable() {
+func (a *api) enable() {
 	a.Lock()
 	defer a.Unlock()
 
