@@ -79,12 +79,12 @@ func TestLogAPICanTailLogs(t *testing.T) {
 	// UDP has some weirdness with processing, so we use the container log's subscription
 	// mechanism to ensure that we don't run the test until all the messages have been
 	// processed.
-	logLinec := make(chan string, 10) // Plenty of room before anything gets dropped
-	c.Logs().Notify(logLinec)
+	linec := make(chan string, 10) // Plenty of room before anything gets dropped
+	c.Logs().notify(linec)
 
 	// Send a log line that wil be lost
 	sendLog("container[123] m1")
-	waitForLogLine(t, logLinec, time.Second)
+	waitForLogLine(t, linec, time.Second)
 
 	req, err := http.NewRequest("GET", server.URL+"/api/v0/containers/123/log", nil)
 	if err != nil {
@@ -151,16 +151,16 @@ func TestLogAPICanRetrieveLastLines(t *testing.T) {
 	// UDP has some weirdness with processing, so we use the container log's subscription
 	// mechanism to ensure that we don't run the test until all the messages have been
 	// processed.
-	logLinec := make(chan string, 10) // Plenty of room before anything gets dropped
-	c.Logs().Notify(logLinec)
+	linec := make(chan string, 10) // Plenty of room before anything gets dropped
+	c.Logs().notify(linec)
 
 	// Send two log messages out, wait for their reception, and then check for them in the
 	// log history.
 	sendLog("container[123] m1")
 	sendLog("container[123] m2")
 
-	waitForLogLine(t, logLinec, time.Second)
-	waitForLogLine(t, logLinec, time.Second)
+	waitForLogLine(t, linec, time.Second)
+	waitForLogLine(t, linec, time.Second)
 
 	resp, err := http.Get(server.URL + "/api/v0/containers/123/log?history=3")
 	if err != nil {
@@ -188,18 +188,18 @@ func TestMessagesGetWrittenToLogs(t *testing.T) {
 	// UDP has some weirdness with processing, so we use the container log's subscription
 	// mechanism to ensure that we don't run the test until all the messages have been
 	// processed.
-	logLinec := make(chan string, 10) // Plenty of room before anything gets dropped
-	c.Logs().Notify(logLinec)
+	linec := make(chan string, 10) // Plenty of room before anything gets dropped
+	c.Logs().notify(linec)
 
 	// Send two log messages out
 	sendLog("container[123] m1")
 	sendLog("container[123] m2")
 
 	// Wait for both messages to come in.
-	waitForLogLine(t, logLinec, time.Second)
-	waitForLogLine(t, logLinec, time.Second)
+	waitForLogLine(t, linec, time.Second)
+	waitForLogLine(t, linec, time.Second)
 
-	logLines := c.Logs().Last(3)
+	logLines := c.Logs().last(3)
 	ExpectArraysEqual(t, logLines, []string{"container[123] m1", "container[123] m2"})
 }
 
@@ -212,15 +212,15 @@ func TestLogRoutingOfDefectiveMessages(t *testing.T) {
 	c := newFakeContainer("123")
 	registry.register(c)
 
-	logLinec := make(chan string, 10) // Plenty of room before anything gets dropped
-	c.Logs().Notify(logLinec)
+	linec := make(chan string, 10) // Plenty of room before anything gets dropped
+	c.Logs().notify(linec)
 
 	sendLog("ilj;irtr") // Should not be received
 
 	// TODO(jmy): In the future make sure that "unroutable message" counter goes up.
 	// For now a timeout is a workable substitute for verifying that a log message was
 	// not routed.  It's better than nothing.
-	expectNoLogLines(t, logLinec, 100*time.Millisecond)
+	expectNoLogLines(t, linec, 100*time.Millisecond)
 }
 
 func waitForLogLine(t *testing.T, c chan string, timeout time.Duration) {

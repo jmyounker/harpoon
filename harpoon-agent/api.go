@@ -271,7 +271,7 @@ func (a *api) handleLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(container.Logs().Last(history))
+	json.NewEncoder(w).Encode(container.Logs().last(history))
 }
 
 func (a *api) streamLog(logs *containerLog, enc *eventsource.Encoder, stop <-chan bool) {
@@ -279,17 +279,18 @@ func (a *api) streamLog(logs *containerLog, enc *eventsource.Encoder, stop <-cha
 	// be buffered. The capacity is chosen so that a burst of log lines won't
 	// immediately result in a loss of data during large surge of incoming log
 	// lines.
-	logLinec := make(chan string, logBufferSize)
+	linec := make(chan string, logBufferSize)
 
-	logs.Notify(logLinec)
-	defer logs.Stop(logLinec)
+	logs.notify(linec)
+	defer logs.stop(linec)
 
 	for {
 		select {
 		case <-stop:
 			return
-		case logLine := <-logLinec:
-			b, err := json.Marshal([]string{logLine})
+
+		case line := <-linec:
+			b, err := json.Marshal([]string{line})
 			if err != nil {
 				log.Printf("log stream: fatal error: %s", err)
 				return

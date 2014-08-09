@@ -13,7 +13,7 @@ type fakeContainer struct {
 	hbRequestc     chan heartbeatRequest
 	subc           chan chan<- agent.ContainerInstance
 	unsubc         chan chan<- agent.ContainerInstance
-	quitc          chan struct{}
+	quitc          chan chan struct{}
 }
 
 func newFakeContainer(id string) *fakeContainer {
@@ -22,13 +22,13 @@ func newFakeContainer(id string) *fakeContainer {
 			ID:     id,
 			Status: agent.ContainerStatusRunning,
 		},
-		logs:           NewContainerLog(10000),
+		logs:           newContainerLog(containerLogRingBufferSize),
 		subscribers:    map[chan<- agent.ContainerInstance]struct{}{},
 		actionRequestc: make(chan actionRequest),
 		hbRequestc:     make(chan heartbeatRequest),
 		subc:           make(chan chan<- agent.ContainerInstance),
 		unsubc:         make(chan chan<- agent.ContainerInstance),
-		quitc:          make(chan struct{}),
+		quitc:          make(chan chan struct{}),
 	}
 
 	go c.loop()
@@ -119,8 +119,9 @@ func (c *fakeContainer) loop() {
 			c.subscribers[ch] = struct{}{}
 		case ch := <-c.unsubc:
 			delete(c.subscribers, ch)
-		case <-c.quitc:
-			c.logs.Exit()
+		case q := <-c.quitc:
+			c.logs.exit()
+			close(q)
 			return
 		}
 	}
@@ -138,7 +139,10 @@ func (c *fakeContainer) destroy() error {
 	}
 
 	c.subscribers = map[chan<- agent.ContainerInstance]struct{}{}
-	close(c.quitc)
+
+	q := make(chan struct{})
+	c.quitc <- q
+	<-q
 
 	return nil
 }

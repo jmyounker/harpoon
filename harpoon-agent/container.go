@@ -39,7 +39,10 @@ type Container interface {
 	Logs() *containerLog
 }
 
-const maxContainerIDLength = 256 // TODO(pb): enforce this limit at creation-time
+const (
+	maxContainerIDLength       = 256 // TODO(pb): enforce this limit at creation-time
+	containerLogRingBufferSize = 10000
+)
 
 type container struct {
 	agent.ContainerInstance
@@ -55,7 +58,7 @@ type container struct {
 	heartbeatc chan heartbeatRequest
 	subc       chan chan<- agent.ContainerInstance
 	unsubc     chan chan<- agent.ContainerInstance
-	quitc      chan struct{}
+	quitc      chan chan struct{}
 }
 
 func newContainer(id string, config agent.ContainerConfig) *container {
@@ -65,13 +68,13 @@ func newContainer(id string, config agent.ContainerConfig) *container {
 			Status: agent.ContainerStatusCreated,
 			Config: config,
 		},
-		logs:        NewContainerLog(10000),
+		logs:        newContainerLog(containerLogRingBufferSize),
 		subscribers: map[chan<- agent.ContainerInstance]struct{}{},
 		actionc:     make(chan actionRequest),
 		heartbeatc:  make(chan heartbeatRequest),
 		subc:        make(chan chan<- agent.ContainerInstance),
 		unsubc:      make(chan chan<- agent.ContainerInstance),
-		quitc:       make(chan struct{}),
+		quitc:       make(chan chan struct{}),
 	}
 
 	c.buildContainerConfig()
@@ -169,8 +172,9 @@ func (c *container) loop() {
 		case ch := <-c.unsubc:
 			delete(c.subscribers, ch)
 
-		case <-c.quitc:
-			c.logs.Exit()
+		case q := <-c.quitc:
+			c.logs.exit()
+			close(q)
 			return
 		}
 	}
@@ -308,7 +312,10 @@ func (c *container) destroy() error {
 	}
 
 	c.subscribers = map[chan<- agent.ContainerInstance]struct{}{}
-	close(c.quitc)
+
+	q := make(chan struct{})
+	c.quitc <- q
+	<-q
 
 	return nil
 }
