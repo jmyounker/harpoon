@@ -74,7 +74,7 @@ func TestLogAPICanTailLogs(t *testing.T) {
 	go receiveLogs(registry)
 
 	c := newFakeContainer("123")
-	registry.Register(c)
+	registry.register(c)
 
 	// UDP has some weirdness with processing, so we use the container log's subscription
 	// mechanism to ensure that we don't run the test until all the messages have been
@@ -146,7 +146,7 @@ func TestLogAPICanRetrieveLastLines(t *testing.T) {
 	go receiveLogs(registry)
 
 	c := newFakeContainer("123")
-	registry.Register(c)
+	registry.register(c)
 
 	// UDP has some weirdness with processing, so we use the container log's subscription
 	// mechanism to ensure that we don't run the test until all the messages have been
@@ -183,7 +183,7 @@ func TestMessagesGetWrittenToLogs(t *testing.T) {
 	go receiveLogs(registry)
 
 	c := newFakeContainer("123")
-	registry.Register(c)
+	registry.register(c)
 
 	// UDP has some weirdness with processing, so we use the container log's subscription
 	// mechanism to ensure that we don't run the test until all the messages have been
@@ -210,7 +210,7 @@ func TestLogRoutingOfDefectiveMessages(t *testing.T) {
 	go receiveLogs(registry)
 
 	c := newFakeContainer("123")
-	registry.Register(c)
+	registry.register(c)
 
 	logLinec := make(chan string, 10) // Plenty of room before anything gets dropped
 	c.Logs().Notify(logLinec)

@@ -28,14 +28,14 @@ func newRegistry() *registry {
 	return r
 }
 
-func (r *registry) Remove(id string) {
+func (r *registry) remove(id string) {
 	r.Lock()
 	defer r.Unlock()
 
 	delete(r.m, id)
 }
 
-func (r *registry) Get(id string) (Container, bool) {
+func (r *registry) get(id string) (Container, bool) {
 	r.RLock()
 	defer r.RUnlock()
 
@@ -43,7 +43,7 @@ func (r *registry) Get(id string) (Container, bool) {
 	return c, ok
 }
 
-func (r *registry) Register(c Container) bool {
+func (r *registry) register(c Container) bool {
 	r.Lock()
 	defer r.Unlock()
 
@@ -69,14 +69,14 @@ func (r *registry) Register(c Container) bool {
 	return true
 }
 
-func (r *registry) Len() int {
+func (r *registry) len() int {
 	r.RLock()
 	defer r.RUnlock()
 
 	return len(r.m)
 }
 
-func (r *registry) Instances() []agent.ContainerInstance {
+func (r *registry) instances() []agent.ContainerInstance {
 	r.Lock()
 	defer r.Unlock()
 
@@ -89,21 +89,21 @@ func (r *registry) Instances() []agent.ContainerInstance {
 	return list
 }
 
-func (r *registry) AcceptStateUpdates() {
+func (r *registry) acceptStateUpdates() {
 	r.Lock()
 	defer r.Unlock()
 
 	r.acceptUpdates = true // TODO(pb): this isn't used anywhere
 }
 
-func (r *registry) Notify(c chan<- agent.ContainerInstance) {
+func (r *registry) notify(c chan<- agent.ContainerInstance) {
 	r.Lock()
 	defer r.Unlock()
 
 	r.subscribers[c] = struct{}{}
 }
 
-func (r *registry) Stop(c chan<- agent.ContainerInstance) {
+func (r *registry) stop(c chan<- agent.ContainerInstance) {
 	r.Lock()
 	defer r.Unlock()
 

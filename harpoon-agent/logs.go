@@ -182,7 +182,7 @@ func receiveLogs(r *registry) {
 			continue
 		}
 
-		container, ok := r.Get(matches[1])
+		container, ok := r.get(matches[1])
 		if !ok {
 			log.Printf("LOG: Message to unknown container %s : %s", addr, logLine)
 			continue

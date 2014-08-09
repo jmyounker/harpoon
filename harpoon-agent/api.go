@@ -55,7 +55,7 @@ func (a *api) Enable() {
 func (a *api) handleGet(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get(":id")
 
-	container, ok := a.registry.Get(id)
+	container, ok := a.registry.get(id)
 	if !ok {
 		http.Error(w, "", http.StatusNotFound)
 		return
@@ -87,7 +87,7 @@ func (a *api) handleCreate(w http.ResponseWriter, r *http.Request) {
 
 	container := newContainer(id, config)
 
-	if ok := a.registry.Register(container); !ok {
+	if ok := a.registry.register(container); !ok {
 		http.Error(w, "already exists", http.StatusConflict)
 		return
 	}
@@ -110,7 +110,7 @@ func (a *api) handleCreate(w http.ResponseWriter, r *http.Request) {
 func (a *api) handleStop(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get(":id")
 
-	container, ok := a.registry.Get(id)
+	container, ok := a.registry.get(id)
 	if !ok {
 		http.Error(w, "", http.StatusNotFound)
 		return
@@ -128,7 +128,7 @@ func (a *api) handleStop(w http.ResponseWriter, r *http.Request) {
 func (a *api) handleStart(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get(":id")
 
-	container, ok := a.registry.Get(id)
+	container, ok := a.registry.get(id)
 	if !ok {
 		http.Error(w, "", http.StatusNotFound)
 		return
@@ -146,7 +146,7 @@ func (a *api) handleStart(w http.ResponseWriter, r *http.Request) {
 func (a *api) handleDestroy(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get(":id")
 
-	container, ok := a.registry.Get(id)
+	container, ok := a.registry.get(id)
 	if !ok {
 		http.Error(w, "", http.StatusNotFound)
 		return
@@ -158,7 +158,7 @@ func (a *api) handleDestroy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.registry.Remove(id)
+	a.registry.remove(id)
 
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -170,7 +170,7 @@ func (a *api) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	container, ok := a.registry.Get(r.URL.Query().Get(":id"))
+	container, ok := a.registry.get(r.URL.Query().Get(":id"))
 	if !ok {
 		// Received heartbeat from a container we don't know about. That's
 		// relatively bad news: issue a stern rebuke.
@@ -186,10 +186,10 @@ func (a *api) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 func (a *api) handleContainerStream(_ string, enc *eventsource.Encoder, stop <-chan bool) {
 	statec := make(chan agent.ContainerInstance)
 
-	a.registry.Notify(statec)
-	defer a.registry.Stop(statec)
+	a.registry.notify(statec)
+	defer a.registry.stop(statec)
 
-	b, err := json.Marshal(a.registry.Instances())
+	b, err := json.Marshal(a.registry.instances())
 	if err != nil {
 		log.Printf("container stream: fatal error: %s", err)
 		return
@@ -224,7 +224,7 @@ func (a *api) handleList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(a.registry.Instances())
+	json.NewEncoder(w).Encode(a.registry.instances())
 }
 
 func isStreamAccept(accept string) bool {
@@ -252,7 +252,7 @@ func (a *api) handleLog(w http.ResponseWriter, r *http.Request) {
 		rawHistory = "10"
 	}
 
-	container, ok := a.registry.Get(id)
+	container, ok := a.registry.get(id)
 	if !ok {
 		http.Error(w, "", http.StatusNotFound)
 		return
@@ -311,7 +311,7 @@ func (a *api) handleResources(w http.ResponseWriter, r *http.Request) {
 
 	var reservedMem, reservedCPU float64
 
-	for _, instance := range a.registry.Instances() {
+	for _, instance := range a.registry.instances() {
 		reservedMem += float64(instance.Config.Resources.Memory)
 		reservedCPU += float64(instance.Config.Resources.CPUs)
 	}

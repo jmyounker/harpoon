@@ -62,9 +62,9 @@ func main() {
 		recoverContainers(r)
 
 		// begin accepting runner updates
-		r.AcceptStateUpdates()
+		r.acceptStateUpdates()
 
-		if r.Len() > 0 {
+		if r.len() > 0 {
 			// wait for runners to check in
 			time.Sleep(3 * heartbeatInterval)
 		}
