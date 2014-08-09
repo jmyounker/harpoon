@@ -16,6 +16,9 @@ type fakeContainer struct {
 	quitc          chan chan struct{}
 }
 
+// Satisfaction guaranteed.
+var _ container = &fakeContainer{}
+
 func newFakeContainer(id string) *fakeContainer {
 	c := &fakeContainer{
 		ContainerInstance: agent.ContainerInstance{

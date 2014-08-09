@@ -24,10 +24,9 @@ import (
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
-// Container is a high level interface to an operating system container.  The api classes
-// interact directly with this class.  The interface was extracted so that containers could
-// be faked within tests.
-type Container interface {
+// container is a high level interface to an operating system container. The
+// API interacts directly with this interface.
+type container interface {
 	Create() error
 	Instance() agent.ContainerInstance
 	Destroy() error
@@ -44,7 +43,7 @@ const (
 	containerLogRingBufferSize = 10000
 )
 
-type container struct {
+type realContainer struct {
 	agent.ContainerInstance
 
 	config       *libcontainer.Config
@@ -61,20 +60,26 @@ type container struct {
 	quitc      chan chan struct{}
 }
 
-func newContainer(id string, config agent.ContainerConfig) *container {
-	c := &container{
+// Satisfaction guaranteed.
+var _ container = &realContainer{}
+
+func newContainer(id string, config agent.ContainerConfig) *realContainer {
+	c := &realContainer{
 		ContainerInstance: agent.ContainerInstance{
 			ID:     id,
 			Status: agent.ContainerStatusCreated,
 			Config: config,
 		},
-		logs:        newContainerLog(containerLogRingBufferSize),
+
+		logs: newContainerLog(containerLogRingBufferSize),
+
 		subscribers: map[chan<- agent.ContainerInstance]struct{}{},
-		actionc:     make(chan actionRequest),
-		heartbeatc:  make(chan heartbeatRequest),
-		subc:        make(chan chan<- agent.ContainerInstance),
-		unsubc:      make(chan chan<- agent.ContainerInstance),
-		quitc:       make(chan chan struct{}),
+
+		actionc:    make(chan actionRequest),
+		heartbeatc: make(chan heartbeatRequest),
+		subc:       make(chan chan<- agent.ContainerInstance),
+		unsubc:     make(chan chan<- agent.ContainerInstance),
+		quitc:      make(chan chan struct{}),
 	}
 
 	c.buildContainerConfig()
@@ -84,7 +89,7 @@ func newContainer(id string, config agent.ContainerConfig) *container {
 	return c
 }
 
-func (c *container) Create() error {
+func (c *realContainer) Create() error {
 	req := actionRequest{
 		action: containerCreate,
 		res:    make(chan error),
@@ -93,7 +98,7 @@ func (c *container) Create() error {
 	return <-req.res
 }
 
-func (c *container) Destroy() error {
+func (c *realContainer) Destroy() error {
 	req := actionRequest{
 		action: containerDestroy,
 		res:    make(chan error),
@@ -102,11 +107,11 @@ func (c *container) Destroy() error {
 	return <-req.res
 }
 
-func (c *container) Logs() *containerLog {
+func (c *realContainer) Logs() *containerLog {
 	return c.logs
 }
 
-func (c *container) Heartbeat(hb agent.Heartbeat) string {
+func (c *realContainer) Heartbeat(hb agent.Heartbeat) string {
 	req := heartbeatRequest{
 		heartbeat: hb,
 		res:       make(chan string),
@@ -115,11 +120,11 @@ func (c *container) Heartbeat(hb agent.Heartbeat) string {
 	return <-req.res
 }
 
-func (c *container) Instance() agent.ContainerInstance {
+func (c *realContainer) Instance() agent.ContainerInstance {
 	return c.ContainerInstance
 }
 
-func (c *container) Start() error {
+func (c *realContainer) Start() error {
 	req := actionRequest{
 		action: containerStart,
 		res:    make(chan error),
@@ -128,7 +133,7 @@ func (c *container) Start() error {
 	return <-req.res
 }
 
-func (c *container) Stop() error {
+func (c *realContainer) Stop() error {
 	req := actionRequest{
 		action: containerStop,
 		res:    make(chan error),
@@ -137,15 +142,15 @@ func (c *container) Stop() error {
 	return <-req.res
 }
 
-func (c *container) Subscribe(ch chan<- agent.ContainerInstance) {
+func (c *realContainer) Subscribe(ch chan<- agent.ContainerInstance) {
 	c.subc <- ch
 }
 
-func (c *container) Unsubscribe(ch chan<- agent.ContainerInstance) {
+func (c *realContainer) Unsubscribe(ch chan<- agent.ContainerInstance) {
 	c.unsubc <- ch
 }
 
-func (c *container) loop() {
+func (c *realContainer) loop() {
 	for {
 		select {
 		case req := <-c.actionc:
@@ -180,7 +185,7 @@ func (c *container) loop() {
 	}
 }
 
-func (c *container) buildContainerConfig() {
+func (c *realContainer) buildContainerConfig() {
 	var (
 		env    = []string{}
 		mounts = mount.Mounts{
@@ -239,7 +244,7 @@ func (c *container) buildContainerConfig() {
 	}
 }
 
-func (c *container) create() error {
+func (c *realContainer) create() error {
 	var (
 		rundir = filepath.Join("/run/harpoon", c.ID)
 		logdir = filepath.Join("/srv/harpoon/log/", c.ID)
@@ -289,7 +294,7 @@ func (c *container) create() error {
 	return c.writeContainerJSON(filepath.Join(rundir, "container.json"))
 }
 
-func (c *container) destroy() error {
+func (c *realContainer) destroy() error {
 	var (
 		rundir = filepath.Join("/run/harpoon", c.ID)
 	)
@@ -320,7 +325,7 @@ func (c *container) destroy() error {
 	return nil
 }
 
-func (c *container) fetchArtifact() (string, error) {
+func (c *realContainer) fetchArtifact() (string, error) {
 	var (
 		artifactURL  = c.Config.ArtifactURL
 		artifactPath = getArtifactPath(artifactURL)
@@ -360,7 +365,7 @@ func (c *container) fetchArtifact() (string, error) {
 //
 // This also potentially updates the ContainerInstance.Status, but it can only
 // possibly move to ContainerStatusFinished.
-func (c *container) heartbeat(hb agent.Heartbeat) string {
+func (c *realContainer) heartbeat(hb agent.Heartbeat) string {
 	switch want, have := c.desired, hb.Status; true {
 	case want == "UP" && have == "UP":
 		// Normal state, running
@@ -395,7 +400,7 @@ func (c *container) heartbeat(hb agent.Heartbeat) string {
 	return "UNKNOWN"
 }
 
-func (c *container) start() error {
+func (c *realContainer) start() error {
 	switch c.ContainerInstance.Status {
 	default:
 		return fmt.Errorf("can't start container with status %s", c.ContainerInstance.Status)
@@ -449,7 +454,7 @@ func (c *container) start() error {
 	return nil
 }
 
-func (c *container) stop() error {
+func (c *realContainer) stop() error {
 	switch c.ContainerInstance.Status {
 	default:
 		return fmt.Errorf("can't stop container with status %s", c.ContainerInstance.Status)
@@ -462,7 +467,7 @@ func (c *container) stop() error {
 	return nil
 }
 
-func (c *container) updateStatus(status agent.ContainerStatus) {
+func (c *realContainer) updateStatus(status agent.ContainerStatus) {
 	c.ContainerInstance.Status = status
 
 	for subc := range c.subscribers {
@@ -470,7 +475,7 @@ func (c *container) updateStatus(status agent.ContainerStatus) {
 	}
 }
 
-func (c *container) writeContainerJSON(dst string) error {
+func (c *realContainer) writeContainerJSON(dst string) error {
 	data, err := json.Marshal(c.config)
 	if err != nil {
 		return err

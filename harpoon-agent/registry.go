@@ -7,7 +7,7 @@ import (
 )
 
 type registry struct {
-	m           map[string]Container
+	m           map[string]container
 	statec      chan agent.ContainerInstance
 	subscribers map[chan<- agent.ContainerInstance]struct{}
 
@@ -18,7 +18,7 @@ type registry struct {
 
 func newRegistry() *registry {
 	r := &registry{
-		m:           map[string]Container{},
+		m:           map[string]container{},
 		statec:      make(chan agent.ContainerInstance),
 		subscribers: map[chan<- agent.ContainerInstance]struct{}{},
 	}
@@ -35,7 +35,7 @@ func (r *registry) remove(id string) {
 	delete(r.m, id)
 }
 
-func (r *registry) get(id string) (Container, bool) {
+func (r *registry) get(id string) (container, bool) {
 	r.RLock()
 	defer r.RUnlock()
 
@@ -43,7 +43,7 @@ func (r *registry) get(id string) (Container, bool) {
 	return c, ok
 }
 
-func (r *registry) register(c Container) bool {
+func (r *registry) register(c container) bool {
 	r.Lock()
 	defer r.Unlock()
 
@@ -54,7 +54,7 @@ func (r *registry) register(c Container) bool {
 	r.m[c.Instance().ID] = c
 
 	// Forward the container's state changes to all subscribers.
-	go func(c Container, outc chan agent.ContainerInstance) {
+	go func(c container, outc chan agent.ContainerInstance) {
 		inc := make(chan agent.ContainerInstance)
 		// The container sends us a copy of its associated ContainerInstance every
 		// time the container changes state.
