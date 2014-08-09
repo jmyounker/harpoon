@@ -169,25 +169,25 @@ func receiveLogs(r *registry) {
 	for {
 		n, addr, err := ln.ReadFromUDP(buf)
 		if err != nil {
-			log.Printf("LOG: Error while reading from port: %s", err)
+			log.Printf("logs: while reading from port: %s", err)
 			return
 		}
 
 		line := string(buf[:n])
 		matches := containsPtrn.FindStringSubmatch(line)
 		if len(matches) != 2 {
-			log.Printf("LOG: Message to unknown container %s : %s", addr, line)
+			log.Printf("logs: %s: message to unknown container: %s", addr, line)
 			continue
 		}
 
 		container, ok := r.get(matches[1])
 		if !ok {
-			log.Printf("LOG: Message to unknown container %s : %s", addr, line)
+			log.Printf("logs: %s: message to unknown container: %s", addr, line)
 			continue
 		}
 
 		container.Logs().addLogLine(line)
-		log.Printf("LOG: %s : %s", addr, line)
+		log.Printf("logs: %s: %s", addr, line)
 	}
 }
 
