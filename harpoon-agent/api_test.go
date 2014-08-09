@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"io/ioutil"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -59,6 +61,8 @@ func TestContainerList(t *testing.T) {
 }
 
 func TestLogAPICanTailLogs(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+
 	var (
 		registry = newRegistry()
 		api      = newAPI(registry)
@@ -129,6 +133,8 @@ func TestLogAPICanTailLogs(t *testing.T) {
 }
 
 func TestLogAPICanRetrieveLastLines(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+
 	var (
 		registry = newRegistry()
 		api      = newAPI(registry)
@@ -169,6 +175,8 @@ func TestLogAPICanRetrieveLastLines(t *testing.T) {
 }
 
 func TestMessagesGetWrittenToLogs(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+
 	registry := newRegistry()
 
 	setLogAddrRandomly(t)

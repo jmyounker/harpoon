@@ -16,8 +16,10 @@ import (
 	"sync"
 )
 
-var LogBufferSize int = 10000      // in log lines
-var AverageLogLineLength int = 120 // in characters
+const (
+	logBufferSize        = 10000 // lines
+	averageLogLineLength = 120   // chars
+)
 
 type containerLog struct {
 	entries       *RingBuffer
@@ -157,9 +159,10 @@ func receiveLogs(r *registry) {
 		log.Fatal(err)
 	}
 	defer ln.Close()
-	ln.SetReadBuffer(LogBufferSize * AverageLogLineLength)
 
-	var buf = make([]byte, maxLogLineLength+maxContainerIDLength) // max line length + container id
+	ln.SetReadBuffer(logBufferSize * averageLogLineLength)
+
+	var buf = make([]byte, maxLogLineLength+maxContainerIDLength)
 
 	// All log lines should start with the pattern container[FOO] where FOO
 	// is the container ID.

@@ -275,11 +275,11 @@ func (a *api) handleLog(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) streamLog(logs *containerLog, enc *eventsource.Encoder, stop <-chan bool) {
-	// logs.Notify does not write to blocked channels, so the channel has to be
-	// buffered.  The capacity is chosen so that a burst of log lines won't
+	// logs.Notify does not write to blocked channels, so the channel has to
+	// be buffered. The capacity is chosen so that a burst of log lines won't
 	// immediately result in a loss of data during large surge of incoming log
 	// lines.
-	logLinec := make(chan string, LogBufferSize/10)
+	logLinec := make(chan string, logBufferSize)
 
 	logs.Notify(logLinec)
 	defer logs.Stop(logLinec)

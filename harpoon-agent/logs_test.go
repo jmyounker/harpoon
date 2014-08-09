@@ -1,84 +1,110 @@
 package main
 
 import (
+	"io/ioutil"
+	"log"
 	"reflect"
 	"testing"
 	"time"
 )
 
-// Test containerLog
 func TestLastRetrievesLastLogLines(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+
 	cl := NewContainerLog(3)
 	cl.AddLogLine("m1")
+
 	ExpectArraysEqual(t, cl.Last(1), []string{"m1"})
 }
 
 func TestListenersReceiveMessages(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+
 	var (
-		cl = NewContainerLog(3)
-		// A blocking channel will not receive messages.
-		logSink = make(chan string, 1)
+		cl      = NewContainerLog(3)
+		logSink = make(chan string, 1) // can't block
 	)
+
 	cl.Notify(logSink)
 	cl.AddLogLine("m1")
+
 	ExpectMessage(t, logSink, "m1")
 }
 
 func TestBlockedChannelsAreSkipped(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+
 	var (
 		cl      = NewContainerLog(3)
 		logSink = make(chan string)
 	)
+
 	cl.Notify(logSink)
 	cl.AddLogLine("m1")
+
 	ExpectNoMessage(t, logSink)
 }
 
 func TestListenerShouldReceivesAllMessagesOnChannel(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+
 	var (
 		cl      = NewContainerLog(3)
 		logSink = make(chan string, 2)
 	)
+
 	cl.Notify(logSink)
 	cl.AddLogLine("m1")
 	cl.AddLogLine("m2")
+
 	ExpectMessage(t, logSink, "m1")
 	ExpectMessage(t, logSink, "m2")
 }
 
 func TestMessagesShouldBroadcastToAllListeners(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+
 	var (
 		cl       = NewContainerLog(3)
 		logSink1 = make(chan string, 2)
 		logSink2 = make(chan string, 2)
 	)
+
 	cl.Notify(logSink1)
 	cl.Notify(logSink2)
 	cl.AddLogLine("m1")
+
 	ExpectMessage(t, logSink1, "m1")
 	ExpectMessage(t, logSink2, "m1")
 }
 
 func TestRemovedListenersDoNotReceiveMessages(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+
 	var (
 		cl       = NewContainerLog(3)
 		logSink1 = make(chan string, 2)
 		logSink2 = make(chan string, 2)
 	)
+
 	cl.Notify(logSink1)
 	cl.Notify(logSink2)
 	cl.Stop(logSink2)
 	cl.AddLogLine("m1")
+
 	ExpectMessage(t, logSink1, "m1")
 	ExpectNoMessage(t, logSink2)
 }
 
 func TestKillingContainerUnblocksListeners(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+
 	var (
 		cl                 = NewContainerLog(3)
 		logSink            = make(chan string, 1)
 		receiverTerminated = make(chan struct{})
 	)
+
 	go func() {
 		select {
 		case <-logSink:
@@ -87,8 +113,10 @@ func TestKillingContainerUnblocksListeners(t *testing.T) {
 		}
 		close(receiverTerminated)
 	}()
+
 	cl.Notify(logSink)
 	cl.Exit()
+
 	select {
 	case <-receiverTerminated:
 	case <-time.After(10 * time.Millisecond):
@@ -114,7 +142,6 @@ func ExpectNoMessage(t *testing.T, logSink chan string) {
 	}
 }
 
-// Test RingBuffer
 func TestEmptyRingBufferHasNoLastElements(t *testing.T) {
 	rb := NewRingBuffer(3)
 	ExpectArraysEqual(t, rb.Last(2), []string{})
