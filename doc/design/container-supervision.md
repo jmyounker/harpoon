@@ -44,7 +44,14 @@ There will be two special files in a container's run directory:
 according to the Server-Sent Events spec.
 
 `status` is written by the container on startup (before listening) and shutdown
-(before closing the socket).
+(before closing the socket). It's contents will be a JSON-encoded
+[Heartbeat][].
+
+[Heartbeat]: http://godoc.org/github.com/soundcloud/harpoon/harpoon-agent/lib#Heartbeat
+
+### `Heartbeat` type
+
+* Rename to `ContainerStatus`.
 
 ### agent -> container events
 
@@ -54,7 +61,7 @@ according to the Server-Sent Events spec.
 ### container -> agent events
 
 * `status` — the container and its process' status, sent on a regular interval.
-  The data section will be a JSON-encoded [Heartbeat](http://godoc.org/github.com/soundcloud/harpoon/harpoon-agent/lib#Heartbeat).
+  The data section will be a JSON-encoded [Heartbeat][].
 
 ### Details
 
