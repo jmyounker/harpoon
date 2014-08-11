@@ -21,11 +21,11 @@ import (
 //   - delivered count + undelivered count = deliverable
 //
 var (
-	expvarLogReceivedLines = expvar.NewInt("log_received_lines")
-	expvarLogUnparsableLines = expvar.NewInt("log_unparsable_lines")
-	expvarLogUnroutableLines   = expvar.NewInt("log_unroutable_lines")
+	expvarLogReceivedLines    = expvar.NewInt("log_received_lines")
+	expvarLogUnparsableLines  = expvar.NewInt("log_unparsable_lines")
+	expvarLogUnroutableLines  = expvar.NewInt("log_unroutable_lines")
 	expvarLogDeliverableLines = expvar.NewInt("log_deliverable_lines")
-	expvarLogUndeliveredLines  = expvar.NewInt("log_undelivered_lines")
+	expvarLogUndeliveredLines = expvar.NewInt("log_undelivered_lines")
 )
 
 // Derivable metrics:

@@ -92,7 +92,7 @@ func TestLogInstrumentationNotifyWithBlockedWatcher(t *testing.T) {
 	c := newFakeContainer("123")
 	registry.register(c)
 	linec1 := make(chan string, 1)
-	linec2 := make(chan string)  // Blocked channel
+	linec2 := make(chan string) // Blocked channel
 	c.Logs().notify(linec1)
 	c.Logs().notify(linec2)
 
@@ -117,9 +117,9 @@ func ExpectCounterEqual(t *testing.T, name string, value int) {
 		t.Errorf("Expected expvar %q to have value %d instead of %s", name, value, expvar.Get(name).String())
 	}
 	// Prometheus counter comparison logic goes here.
-//	if *(expvarToPrometheusLogCounter(name).(io_prometheus_client.Metric).Counter.Value) != value {
-//		t.Errorf("Expected expvar %q to have value %d", name, value)
-//	}
+	//	if *(expvarToPrometheusLogCounter(name).(io_prometheus_client.Metric).Counter.Value) != value {
+	//		t.Errorf("Expected expvar %q to have value %d", name, value)
+	//	}
 }
 
 func expvarToPrometheusLogCounter(name string) prometheus.Counter {

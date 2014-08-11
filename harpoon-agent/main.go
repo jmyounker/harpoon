@@ -54,9 +54,9 @@ func main() {
 		api = newAPI(r)
 	)
 
-	stopReceivec := make(chan struct {})
+	stopReceivec := make(chan struct{})
 	go receiveLogs(r)
-	defer func() { stopReceivec <- struct {}{}}()
+	defer func() { stopReceivec <- struct{}{} }()
 
 	http.Handle("/", api)
 
