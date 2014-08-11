@@ -70,8 +70,7 @@ func TestLogAPICanTailLogs(t *testing.T) {
 	)
 	defer server.Close()
 
-	setLogAddrRandomly(t)
-	go receiveLogs(registry)
+	createReceiveLogsFixture(t, registry)
 
 	c := newFakeContainer("123")
 	registry.register(c)
@@ -142,8 +141,7 @@ func TestLogAPICanRetrieveLastLines(t *testing.T) {
 	)
 	defer server.Close()
 
-	setLogAddrRandomly(t)
-	go receiveLogs(registry)
+	createReceiveLogsFixture(t, registry)
 
 	c := newFakeContainer("123")
 	registry.register(c)
@@ -179,8 +177,7 @@ func TestMessagesGetWrittenToLogs(t *testing.T) {
 
 	registry := newRegistry()
 
-	setLogAddrRandomly(t)
-	go receiveLogs(registry)
+	createReceiveLogsFixture(t, registry)
 
 	c := newFakeContainer("123")
 	registry.register(c)
@@ -206,8 +203,7 @@ func TestMessagesGetWrittenToLogs(t *testing.T) {
 func TestLogRoutingOfDefectiveMessages(t *testing.T) {
 	registry := newRegistry()
 
-	setLogAddrRandomly(t)
-	go receiveLogs(registry)
+	createReceiveLogsFixture(t, registry)
 
 	c := newFakeContainer("123")
 	registry.register(c)
