@@ -55,6 +55,7 @@ func main() {
 	)
 
 	go receiveLogs(r)
+
 	http.Handle("/", api)
 
 	go func() {
