@@ -34,7 +34,7 @@ func TestContainerList(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var containers []agent.ContainerInstance
+	var containers map[string]agent.ContainerInstance
 
 	if err := json.Unmarshal(ev.Data, &containers); err != nil {
 		t.Fatal("unable to load containers json:", err)
@@ -55,7 +55,7 @@ func TestContainerList(t *testing.T) {
 		t.Fatal("invalid number of containers in delta update")
 	}
 
-	if containers[0].ID != "123" {
+	if _, ok := containers["123"]; !ok {
 		t.Fatal("container event invalid")
 	}
 }

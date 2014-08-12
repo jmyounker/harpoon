@@ -17,7 +17,7 @@ import (
 
 type api struct {
 	http.Handler
-	registry *registry
+	*registry
 
 	enabled bool
 	sync.RWMutex
@@ -205,7 +205,7 @@ func (a *api) handleContainerStream(_ string, enc *eventsource.Encoder, stop <-c
 		case <-stop:
 			return
 		case state := <-statec:
-			b, err := json.Marshal([]agent.ContainerInstance{state})
+			b, err := json.Marshal(map[string]agent.ContainerInstance{state.ID: state})
 			if err != nil {
 				log.Printf("container stream: fatal error: %s", err)
 				return
