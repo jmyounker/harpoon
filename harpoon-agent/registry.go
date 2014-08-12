@@ -76,17 +76,17 @@ func (r *registry) len() int {
 	return len(r.m)
 }
 
-func (r *registry) instances() []agent.ContainerInstance {
+func (r *registry) instances() map[string]agent.ContainerInstance {
 	r.Lock()
 	defer r.Unlock()
 
-	list := make([]agent.ContainerInstance, 0, len(r.m))
+	m := make(map[string]agent.ContainerInstance, len(r.m))
 
-	for _, container := range r.m {
-		list = append(list, container.Instance())
+	for id, container := range r.m {
+		m[id] = container.Instance()
 	}
 
-	return list
+	return m
 }
 
 func (r *registry) acceptStateUpdates() {
