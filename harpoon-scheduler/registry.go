@@ -183,7 +183,7 @@ func (r *registry) signal(containerID string, schedulingSignal schedulingSignal)
 		case !existsPending && existsScheduled:
 			from, spec = "scheduled (but not running)", specScheduled
 		default:
-			panic("invalid state in scheduler registry")
+			panic(fmt.Sprintf("invalid state in scheduler registry: existsPending %v, existsScheduled %v", existsPending, existsScheduled))
 		}
 
 		r.scheduled[containerID] = spec

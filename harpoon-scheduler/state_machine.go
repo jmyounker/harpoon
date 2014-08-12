@@ -74,7 +74,7 @@ func (s *stateMachine) stop() {
 
 func (s *stateMachine) loop(
 	endpoint string,
-	updatec <-chan []agent.ContainerInstance,
+	updatec <-chan map[string]agent.ContainerInstance,
 	syncer syncer,
 	stopper agent.Stopper,
 ) {

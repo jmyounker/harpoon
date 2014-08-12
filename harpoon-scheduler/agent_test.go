@@ -109,17 +109,13 @@ func broadcastContainerInstance(dst map[chan agent.ContainerInstance]struct{}, c
 	}
 }
 
-func (c *mockAgent) getContainerInstances() []agent.ContainerInstance {
+func (c *mockAgent) getContainerInstances() map[string]agent.ContainerInstance {
 	defer atomic.AddInt32(&c.getContainerCount, 1)
 
 	c.RLock()
 	defer c.RUnlock()
 
-	containerInstances := make([]agent.ContainerInstance, 0, len(c.instances))
-	for _, containerInstance := range c.instances {
-		containerInstances = append(containerInstances, containerInstance)
-	}
-	return containerInstances
+	return c.instances
 }
 
 func (c *mockAgent) getContainers(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
@@ -139,8 +135,8 @@ func (c *mockAgent) getContainers(w http.ResponseWriter, r *http.Request, p http
 				case <-stop:
 					log.Printf("mockAgent getContainerEvents: HTTP request closed")
 					return
-				case containerInstance := <-changec:
-					buf, _ = json.Marshal([]agent.ContainerInstance{containerInstance})
+				case instance := <-changec:
+					buf, _ = json.Marshal(map[string]agent.ContainerInstance{instance.ID: instance})
 					enc.Encode(eventsource.Event{Data: buf})
 				}
 			}
@@ -180,8 +176,8 @@ func (c *mockAgent) getContainerEvents(w http.ResponseWriter, r *http.Request, p
 
 	for {
 		select {
-		case containerInstance := <-changec:
-			buf, _ := json.Marshal([]agent.ContainerInstance{containerInstance})
+		case instance := <-changec:
+			buf, _ := json.Marshal(map[string]agent.ContainerInstance{instance.ID: instance})
 			enc.Encode(eventsource.Event{Data: buf})
 		case <-closec:
 			log.Printf("mockAgent getContainerEvents: HTTP request closed")

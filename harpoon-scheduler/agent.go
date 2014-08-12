@@ -74,7 +74,7 @@ func (c remoteAgent) Containers() ([]agent.ContainerInstance, error) {
 	}
 }
 
-func (c remoteAgent) Events() (<-chan []agent.ContainerInstance, agent.Stopper, error) {
+func (c remoteAgent) Events() (<-chan map[string]agent.ContainerInstance, agent.Stopper, error) {
 	c.URL.Path = apiVersionPrefix + apiGetContainersPath
 	req, err := http.NewRequest("GET", c.URL.String(), nil)
 	if err != nil {
@@ -83,7 +83,7 @@ func (c remoteAgent) Events() (<-chan []agent.ContainerInstance, agent.Stopper, 
 	req.Header.Set("Accept", "text/event-stream")
 
 	var (
-		statec = make(chan []agent.ContainerInstance)
+		statec = make(chan map[string]agent.ContainerInstance)
 		stopc  = make(chan struct{})
 		es     = eventsource.New(req, 1*time.Second)
 	)
@@ -106,13 +106,13 @@ func (c remoteAgent) Events() (<-chan []agent.ContainerInstance, agent.Stopper, 
 				return
 			}
 
-			var containerInstances []agent.ContainerInstance
-			if err := json.Unmarshal(event.Data, &containerInstances); err != nil {
+			var instances map[string]agent.ContainerInstance
+			if err := json.Unmarshal(event.Data, &instances); err != nil {
 				log.Printf("%s: %s", c.URL.String(), err)
 				continue
 			}
 
-			statec <- containerInstances
+			statec <- instances
 		}
 	}()
 
