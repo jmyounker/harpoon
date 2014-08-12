@@ -29,6 +29,12 @@
 - Some things still missing which will need PRs:
   - custom tmpfs directories
 
+### lmctfy
+
+- c++ library for application containers
+- early versions supported only cgroups, not namespaces; now mostly
+  interchangeable w/ libcontainer
+
 ### systemd (+ nspawn/libcontainer/docker)
 
 - many container features require installing systemd from "experimental
