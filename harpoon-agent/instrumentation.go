@@ -21,11 +21,18 @@ import (
 //   - delivered count + undelivered count = deliverable
 //
 var (
-	expvarLogReceivedLines    = expvar.NewInt("log_received_lines")
-	expvarLogUnparsableLines  = expvar.NewInt("log_unparsable_lines")
-	expvarLogUnroutableLines  = expvar.NewInt("log_unroutable_lines")
-	expvarLogDeliverableLines = expvar.NewInt("log_deliverable_lines")
-	expvarLogUndeliveredLines = expvar.NewInt("log_undelivered_lines")
+	expvarLogReceivedLines                   = expvar.NewInt("log_received_lines")
+	expvarLogUnparsableLines                 = expvar.NewInt("log_unparsable_lines")
+	expvarLogUnroutableLines                 = expvar.NewInt("log_unroutable_lines")
+	expvarLogDeliverableLines                = expvar.NewInt("log_deliverable_lines")
+	expvarLogUndeliveredLines                = expvar.NewInt("log_undelivered_lines")
+	expvarContainerCreate                    = expvar.NewInt("container_create")
+	expvarContainerDestroy                   = expvar.NewInt("container_destroy")
+	expvarContainerStart                     = expvar.NewInt("container_start")
+	expvarContainerStop                      = expvar.NewInt("container_stop")
+	expvarContainerStatusKilled              = expvar.NewInt("container_status_kill")
+	expvarContainerStatusDownSuccessful      = expvar.NewInt("container_status_down_successful")
+	expvarContainerStatusForceDownSuccessful = expvar.NewInt("container_status_force_down_successful")
 )
 
 // Derivable metrics:
@@ -63,6 +70,48 @@ var (
 		Name:      "log_undelivered_lines",
 		Help:      "Number of accepted log lines written to listeners.",
 	})
+	prometheusContainerCreate = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "harpoon",
+		Subsystem: "agent",
+		Name:      "container_create",
+		Help:      "Number of times the agent has created a container.",
+	})
+	prometheusContainerDestroy = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "harpoon",
+		Subsystem: "agent",
+		Name:      "container_destroy",
+		Help:      "Number of times agent has attempted to destroy a container",
+	})
+	prometheusContainerStart = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "harpoon",
+		Subsystem: "agent",
+		Name:      "container_start",
+		Help:      "Number of times an agent start command was sent to a container",
+	})
+	prometheusContainerStop = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "harpoon",
+		Subsystem: "agent",
+		Name:      "container_stop",
+		Help:      "Number of times the agent attempted stop a container.",
+	})
+	prometheusContainerStatusKilled = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "harpoon",
+		Subsystem: "agent",
+		Name:      "container_status_killed",
+		Help:      "Number of times that a container had to be killed forcibly.",
+	})
+	prometheusContainerStatusDownSuccessful = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "harpoon",
+		Subsystem: "agent",
+		Name:      "container_status_down_successful",
+		Help:      "Number of times that a container was successfully shut down.",
+	})
+	prometheusContainerStatusForceDownSuccessful = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "harpoon",
+		Subsystem: "agent",
+		Name:      "container_status_force_down_successful",
+		Help:      "Number of times that a container was successfully forced down.",
+	})
 )
 
 func incLogReceivedLines(n int) {
@@ -88,4 +137,39 @@ func incLogDeliverableLines(n int) {
 func incLogUndeliveredLines(n int) {
 	expvarLogUndeliveredLines.Add(int64(n))
 	prometheusLogUndeliveredLines.Add(float64(n))
+}
+
+func incContainerStart(n int) {
+	expvarContainerStart.Add(int64(n))
+	prometheusContainerStart.Add(float64(n))
+}
+
+func incContainerDestroy(n int) {
+	expvarContainerDestroy.Add(int64(n))
+	prometheusContainerDestroy.Add(float64(n))
+}
+
+func incContainerCreate(n int) {
+	expvarContainerCreate.Add(int64(n))
+	prometheusContainerCreate.Add(float64(n))
+}
+
+func incContainerStop(n int) {
+	expvarContainerStop.Add(int64(n))
+	prometheusContainerStop.Add(float64(n))
+}
+
+func incContainerStatusKilled(n int) {
+	expvarContainerStatusKilled.Add(int64(n))
+	prometheusContainerStatusKilled.Add(float64(n))
+}
+
+func incContainerStatusDownSuccessful(n int) {
+	expvarContainerStatusDownSuccessful.Add(int64(n))
+	prometheusContainerStatusDownSuccessful.Add(float64(n))
+}
+
+func incContainerStatusForceDownSuccessful(n int) {
+	expvarContainerStatusForceDownSuccessful.Add(int64(n))
+	prometheusContainerStatusForceDownSuccessful.Add(float64(n))
 }

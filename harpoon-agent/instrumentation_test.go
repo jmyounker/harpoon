@@ -9,6 +9,8 @@ import (
 	dto "github.com/prometheus/client_model/go"
 
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
 func TestReceiveLogInstrumentation(t *testing.T) {
@@ -19,21 +21,21 @@ func TestReceiveLogInstrumentation(t *testing.T) {
 	linec := make(chan string, 10) // Plenty of room before anything gets dropped
 	c.Logs().notify(linec)
 
-	clearLogCounters()
+	clearCounters()
 	sendLog("container[123] m1")
 	waitForLogLine(t, linec, 100*time.Millisecond)
 	ExpectCounterEqual(t, "log_received_lines", 1)
 	ExpectCounterEqual(t, "log_unparsable_lines", 0)
 	ExpectCounterEqual(t, "log_unroutable_lines", 0)
 
-	clearLogCounters()
+	clearCounters()
 	sendLog("container[23] m2")
 	expectNoLogLines(t, linec, 100*time.Millisecond)
 	ExpectCounterEqual(t, "log_received_lines", 1)
 	ExpectCounterEqual(t, "log_unparsable_lines", 0)
 	ExpectCounterEqual(t, "log_unroutable_lines", 1)
 
-	clearLogCounters()
+	clearCounters()
 	sendLog("ilj;irtr")
 	expectNoLogLines(t, linec, 100*time.Millisecond)
 	ExpectCounterEqual(t, "log_received_lines", 1)
@@ -54,7 +56,7 @@ func TestLogInstrumentationNotifyWithoutWatchers(t *testing.T) {
 	nonDestinationLinec := make(chan string, 1)
 	nonDestinationContainer.Logs().notify(nonDestinationLinec)
 
-	clearLogCounters()
+	clearCounters()
 	sendLog("container[123] m1")
 	expectNoLogLines(t, nonDestinationLinec, 100*time.Millisecond)
 	ExpectCounterEqual(t, "log_received_lines", 1)
@@ -75,7 +77,7 @@ func TestLogInstrumentationNotifyWatchers(t *testing.T) {
 	c.Logs().notify(linec1)
 	c.Logs().notify(linec2)
 
-	clearLogCounters()
+	clearCounters()
 	sendLog("container[123] m1")
 	waitForLogLine(t, linec1, 100*time.Millisecond)
 	waitForLogLine(t, linec2, 100*time.Millisecond)
@@ -97,7 +99,7 @@ func TestLogInstrumentationNotifyWithBlockedWatcher(t *testing.T) {
 	c.Logs().notify(linec1)
 	c.Logs().notify(linec2)
 
-	clearLogCounters()
+	clearCounters()
 	sendLog("container[123] m1")
 	waitForLogLine(t, linec1, 100*time.Millisecond)
 	expectNoLogLines(t, linec2, 100*time.Millisecond)
@@ -106,6 +108,44 @@ func TestLogInstrumentationNotifyWithBlockedWatcher(t *testing.T) {
 	ExpectCounterEqual(t, "log_unroutable_lines", 0)
 	ExpectCounterEqual(t, "log_deliverable_lines", 1)
 	ExpectCounterEqual(t, "log_undelivered_lines", 1)
+}
+
+func TestHeartbeatInstrumentation(t *testing.T) {
+	clearCounters()
+	c, hb := createHeartbeatFixture("DOWN", "UP", time.Now().Add(-time.Hour))
+	c.Heartbeat(hb)
+	ExpectCounterEqual(t, "container_status_kill", 1)
+	ExpectCounterEqual(t, "container_status_down_successful", 0)
+	ExpectCounterEqual(t, "container_status_force_down_successful", 0)
+
+	clearCounters()
+	c, hb = createHeartbeatFixture("DOWN", "UP", time.Now().Add(time.Hour))
+	c.Heartbeat(hb)
+	ExpectCounterEqual(t, "container_status_kill", 0)
+	ExpectCounterEqual(t, "container_status_down_successful", 0)
+	ExpectCounterEqual(t, "container_status_force_down_successful", 0)
+
+	clearCounters()
+	c, hb = createHeartbeatFixture("DOWN", "DOWN", time.Now().Add(time.Hour))
+	c.Heartbeat(hb)
+	ExpectCounterEqual(t, "container_status_kill", 0)
+	ExpectCounterEqual(t, "container_status_down_successful", 1)
+	ExpectCounterEqual(t, "container_status_force_down_successful", 0)
+
+	clearCounters()
+	c, hb = createHeartbeatFixture("FORCEDOWN", "DOWN", time.Now().Add(time.Hour))
+	c.Heartbeat(hb)
+	ExpectCounterEqual(t, "container_status_kill", 0)
+	ExpectCounterEqual(t, "container_status_down_successful", 0)
+	ExpectCounterEqual(t, "container_status_force_down_successful", 1)
+}
+
+func createHeartbeatFixture(desired string, have string, downDeadline time.Time) (*realContainer, agent.Heartbeat) {
+	cc := agent.ContainerConfig{}
+	c := newContainer("123", cc)
+	c.desired = desired
+	c.downDeadline = downDeadline
+	return c, agent.Heartbeat{Status: have}
 }
 
 func createReceiveLogsFixture(t *testing.T, r *registry) {
@@ -121,7 +161,7 @@ func ExpectCounterEqual(t *testing.T, name string, value int) {
 	if expvarValue != value {
 		t.Errorf("Expected expvar %q to have value %d instead of %d", name, value, expvarValue)
 	}
-	prometheusCounter := readCounter(expvarToPrometheusLogCounter(name))
+	prometheusCounter := readCounter(expvarToPrometheusCounter[name])
 	if prometheusCounter != float64(value) {
 		t.Errorf("Expected expvar %q to have value %f instead of %f", name, float64(value), prometheusCounter)
 	}
@@ -133,33 +173,22 @@ func readCounter(m prometheus.Counter) float64 {
 	return pb.GetCounter().GetValue()
 }
 
-func expvarToPrometheusLogCounter(name string) prometheus.Counter {
-	switch name {
-	case "log_received_lines":
-		return prometheusLogReceivedLines
-	case "log_unparsable_lines":
-		return prometheusLogUnparsableLines
-	case "log_unroutable_lines":
-		return prometheusLogUnroutableLines
-	case "log_deliverable_lines":
-		return prometheusLogDeliverableLines
-	case "log_undelivered_lines":
-		return prometheusLogUndeliveredLines
-	default:
-		panic("Missing counter name")
+var (
+	expvarToPrometheusCounter = map[string]prometheus.Counter{
+		"log_received_lines":                     prometheusLogReceivedLines,
+		"log_unparsable_lines":                   prometheusLogUnparsableLines,
+		"log_unroutable_lines":                   prometheusLogUnroutableLines,
+		"log_deliverable_lines":                  prometheusLogDeliverableLines,
+		"log_undelivered_lines":                  prometheusLogUndeliveredLines,
+		"container_status_kill":                  prometheusContainerStatusKilled,
+		"container_status_down_successful":       prometheusContainerStatusDownSuccessful,
+		"container_status_force_down_successful": prometheusContainerStatusForceDownSuccessful,
 	}
-}
+)
 
-func clearLogCounters() {
-	expvar.Get("log_received_lines").(*expvar.Int).Set(0)
-	expvar.Get("log_unparsable_lines").(*expvar.Int).Set(0)
-	expvar.Get("log_unroutable_lines").(*expvar.Int).Set(0)
-	expvar.Get("log_deliverable_lines").(*expvar.Int).Set(0)
-	expvar.Get("log_undelivered_lines").(*expvar.Int).Set(0)
-
-	prometheusLogReceivedLines.Set(0)
-	prometheusLogUnparsableLines.Set(0)
-	prometheusLogUnroutableLines.Set(0)
-	prometheusLogDeliverableLines.Set(0)
-	prometheusLogUndeliveredLines.Set(0)
+func clearCounters() {
+	for name, prometheusCounter := range expvarToPrometheusCounter {
+		expvar.Get(name).(*expvar.Int).Set(0)
+		prometheusCounter.Set(0)
+	}
 }

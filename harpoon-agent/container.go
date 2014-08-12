@@ -157,12 +157,18 @@ func (c *realContainer) loop() {
 			// All of these methods must be nonblocking
 			switch req.action {
 			case containerCreate:
+				incContainerCreate(1)
+				// TODO: Create Failures should be logged
 				req.res <- c.create()
 			case containerDestroy:
+				incContainerDestroy(1)
 				req.res <- c.destroy()
 			case containerStart:
+				// TODO: Start failures should be logged
+				incContainerStart(1)
 				req.res <- c.start()
 			case containerStop:
+				incContainerStop(1)
 				req.res <- c.stop()
 			default:
 				panic(fmt.Sprintf("unknown action %q", req.action))
@@ -379,12 +385,14 @@ func (c *realContainer) heartbeat(hb agent.Heartbeat) string {
 	case want == "DOWN" && have == "UP":
 		// Waiting for the container to shutdown normally
 		if time.Now().After(c.downDeadline) {
+			incContainerStatusKilled(1)
 			return "FORCEDOWN" // too long: kill -9
 		}
 		return "DOWN" // keep waiting
 
 	case want == "DOWN" && have == "DOWN":
 		// Normal shutdown successful; won't receive more updates
+		incContainerStatusDownSuccessful(1)
 		c.updateStatus(agent.ContainerStatusFinished)
 		return "DOWN" // TODO(pb): this was FORCEDOWN, but DOWN makes more sense to me?
 
@@ -394,6 +402,7 @@ func (c *realContainer) heartbeat(hb agent.Heartbeat) string {
 
 	case want == "FORCEDOWN" && have == "DOWN":
 		// Aggressive shutdown successful
+		incContainerStatusForceDownSuccessful(1)
 		c.updateStatus(agent.ContainerStatusFinished)
 		return "FORCEDOWN"
 	}
