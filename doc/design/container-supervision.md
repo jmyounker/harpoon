@@ -38,30 +38,30 @@ state.
 There will be two special files in a container's run directory:
 
   - `control`: a unix domain socket
-  - `status`: the container's last status
+  - `state`: the container's last state
 
 `control` exposes a bidirectional message stream, where messages are encoded
 according to the Server-Sent Events spec.
 
-`status` is written by the container; its contents are a JSON-encoded
+`state` is written by the container; its contents are a JSON-encoded
 [Heartbeat][].
 
 [Heartbeat]: http://godoc.org/github.com/soundcloud/harpoon/harpoon-agent/lib#Heartbeat
 
 ### `Heartbeat` type
 
-* Rename to `ContainerStatus`.
+* Rename to `ContainerState`.
 
-### `status`
+### `state`
 
-The `status` file will be written by the container on startup (before listening
+The `state` file will be written by the container on startup (before listening
 on `control`) and shtudown (before closing `control`). Since the events
 broadcast by the container are not acked, this ensures that an agent can always
-collect the final status.
+collect the final state.
 
 For example, if the agent sends a `stop` event and is then restarted, it may
-not observe the container's last `status` event; when reconnecting, it would
-detect that the container is down and use `status` to get the final message.
+not observe the container's last `state` event; when reconnecting, it would
+detect that the container is down and use `state` to get the final message.
 
 ### agent -> container events
 
@@ -70,7 +70,7 @@ detect that the container is down and use `status` to get the final message.
 
 ### container -> agent events
 
-* `status` — the container and its process' status, sent on a regular interval.
+* `state` — the container and its process' state, sent on a regular interval.
   The data section will be a JSON-encoded [Heartbeat][].
 
 ### Details
@@ -81,8 +81,8 @@ detect that the container is down and use `status` to get the final message.
 - If an agent receives an `EOF` while reading or an `EPIPE` while writing, the
   container is dead.
 - If an agent receives `ECONNREFUSED`, `EOF`, or `EPIPE`, the container's
-  status file can be read to get the last state. If the container cannot be
-  connected to but the status file says it is "UP", the container crashed in a
+  state file can be read to get the last state. If the container cannot be
+  connected to but the state file says it is "UP", the container crashed in a
   truly exceptional way.
 
 ## Simulation
@@ -94,20 +94,20 @@ $ socat UNIX-CONNECT:./control -
 2014/08/11 16:39:06 socat[12156] E connect(3, LEN=11 AF=1 "./control", 11): No such file or directory
 
 $ socat UNIX-CONNECT:control -
-event: status
-data: {"status": "UP", "container_process_status": {"up": true, "container_metrics": {...}}}
+event: state
+data: {"status": "UP", "container_process_state": {"up": true, "container_metrics": {...}}}
 
-event: status
-data: {"status": "UP", "container_process_status": {"up": true, "container_metrics": {...}}}
+event: state
+data: {"status": "UP", "container_process_state": {"up": true, "container_metrics": {...}}}
 
 > event: stop
 >
 
-event: status
-data: {"status": "DOWN", "container_process_status": {"up": false, "exited": true, "exit_status": 0}}
+event: state
+data: {"status": "DOWN", "container_process_state": {"up": false, "exited": true, "exit_status": 0}}
 
-$ cat status
-{"status": "DOWN", "container_process_status": {"up": false, "exited": true, "exit_status": 0}}
+$ cat state
+{"status": "DOWN", "container_process_state": {"up": false, "exited": true, "exit_status": 0}}
 
 $ socat UNIX-CONNECT:./control -
 2014/08/11 16:00:06 socat[11884] E connect(3, LEN=11 AF=1 "./control", 11): Connection refused
