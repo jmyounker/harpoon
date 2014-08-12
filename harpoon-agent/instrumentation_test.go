@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	dto "github.com/prometheus/client_model/go"
+
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -19,21 +21,21 @@ func TestReceiveLogInstrumentation(t *testing.T) {
 
 	clearLogCounters()
 	sendLog("container[123] m1")
-	waitForLogLine(t, linec, time.Millisecond)
+	waitForLogLine(t, linec, 100*time.Millisecond)
 	ExpectCounterEqual(t, "log_received_lines", 1)
 	ExpectCounterEqual(t, "log_unparsable_lines", 0)
 	ExpectCounterEqual(t, "log_unroutable_lines", 0)
 
 	clearLogCounters()
 	sendLog("container[23] m2")
-	expectNoLogLines(t, linec, time.Millisecond)
+	expectNoLogLines(t, linec, 100*time.Millisecond)
 	ExpectCounterEqual(t, "log_received_lines", 1)
 	ExpectCounterEqual(t, "log_unparsable_lines", 0)
 	ExpectCounterEqual(t, "log_unroutable_lines", 1)
 
 	clearLogCounters()
 	sendLog("ilj;irtr")
-	expectNoLogLines(t, linec, time.Millisecond)
+	expectNoLogLines(t, linec, 100*time.Millisecond)
 	ExpectCounterEqual(t, "log_received_lines", 1)
 	ExpectCounterEqual(t, "log_unparsable_lines", 1)
 	ExpectCounterEqual(t, "log_unroutable_lines", 0)
@@ -54,8 +56,7 @@ func TestLogInstrumentationNotifyWithoutWatchers(t *testing.T) {
 
 	clearLogCounters()
 	sendLog("container[123] m1")
-	time.Sleep(time.Millisecond)
-	expectNoLogLines(t, nonDestinationLinec, time.Millisecond)
+	expectNoLogLines(t, nonDestinationLinec, 100*time.Millisecond)
 	ExpectCounterEqual(t, "log_received_lines", 1)
 	ExpectCounterEqual(t, "log_unparsable_lines", 0)
 	ExpectCounterEqual(t, "log_unroutable_lines", 0)
@@ -76,8 +77,8 @@ func TestLogInstrumentationNotifyWatchers(t *testing.T) {
 
 	clearLogCounters()
 	sendLog("container[123] m1")
-	waitForLogLine(t, linec1, time.Millisecond)
-	waitForLogLine(t, linec2, time.Millisecond)
+	waitForLogLine(t, linec1, 100*time.Millisecond)
+	waitForLogLine(t, linec2, 100*time.Millisecond)
 	ExpectCounterEqual(t, "log_received_lines", 1)
 	ExpectCounterEqual(t, "log_unparsable_lines", 0)
 	ExpectCounterEqual(t, "log_unroutable_lines", 0)
@@ -98,8 +99,8 @@ func TestLogInstrumentationNotifyWithBlockedWatcher(t *testing.T) {
 
 	clearLogCounters()
 	sendLog("container[123] m1")
-	waitForLogLine(t, linec1, time.Millisecond)
-	expectNoLogLines(t, linec2, time.Millisecond)
+	waitForLogLine(t, linec1, 100*time.Millisecond)
+	expectNoLogLines(t, linec2, 100*time.Millisecond)
 	ExpectCounterEqual(t, "log_received_lines", 1)
 	ExpectCounterEqual(t, "log_unparsable_lines", 0)
 	ExpectCounterEqual(t, "log_unroutable_lines", 0)
@@ -113,13 +114,23 @@ func createReceiveLogsFixture(t *testing.T, r *registry) {
 }
 
 func ExpectCounterEqual(t *testing.T, name string, value int) {
-	if expvar.Get(name).String() != strconv.Itoa(value) {
-		t.Errorf("Expected expvar %q to have value %d instead of %s", name, value, expvar.Get(name).String())
+	expvarValue, err := strconv.Atoi(expvar.Get(name).String())
+	if err != nil {
+		t.Fatalf("unable to convert counter %s to an int: %s", name, err)
 	}
-	// Prometheus counter comparison logic goes here.
-	//	if *(expvarToPrometheusLogCounter(name).(io_prometheus_client.Metric).Counter.Value) != value {
-	//		t.Errorf("Expected expvar %q to have value %d", name, value)
-	//	}
+	if expvarValue != value {
+		t.Errorf("Expected expvar %q to have value %d instead of %d", name, value, expvarValue)
+	}
+	prometheusCounter := readCounter(expvarToPrometheusLogCounter(name))
+	if prometheusCounter != float64(value) {
+		t.Errorf("Expected expvar %q to have value %f instead of %f", name, float64(value), prometheusCounter)
+	}
+}
+
+func readCounter(m prometheus.Counter) float64 {
+	pb := &dto.Metric{}
+	m.Write(pb)
+	return pb.GetCounter().GetValue()
 }
 
 func expvarToPrometheusLogCounter(name string) prometheus.Counter {
