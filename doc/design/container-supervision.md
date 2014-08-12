@@ -43,8 +43,7 @@ There will be two special files in a container's run directory:
 `control` exposes a bidirectional message stream, where messages are encoded
 according to the Server-Sent Events spec.
 
-`status` is written by the container on startup (before listening) and shutdown
-(before closing the socket). It's contents will be a JSON-encoded
+`status` is written by the container; its contents are a JSON-encoded
 [Heartbeat][].
 
 [Heartbeat]: http://godoc.org/github.com/soundcloud/harpoon/harpoon-agent/lib#Heartbeat
@@ -52,6 +51,17 @@ according to the Server-Sent Events spec.
 ### `Heartbeat` type
 
 * Rename to `ContainerStatus`.
+
+### `status`
+
+The `status` file will be written by the container on startup (before listening
+on `control`) and shtudown (before closing `control`). Since the events
+broadcast by the container are not acked, this ensures that an agent can always
+collect the final status.
+
+For example, if the agent sends a `stop` event and is then restarted, it may
+not observe the container's last `status` event; when reconnecting, it would
+detect that the container is down and use `status` to get the final message.
 
 ### agent -> container events
 
