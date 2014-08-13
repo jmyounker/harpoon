@@ -27,8 +27,10 @@ var (
 	expvarLogDeliverableLines                = expvar.NewInt("log_deliverable_lines")
 	expvarLogUndeliveredLines                = expvar.NewInt("log_undelivered_lines")
 	expvarContainerCreate                    = expvar.NewInt("container_create")
+	expvarContainerCreateFailure             = expvar.NewInt("container_create_failure")
 	expvarContainerDestroy                   = expvar.NewInt("container_destroy")
 	expvarContainerStart                     = expvar.NewInt("container_start")
+	expvarContainerStartFailure              = expvar.NewInt("container_start_failure")
 	expvarContainerStop                      = expvar.NewInt("container_stop")
 	expvarContainerStatusKilled              = expvar.NewInt("container_status_kill")
 	expvarContainerStatusDownSuccessful      = expvar.NewInt("container_status_down_successful")
@@ -76,6 +78,12 @@ var (
 		Name:      "container_create",
 		Help:      "Number of times the agent has created a container.",
 	})
+	prometheusContainerCreateFailure = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "harpoon",
+		Subsystem: "agent",
+		Name:      "container_create_failure",
+		Help:      "Number of times that the container create operation failed.",
+	})
 	prometheusContainerDestroy = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "agent",
@@ -87,6 +95,12 @@ var (
 		Subsystem: "agent",
 		Name:      "container_start",
 		Help:      "Number of times an agent start command was sent to a container",
+	})
+	prometheusContainerStartFailure = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "harpoon",
+		Subsystem: "agent",
+		Name:      "container_start_failure",
+		Help:      "Number of times a container start operation has failed.",
 	})
 	prometheusContainerStop = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
@@ -144,6 +158,11 @@ func incContainerStart(n int) {
 	prometheusContainerStart.Add(float64(n))
 }
 
+func incContainerStartFailure(n int) {
+	expvarContainerStartFailure.Add(int64(n))
+	prometheusContainerStartFailure.Add(float64(n))
+}
+
 func incContainerDestroy(n int) {
 	expvarContainerDestroy.Add(int64(n))
 	prometheusContainerDestroy.Add(float64(n))
@@ -152,6 +171,11 @@ func incContainerDestroy(n int) {
 func incContainerCreate(n int) {
 	expvarContainerCreate.Add(int64(n))
 	prometheusContainerCreate.Add(float64(n))
+}
+
+func incContainerCreateFailure(n int) {
+	expvarContainerCreateFailure.Add(int64(n))
+	prometheusContainerCreateFailure.Add(float64(n))
 }
 
 func incContainerStop(n int) {

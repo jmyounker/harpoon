@@ -158,15 +158,21 @@ func (c *realContainer) loop() {
 			switch req.action {
 			case containerCreate:
 				incContainerCreate(1)
-				// TODO: Create Failures should be logged
-				req.res <- c.create()
+				err := c.create()
+				if err != nil {
+					incContainerCreateFailure(1)
+				}
+				req.res <- err
 			case containerDestroy:
 				incContainerDestroy(1)
 				req.res <- c.destroy()
 			case containerStart:
-				// TODO: Start failures should be logged
 				incContainerStart(1)
-				req.res <- c.start()
+				err := c.start()
+				if err != nil {
+					incContainerStartFailure(1)
+				}
+				req.res <- err
 			case containerStop:
 				incContainerStop(1)
 				req.res <- c.stop()
