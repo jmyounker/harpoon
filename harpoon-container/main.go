@@ -24,37 +24,41 @@ func main() {
 
 	var (
 		heartbeatURL = os.Getenv("heartbeat_url")
-
-		client = newClient(heartbeatURL)
-
-		c = &Container{}
-
-		transitionc = make(chan string, 1)
-		transition  chan string
-
-		statusc   <-chan agent.ContainerProcessStatus
-		desired   string
-		heartbeat = agent.Heartbeat{Status: "UP"}
+		client       = newClient(heartbeatURL)
+		c            = &Container{}
+		heartbeat    = agent.Heartbeat{Status: "UP"}
 	)
 
 	f, err := os.Open("./container.json")
 	if err != nil {
 		heartbeat.Err = fmt.Sprintf("unable to open ./container.json: %s", err)
-		goto sync
+		shutDownContainer(client, c, &heartbeat)
+		return
 	}
 
 	if err := json.NewDecoder(f).Decode(&c.container); err != nil {
 		heartbeat.Err = fmt.Sprintf("unable to load ./container.json: %s", err)
-		goto sync
+		shutDownContainer(client, c, &heartbeat)
+		return
 	}
 
-	statusc = c.Start(transitionc)
+	monitorRunningContainer(client, c, &heartbeat)
+	shutDownContainer(client, c, &heartbeat)
+}
+
+func monitorRunningContainer(client *client, c *Container, heartbeat *agent.Heartbeat) {
+	var (
+		transition  chan string
+		transitionc = make(chan string, 1)
+		desired     string
+		statusc     = c.Start(transitionc)
+	)
 
 	for {
 		select {
 		case status, ok := <-statusc:
 			if !ok {
-				goto sync
+				return
 			}
 
 			heartbeat.ContainerProcessStatus = status
@@ -62,7 +66,7 @@ func main() {
 			buf, _ := json.Marshal(status)
 			log.Printf("container status: %s", buf)
 
-			want, err := client.sendHeartbeat(heartbeat)
+			want, err := client.sendHeartbeat(*heartbeat)
 			if err != nil {
 				log.Println("unable to send heartbeat: ", err)
 				continue
@@ -75,9 +79,9 @@ func main() {
 			transition = nil
 		}
 	}
+}
 
-sync:
-
+func shutDownContainer(client *client, c *Container, heartbeat *agent.Heartbeat) {
 	heartbeat.Status = "DOWN"
 
 	if c.err != nil {
@@ -89,7 +93,7 @@ sync:
 	// heartbeats to the agent until it replies with a terminal state (DOWN or
 	// FORCEDOWN).
 	for {
-		want, err := client.sendHeartbeat(heartbeat)
+		want, err := client.sendHeartbeat(*heartbeat)
 		if err != nil {
 			log.Println("unable to reach host agent: ", err)
 
@@ -98,9 +102,7 @@ sync:
 		}
 
 		if want == "DOWN" || want == "FORCEDOWN" {
-			break
+			return
 		}
 	}
-
-	return
 }
