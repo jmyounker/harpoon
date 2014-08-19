@@ -26,7 +26,6 @@ func main() {
 		heartbeatURL = os.Getenv("heartbeat_url")
 		client       = newClient(heartbeatURL)
 		c            = &Container{}
-		transitionc  = make(chan string, 1)
 		heartbeat    = agent.Heartbeat{Status: "UP"}
 	)
 
@@ -43,19 +42,16 @@ func main() {
 		return
 	}
 
-	monitorRunningContainer(client, c, transitionc, &heartbeat)
+	monitorRunningContainer(client, c, &heartbeat)
 	shutDownContainer(client, c, &heartbeat)
 }
 
-func monitorRunningContainer(
-	client *client,
-	c *Container,
-	transitionc chan string,
-	heartbeat *agent.Heartbeat) {
+func monitorRunningContainer(client *client, c *Container, heartbeat *agent.Heartbeat) {
 	var (
-		transition chan string
-		desired    string
-		statusc    = c.Start(transitionc)
+		transition  chan string
+		transitionc = make(chan string, 1)
+		desired     string
+		statusc     = c.Start(transitionc)
 	)
 
 	for {
