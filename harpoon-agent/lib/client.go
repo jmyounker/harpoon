@@ -20,8 +20,6 @@ const (
 	// APIVersionPrefix identifies the version of the API that this code
 	// serves and expects. Non-backwards-compatible API changes should
 	// increment the version.
-
-	// APIVersionPrefix identifies the version of the agent API served.
 	APIVersionPrefix = "/api/v0"
 
 	// APIListContainersPath conforms to the agent API spec.
