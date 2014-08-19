@@ -2,6 +2,7 @@ package configstore
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -52,10 +53,10 @@ func (c JobConfig) Valid() error {
 // TaskConfig + jobName + artifact URL can fully define an agent.ContainerConfig.
 // TaskConfig + jobName + artifact URL + scale can fully define a scheduler.Job.
 type TaskConfig struct {
-	TaskName              string        `json:"task_name"`     // task.Name
-	Scale                 int           `json:"scale"`         // task.Scale
-	HealthChecks          []HealthCheck `json:"health_checks"` // task.HealthChecks
-	agent.ContainerConfig               // must not contain artifact URL
+	TaskName     string        `json:"task_name"`     // task.Name
+	Scale        int           `json:"scale"`         // task.Scale
+	HealthChecks []HealthCheck `json:"health_checks"` // task.HealthChecks
+	agent.ContainerConfig
 }
 
 // Valid performs a validation check, to ensure invalid structures may be
@@ -77,8 +78,8 @@ func (c TaskConfig) Valid() error {
 		}
 	}
 
-	if c.ArtifactURL != "" {
-		errs = append(errs, "task config must not specify artifact URL")
+	if _, err := url.Parse(c.ArtifactURL); err != nil {
+		errs = append(errs, fmt.Sprintf("artifact URL invalid: %s", err))
 	}
 
 	if err := c.Command.Valid(); err != nil {

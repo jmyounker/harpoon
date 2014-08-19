@@ -2,219 +2,177 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
-	"log"
 	"os"
 	"reflect"
 	"testing"
-	"time"
 )
 
-func TestRegistrySaveLoad(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	//log.SetFlags(log.Lmicroseconds)
+func TestRegistryStartStop(t *testing.T) {
+	var (
+		registry = newRealRegistry("")
+		updatec  = make(chan map[string]map[string]taskSpec)
+		requestc = make(chan map[string]map[string]taskSpec)
+	)
+
+	defer registry.quit()
+
+	go func() {
+		scheduled, ok := <-updatec
+		if !ok {
+			return
+		}
+
+		for {
+			select {
+			case requestc <- scheduled:
+			case scheduled, ok = <-updatec:
+				if !ok {
+					return
+				}
+			}
+		}
+	}()
+
+	registry.subscribe(updatec)
+	defer close(updatec)
+	defer registry.unsubscribe(updatec)
 
 	var (
-		testFilename    = "test_registry_save_load.json"
-		testContainerID = "hulk-hogan"
-		testTaskSpec    = taskSpec{Endpoint: "https://super.cool:1337"}
+		endpoint1 = "http://marquadt.info:5001"
+		endpoint2 = "http://tom-jenkinson.biz:9000"
+		id1       = "das-ist-die"
+		id2       = "wer-ist-das"
+		spec1     = taskSpec{Endpoint: endpoint1, ContainerID: id1}
+		spec2     = taskSpec{Endpoint: endpoint2, ContainerID: id2}
+	)
+
+	if err := registry.schedule(spec1); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := verifySpecs(t, <-requestc,
+		endpoint1, id1,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := registry.schedule(spec2); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := verifySpecs(t, <-requestc,
+		endpoint1, id1,
+		endpoint2, id2,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := registry.unschedule(endpoint1, id1); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := verifySpecs(t, <-requestc,
+		endpoint2, id2,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := registry.unschedule(endpoint2, id2); err != nil {
+		t.Fatal(err)
+	}
+
+	if want, have := 0, len(<-requestc); want != have {
+		t.Fatalf("want %d, have %d", want, have)
+	}
+}
+
+func TestRegistrySaveLoad(t *testing.T) {
+	var (
+		testFilename = "registry-test-save-load.json"
+		registry1    = newRealRegistry(testFilename)
+		spec         = taskSpec{Endpoint: "http://314159.de", ContainerID: "π"}
 	)
 
 	defer os.Remove(testFilename)
 
-	registry, err := newRegistry(nil, testFilename)
-	if err != nil {
+	defer registry1.quit()
+
+	// Schedule a thing.
+
+	if err := registry1.schedule(spec); err != nil {
 		t.Fatal(err)
 	}
 
-	c := make(chan schedulingSignalWithContext)
-	if err := registry.schedule(testContainerID, testTaskSpec, c); err != nil {
-		t.Fatal(err)
-	}
-
-	received := make(chan schedulingSignalWithContext)
-	go func() { received <- <-c }() // buffer of 1
-
-	registry.signal(testContainerID, signalScheduleSuccessful)
-
-	select {
-	case <-received:
-	case <-time.After(time.Millisecond):
-		t.Fatal("never got signal after a successful schedule")
-	}
+	// Verify it persisted.
 
 	buf, err := ioutil.ReadFile(testFilename)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	var have map[string]taskSpec
-	if err := json.Unmarshal(buf, &have); err != nil {
+	var fromDisk map[string]map[string]taskSpec
+	if err := json.Unmarshal(buf, &fromDisk); err != nil {
 		t.Fatal(err)
 	}
 
-	if want := registry.scheduled; !reflect.DeepEqual(have, want) {
-		t.Fatalf("have \n\t%#+v, want \n\t%#+v", have, want)
+	check1c := make(chan map[string]map[string]taskSpec)
+	registry1.subscribe(check1c)
+	defer registry1.unsubscribe(check1c)
+
+	if want, have := <-check1c, fromDisk; !reflect.DeepEqual(want, have) {
+		t.Fatalf("want %v, have %v", want, have)
 	}
 
-	registry2, err := newRegistry(nil, testFilename)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// Boot up another registry on top of the same file. Just for the test.
+	// You'd never do this in real life. Race conditions everywhere.
 
-	if have, want := registry2.scheduled, registry.scheduled; !reflect.DeepEqual(have, want) {
-		t.Fatalf("have \n\t%#+v, want \n\t%#+v", have, want)
-	}
-}
+	registry2 := newRealRegistry(testFilename)
+	defer registry2.quit()
 
-func TestRegistrySchedule(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	//log.SetFlags(log.Lmicroseconds)
+	// Verify it loaded the previously-persisted state.
 
-	var (
-		registry        = newTestRegistry(t)
-		testContainerID = "test-container-id"
-		testTaskSpec    = taskSpec{Endpoint: "http://nonexistent.berlin:1234"}
-	)
+	check2c := make(chan map[string]map[string]taskSpec)
+	registry2.subscribe(check2c)
+	defer registry2.unsubscribe(check2c)
 
-	// Try a bad container ID.
-	if err := registry.schedule("", testTaskSpec, nil); err == nil {
-		t.Errorf("while scheduling bad container ID: expected error, got none")
-	}
-
-	// Good path.
-	c := make(chan schedulingSignalWithContext)
-	if err := registry.schedule(testContainerID, testTaskSpec, c); err != nil {
-		t.Errorf("while scheduling good container: %s", err)
-	}
-	if _, ok := registry.pendingSchedule[testContainerID]; !ok {
-		t.Fatalf("%s isn't pending-schedule", testContainerID)
-	}
-
-	// Try to double-schedule.
-	if err := registry.schedule(testContainerID, testTaskSpec, nil); err == nil {
-		t.Errorf("while scheduling a container that's already pending-schedule: expected error, got none")
-	}
-
-	// Pretend we're a transformer, and move the thing to scheduled.
-	received := make(chan schedulingSignalWithContext) // make an intermediary chan, so
-	go func() { received <- <-c }()                    // we don't block the signaler
-
-	registry.signal(testContainerID, signalScheduleSuccessful)
-
-	select {
-	case <-received:
-	case <-time.After(time.Millisecond):
-		t.Fatal("never got signal after a successful schedule")
-	}
-
-	if _, ok := registry.pendingSchedule[testContainerID]; ok {
-		t.Fatalf("%s is still pending-schedule", testContainerID)
-	}
-
-	if _, ok := registry.scheduled[testContainerID]; !ok {
-		t.Fatalf("%s isn't scheduled", testContainerID)
-	}
-
-	// Try to schedule it again.
-	if err := registry.schedule(testContainerID, testTaskSpec, nil); err == nil {
-		t.Errorf("while scheduling a container that's already scheduled: expected error, got none")
-	}
-
-	// Move it to pending-unschedule.
-	if err := registry.unschedule(testContainerID, testTaskSpec, nil); err != nil {
-		t.Fatalf("while unscheduling: %s", err)
-	}
-
-	// Try to schedule it again.
-	if err := registry.schedule(testContainerID, testTaskSpec, nil); err == nil {
-		t.Errorf("while scheduling a container that's already pending-unschedule: expected error, got none")
+	if want, have := fromDisk, <-check2c; !reflect.DeepEqual(want, have) {
+		t.Fatalf("want %v, have %v", want, have)
 	}
 }
 
-func TestRegistryUnschedule(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	//log.SetFlags(log.Lmicroseconds)
-
-	var (
-		registry        = newTestRegistry(t)
-		testContainerID = "test-container-id"
-		testTaskSpec    = taskSpec{Endpoint: "http://nonexistent.berlin:1234"}
-	)
-
-	// Try a bad container ID.
-	if err := registry.unschedule("", testTaskSpec, nil); err == nil {
-		t.Errorf("while unscheduling bad container ID: expected error, got none")
-	} else {
-		t.Logf("unscheduling a bad container ID: %s (good)", err)
+func verifySpecs(t *testing.T, have map[string]map[string]taskSpec, s ...string) error {
+	if len(s)%2 != 0 {
+		return fmt.Errorf("bad invocation of verifySpecs")
 	}
 
-	// Try a good but non-present container ID.
-	if err := registry.unschedule(testContainerID, testTaskSpec, nil); err == nil {
-		t.Errorf("while unscheduling an unknown container: expected error, got none")
-	} else {
-		t.Logf("unscheduling an unknown container: %s (good)", err)
+	var want = map[string]map[string]struct{}{}
+
+	for i := 0; i < len(s); i += 2 {
+		endpoint, id := s[i], s[i+1]
+
+		if _, ok := want[endpoint]; !ok {
+			want[endpoint] = map[string]struct{}{}
+		}
+
+		want[endpoint][id] = struct{}{}
 	}
 
-	// Make something pending-schedule.
-	if err := registry.schedule(testContainerID, testTaskSpec, nil); err != nil {
-		t.Fatalf("while scheduling good container: %s", err)
-	}
-	if _, ok := registry.pendingSchedule[testContainerID]; !ok {
-		t.Fatalf("%s isn't pending-schedule", testContainerID)
-	}
+	for endpoint, ids := range want {
+		specs, ok := have[endpoint]
+		if !ok {
+			return fmt.Errorf("want endpoint %s, but it's missing", endpoint)
+		}
 
-	// Try to unschedule it.
-	if err := registry.unschedule(testContainerID, testTaskSpec, nil); err == nil {
-		t.Errorf("while unscheduling a pending-schedule container: expected error, got none")
-	} else {
-		t.Logf("unscheduling a pending-schedule container: %s (good)", err)
-	}
+		for id := range ids {
+			if _, ok := specs[id]; !ok {
+				return fmt.Errorf("endpoint %s, want %q, but it's missing", endpoint, id)
+			}
 
-	// Pretend we're a transformer, and move it to scheduled.
-	registry.signal(testContainerID, signalScheduleSuccessful)
-
-	if _, ok := registry.scheduled[testContainerID]; !ok {
-		t.Fatalf("%s isn't scheduled", testContainerID)
+			t.Logf("%s: %s OK", endpoint, id)
+		}
 	}
 
-	// Try to unschedule it.
-	c := make(chan schedulingSignalWithContext)
-	if err := registry.unschedule(testContainerID, testTaskSpec, c); err != nil {
-		t.Errorf("while unscheduling a scheduled container: %s", err)
-	}
-	if _, ok := registry.pendingUnschedule[testContainerID]; !ok {
-		t.Fatalf("%s isn't pending-unschedule", testContainerID)
-	}
-
-	// Try to unschedule it again.
-	if err := registry.unschedule(testContainerID, testTaskSpec, nil); err == nil {
-		t.Errorf("while unscheduling an pending-unschedule container: expected error, got none")
-	} else {
-		t.Logf("unscheduling a pending-unschedule container: %s (good)", err)
-	}
-
-	// Pretend we're a transformer, and move the thing to deleted.
-	received := make(chan schedulingSignalWithContext) // make an intermediary chan, so
-	go func() { received <- <-c }()                    // we don't block the signaler
-
-	registry.signal(testContainerID, signalUnscheduleSuccessful)
-
-	select {
-	case <-received:
-	case <-time.After(time.Millisecond):
-		t.Fatal("never got signal after a successful unschedule")
-	}
-
-	if _, ok := registry.pendingUnschedule[testContainerID]; ok {
-		t.Fatalf("%s is still pending-unschedule", testContainerID)
-	}
-}
-
-func newTestRegistry(t *testing.T) *registry {
-	registry, err := newRegistry(nil, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	return registry
+	return nil
 }

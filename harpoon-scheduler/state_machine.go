@@ -1,158 +1,377 @@
-// The remote agent state machine represents a remote agent instance in the
-// scheduler domain. It opens and maintains an event stream, so it can
-// represent the current state of the remote agent.
-//
-// Components in the scheduler domain that need information about specific
-// agents (e.g. a scheduling algorithm) query remote agent state machines to
-// make their decisions.
+// State machine establishes a resilient connection to a remote agent, and
+// faithfully represents its state in the scheduler.
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
+	"sync"
+	"time"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
-type stateMachine struct {
-	agent.Agent
-	snapshotc chan chan map[string]agent.ContainerInstance
-	dirtyc    chan chan bool
-	quit      chan chan struct{}
+var (
+	errAgentConnectionInterrupted = errors.New("agent connection interrupted")
+)
+
+// The type map[string]agent.ContainerInstance represents a set of container
+// instances from a single agent. This is the type used to communicate with
+// the remote agent.
+//
+// The type map[string]map[string]agent.ContainerInstance represents container
+// instances from one or more agents. This is the type used to communicate
+// with our clients. We place our current set of container instances under the
+// key of our endpoint, so that our clients may multiplex updates from
+// multiple state machines into a single channel, and not have to track
+// individual contributors out-of-band.
+
+type stateMachine interface {
+	endpoint() string
+	subscribe(c chan<- map[string]map[string]agent.ContainerInstance)
+	unsubscribe(c chan<- map[string]map[string]agent.ContainerInstance)
+	taskScheduler
+	quit()
 }
 
-type syncer interface {
-	sync()
+type realStateMachine struct {
+	myEndpoint string
+
+	subc          chan chan<- map[string]map[string]agent.ContainerInstance
+	unsubc        chan chan<- map[string]map[string]agent.ContainerInstance
+	schedc        chan schedTaskReq
+	unschedc      chan unschedTaskReq
+	initializec   chan map[string]agent.ContainerInstance
+	updatec       chan map[string]agent.ContainerInstance
+	reconnectc    chan struct{} // signal from requestLoop to connectionLoop to reconnect
+	interruptionc chan struct{}
+	quitc         chan struct{}
+
+	sync.WaitGroup
 }
 
-func newStateMachine(endpoint string, syncer syncer) *stateMachine {
-	proxy, err := newRemoteAgent(endpoint)
-	if err != nil {
-		panic(fmt.Sprintf("when building agent proxy: %s", err))
+var _ stateMachine = &realStateMachine{}
+
+func newRealStateMachine(endpoint string) *realStateMachine {
+	m := &realStateMachine{
+		myEndpoint: endpoint,
+
+		subc:          make(chan chan<- map[string]map[string]agent.ContainerInstance),
+		unsubc:        make(chan chan<- map[string]map[string]agent.ContainerInstance),
+		schedc:        make(chan schedTaskReq),
+		unschedc:      make(chan unschedTaskReq),
+		initializec:   make(chan map[string]agent.ContainerInstance),
+		updatec:       make(chan map[string]agent.ContainerInstance),
+		reconnectc:    make(chan struct{}),
+		interruptionc: make(chan struct{}),
+		quitc:         make(chan struct{}),
 	}
 
-	// From here forward, we should be resilient, retry, etc.
+	m.Add(2)
+	go m.requestLoop()
+	go m.connectionLoop()
 
-	updatec, stopper, err := proxy.Events()
-	if err != nil {
-		panic(fmt.Sprintf("when getting agent event stream: %s", err)) // TODO(pb): don't panic!
-	}
-
-	s := &stateMachine{
-		Agent:     proxy,
-		snapshotc: make(chan chan map[string]agent.ContainerInstance),
-		dirtyc:    make(chan chan bool),
-		quit:      make(chan chan struct{}),
-	}
-
-	go s.loop(proxy.URL.String(), updatec, syncer, stopper)
-
-	return s
+	return m
 }
 
-func (s *stateMachine) dirty() bool {
-	c := make(chan bool)
-	s.dirtyc <- c
-	return <-c
+func (m *realStateMachine) endpoint() string {
+	return m.myEndpoint
 }
 
-func (s *stateMachine) proxy() agent.Agent {
-	return s.Agent
+func (m *realStateMachine) subscribe(c chan<- map[string]map[string]agent.ContainerInstance) {
+	m.subc <- c
 }
 
-func (s *stateMachine) snapshot() map[string]agent.ContainerInstance {
-	c := make(chan map[string]agent.ContainerInstance)
-	s.snapshotc <- c
-	return <-c
+func (m *realStateMachine) unsubscribe(c chan<- map[string]map[string]agent.ContainerInstance) {
+	m.unsubc <- c
 }
 
-func (s *stateMachine) stop() {
-	q := make(chan struct{})
-	s.quit <- q
-	<-q
+func (m *realStateMachine) schedule(spec taskSpec) error {
+	req := schedTaskReq{spec, make(chan error)}
+	m.schedc <- req
+	return <-req.err
 }
 
-func (s *stateMachine) loop(
-	endpoint string,
-	updatec <-chan []agent.ContainerInstance,
-	syncer syncer,
-	stopper agent.Stopper,
-) {
-	log.Printf("state machine: %s: started", endpoint)
-	defer log.Printf("state machine: %s: stopped", endpoint)
-	defer stopper.Stop()
+func (m *realStateMachine) unschedule(_, id string) error {
+	req := unschedTaskReq{"", id, make(chan error)}
+	m.unschedc <- req
+	return <-req.err
+}
+
+func (m *realStateMachine) quit() {
+	close(m.quitc)
+	m.Wait()
+}
+
+func (m *realStateMachine) requestLoop() {
+	defer m.Done()
 
 	var (
-		dirty     = true             // indicator of trust
-		instances = agentInstances{} // initially empty, pending first update (clients, check dirty flag)
+		subs     = map[chan<- map[string]map[string]agent.ContainerInstance]struct{}{}
+		current  = map[string]agent.ContainerInstance{}
+		tangos   = map[string]time.Time{} // container ID to be destroyed: deadline
+		tangoc   = time.Tick(1 * time.Second)
+		timeoutc <-chan time.Time // initially nil
 	)
 
-	for {
-		select {
-		case update, ok := <-updatec:
+	client, err := agent.NewClient(m.myEndpoint)
+	if err != nil {
+		panic(err)
+	}
 
-			// TODO(pb): if the agent crashes and comes back, the eventsource
-			// lib hides that connection interruption from us. We don't see
-			// the disconnect, and the first event that comes to us after the
-			// restart is an empty array, which we interpret as a delta-zero
-			// and don't make any updates. We should instead wipe our
-			// instances. So, we need to get the disconnects forwarded to us.
+	broadcast := func() {
+		for c := range subs {
+			c <- map[string]map[string]agent.ContainerInstance{m.myEndpoint: current}
+		}
+	}
 
+	update := func(delta map[string]agent.ContainerInstance) {
+		for id, instance := range delta {
+			switch instance.Status {
+			case agent.ContainerStatusDeleted:
+				delete(current, id)
+			default:
+				current[id] = instance
+			}
+		}
+	}
+
+	sched := func(spec taskSpec) error {
+		if timeoutc != nil {
+			return errAgentConnectionInterrupted
+		}
+
+		switch err := client.Put(spec.ContainerID, spec.ContainerConfig); err {
+		case nil:
+			return nil
+		case agent.ErrContainerAlreadyExists:
+			return client.Start(spec.ContainerID)
+		default:
+			return err
+		}
+	}
+
+	unsched := func(id string) error {
+		if timeoutc != nil {
+			return errAgentConnectionInterrupted
+		}
+
+		instance, ok := current[id]
+		if !ok {
+			return fmt.Errorf("%q not scheduled", id)
+		}
+
+		// Unscheduling is a multi-step process. Stop, wait for status
+		// finished, then delete. Because all updates to remote container
+		// state go through this very request loop, and we need to inspect
+		// that status to proceed, we have to yield immediately. So, we
+		// register a tango, i.e. a target to destroy.
+
+		if _, ok := tangos[id]; ok {
+			return fmt.Errorf("%q already being unscheduled, have patience", id)
+		}
+
+		tangos[id] = time.Now().Add(2 * time.Duration(instance.Config.Grace.Shutdown) * time.Second)
+		return nil
+	}
+
+	dance := func() {
+		for id, deadline := range tangos {
+			instance, ok := current[id]
 			if !ok {
-				log.Printf("state machine: %s: container events chan closed", endpoint)
-				log.Printf("state machine: %s: TODO: re-establish connection", endpoint)
-				// TODO(pb): channel-of-channels idiom for connection mgmt
-				updatec = nil // TODO re-establish connection, instead of this
-				dirty = true  // TODO and some way to reset that
+				log.Printf("state machine: %s: tango %s neutralized", m.myEndpoint, id)
+				delete(tangos, id)
 				continue
 			}
 
-			incContainerEventsReceived(1)
-
-			log.Printf("state machine: %s: update (%d)", endpoint, len(update))
-			for _, ci := range update {
-				instances.update(ci)
+			if time.Now().After(deadline) {
+				log.Printf("state machine: %s: tango %s hit deadline, got to %s", m.myEndpoint, id, instance.Status)
+				delete(tangos, id)
+				continue
 			}
 
-			dirty = false
+			switch instance.Status {
+			case agent.ContainerStatusRunning, agent.ContainerStatusFailed:
+				log.Printf("state machine: %s: tango %s %s, issuing Stop", m.myEndpoint, id, instance.Status)
+				switch err := client.Stop(id); err {
+				case nil:
+					continue // OK, wait for next update
 
-			syncer.sync()
+				case agent.ErrContainerAlreadyStopped:
+					log.Printf("state machine: %s: tango %s Stop: %s -- we're out of sync!", m.myEndpoint, id, err)
+					m.reconnectc <- struct{}{} // re-sync on the next initialize
+					continue
 
-		case c := <-s.dirtyc:
-			c <- dirty
+				case agent.ErrContainerNotExist:
+					log.Printf("state machine: %s: tango %s Stop: %s -- we're out of sync!", m.myEndpoint, id, err)
+					delete(tangos, id)         // apparently the container is gone, sooo...
+					m.reconnectc <- struct{}{} // re-sync on the next initialize
+					continue
 
-		case c := <-s.snapshotc:
-			c <- instances // client should consider dirty flag
+				default:
+					log.Printf("state machine: %s: tango %s Stop: %s", m.myEndpoint, id, err)
+					continue
+				}
 
-		case q := <-s.quit:
-			close(q)
+			case agent.ContainerStatusCreated, agent.ContainerStatusFinished:
+				log.Printf("state machine: %s: tango %s %s, issuing Delete", m.myEndpoint, id, instance.Status)
+				switch err := client.Delete(id); err {
+				case nil:
+					continue // OK, wait for next update
+
+				case agent.ErrContainerNotExist:
+					log.Printf("state machine: %s: tango %s Delete: %s -- we're out of sync!", m.myEndpoint, id, err)
+					delete(tangos, id)         //  apparently the container is gone, sooo...
+					m.reconnectc <- struct{}{} // re-sync on the next initialize
+					continue
+
+				default:
+					log.Printf("state machine: %s: tango %s Delete: %s", m.myEndpoint, id, err)
+					continue
+				}
+
+			default:
+				log.Printf("state machine: %s: tango %s %s, nop", m.myEndpoint, id, instance.Status)
+				continue
+			}
+		}
+	}
+
+	for {
+		select {
+		case c := <-m.subc:
+			subs[c] = struct{}{}
+			go func(current0 map[string]agent.ContainerInstance) {
+				c <- map[string]map[string]agent.ContainerInstance{m.myEndpoint: current0}
+			}(current)
+
+		case c := <-m.unsubc:
+			delete(subs, c)
+
+		case req := <-m.schedc:
+			req.err <- sched(req.taskSpec)
+
+		case req := <-m.unschedc:
+			req.err <- unsched(req.id)
+
+		case current = <-m.initializec:
+			incContainerEventsReceived(len(current))
+			timeoutc = nil
+			broadcast()
+
+		case state := <-m.updatec:
+			incContainerEventsReceived(len(current))
+			update(state)
+			broadcast()
+
+		case <-m.interruptionc:
+			if timeoutc == nil {
+				timeoutc = time.After(5 * time.Minute)
+			}
+
+		case <-timeoutc:
+			current = map[string]agent.ContainerInstance{}
+			broadcast()
+
+		case <-tangoc:
+			dance()
+
+		case <-m.quitc:
 			return
 		}
 	}
 }
 
-type agentInstances map[string]agent.ContainerInstance
+func (m *realStateMachine) connectionLoop() {
+	defer m.Done()
 
-func newAgentInstances(initial []agent.ContainerInstance) agentInstances {
-	agentInstances := agentInstances{}
-	for _, ci := range initial {
-		agentInstances[ci.ID] = ci
+	for {
+		a, err := agent.NewClient(m.myEndpoint)
+		if err != nil {
+			log.Printf("state machine: %s: %s", m.myEndpoint, err)
+
+			select {
+			case <-m.quitc:
+				return
+			case <-time.After(1 * time.Second):
+				continue
+			}
+		}
+
+		statec, stopper, err := a.Events()
+		if err != nil {
+			log.Printf("state machine: %s: %s", m.myEndpoint, err)
+
+			select {
+			case <-m.quitc:
+				return
+			case <-time.After(1 * time.Second):
+				continue
+			}
+		}
+
+		incAgentConnectionsEstablished(1)
+
+		if err := m.readLoop(statec, stopper); err != nil {
+			log.Printf("state machine: %s: %s", m.myEndpoint, err)
+
+			incAgentConnectionsInterrupted(1)
+
+			m.interruptionc <- struct{}{} // signal
+
+			select {
+			case <-m.quitc:
+				return
+			case <-time.After(1 * time.Second):
+				continue
+			}
+		}
+
+		return
 	}
-	return agentInstances
 }
 
-func (ai agentInstances) update(ci agent.ContainerInstance) {
-	switch ci.Status {
-	case agent.ContainerStatusCreated, agent.ContainerStatusRunning:
-		ai[ci.ID] = ci
-	case agent.ContainerStatusFinished, agent.ContainerStatusFailed, agent.ContainerStatusDeleted:
-		delete(ai, ci.ID)
-	default:
-		panic(fmt.Sprintf("container status %q unhandled", ci.Status))
-	}
-}
+func (m *realStateMachine) readLoop(statec <-chan map[string]agent.ContainerInstance, stopper agent.Stopper) error {
+	// Currently, we'll never exit this loop organically, because the event
+	// stream will never fail, because EventSource takes care of transparently
+	// maintaining the connection. We should manage connection state directly,
+	// using only EventSource Encoder and Decoder.
 
-type stateRequest struct {
-	resp chan map[string]agent.ContainerInstance
-	err  chan error
+	defer stopper.Stop()
+
+	// When this function exits, we've lost our connection to the agent. When
+	// that happens, we start a timer, which (when fired) flushes the
+	// `current` in the request loop, and thereby declares all the instances
+	// lost. (That timeout chan in the request loop is neutralized when we
+	// send the first successful state update over initializec.)
+
+	first := true
+
+	for {
+		select {
+		case <-m.quitc:
+			return nil
+
+		case <-m.reconnectc:
+			return fmt.Errorf("request loop requested a reconnect")
+
+		case state, ok := <-statec:
+			if !ok {
+				// When we detect a connection error, we'll trigger the lost
+				// timer, but otherwise remain optimistic. We make no
+				// immediate change to our set of instances, and enter our
+				// reconnect loop, trying to get back in a good state.
+				return errAgentConnectionInterrupted
+			}
+
+			if first {
+				m.initializec <- state // clears previous timeout timer
+				first = false
+				continue
+			}
+
+			m.updatec <- state
+		}
+	}
 }

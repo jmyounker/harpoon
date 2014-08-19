@@ -23,13 +23,17 @@
 
 ### libcontainer
 
-- go library for running "bundle of process" containers
+- go library for running application containers
 - still early, but no major blockers
 - PRs have been merged quickly
 - Some things still missing which will need PRs:
-  - OOM notification (PR pending)
   - custom tmpfs directories
-  - some stuff around cgroup metrics
+
+### lmctfy
+
+- c++ library for application containers
+- early versions supported only cgroups, not namespaces; now mostly
+  interchangeable w/ libcontainer
 
 ### systemd (+ nspawn/libcontainer/docker)
 

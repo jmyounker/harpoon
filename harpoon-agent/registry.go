@@ -53,18 +53,19 @@ func (r *registry) register(c container) bool {
 
 	r.m[c.Instance().ID] = c
 
-	// Forward the container's state changes to all subscribers.
-	go func(c container, outc chan agent.ContainerInstance) {
-		inc := make(chan agent.ContainerInstance)
-		// The container sends us a copy of its associated ContainerInstance every
-		// time the container changes state.
-		c.Subscribe(inc)
-		defer c.Unsubscribe(inc)
+	// The container sends us a copy of its associated ContainerInstance every
+	// time the container changes state. This needs to happen outside of the
+	// goroutine, to make sure we collect all initial state change(s).
+	inc := make(chan agent.ContainerInstance)
+	c.Subscribe(inc)
 
+	// Forward the container's state changes to all subscribers.
+	go func() {
+		defer c.Unsubscribe(inc)
 		for instance := range inc {
-			outc <- instance
+			r.statec <- instance
 		}
-	}(c, r.statec)
+	}()
 
 	return true
 }
@@ -76,17 +77,17 @@ func (r *registry) len() int {
 	return len(r.m)
 }
 
-func (r *registry) instances() []agent.ContainerInstance {
+func (r *registry) instances() map[string]agent.ContainerInstance {
 	r.Lock()
 	defer r.Unlock()
 
-	list := make([]agent.ContainerInstance, 0, len(r.m))
+	m := make(map[string]agent.ContainerInstance, len(r.m))
 
-	for _, container := range r.m {
-		list = append(list, container.Instance())
+	for id, container := range r.m {
+		m[id] = container.Instance()
 	}
 
-	return list
+	return m
 }
 
 func (r *registry) acceptStateUpdates() {

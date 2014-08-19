@@ -57,7 +57,6 @@ type realContainer struct {
 	heartbeatc chan heartbeatRequest
 	subc       chan chan<- agent.ContainerInstance
 	unsubc     chan chan<- agent.ContainerInstance
-	quitc      chan chan struct{}
 }
 
 // Satisfaction guaranteed.
@@ -79,7 +78,6 @@ func newContainer(id string, config agent.ContainerConfig) *realContainer {
 		heartbeatc: make(chan heartbeatRequest),
 		subc:       make(chan chan<- agent.ContainerInstance),
 		unsubc:     make(chan chan<- agent.ContainerInstance),
-		quitc:      make(chan chan struct{}),
 	}
 
 	c.buildContainerConfig()
@@ -151,19 +149,41 @@ func (c *realContainer) Unsubscribe(ch chan<- agent.ContainerInstance) {
 }
 
 func (c *realContainer) loop() {
+	defer c.logs.exit()
+
 	for {
 		select {
 		case req := <-c.actionc:
 			// All of these methods must be nonblocking
 			switch req.action {
 			case containerCreate:
-				req.res <- c.create()
+				incContainerCreate(1)
+				err := c.create()
+				if err != nil {
+					incContainerCreateFailure(1)
+				}
+				req.res <- err
+
 			case containerDestroy:
-				req.res <- c.destroy()
+				incContainerDestroy(1)
+				err := c.destroy()
+				req.res <- err
+				if err == nil {
+					return
+				}
+
 			case containerStart:
-				req.res <- c.start()
+				incContainerStart(1)
+				err := c.start()
+				if err != nil {
+					incContainerStartFailure(1)
+				}
+				req.res <- err
+
 			case containerStop:
+				incContainerStop(1)
 				req.res <- c.stop()
+
 			default:
 				panic(fmt.Sprintf("unknown action %q", req.action))
 			}
@@ -176,11 +196,6 @@ func (c *realContainer) loop() {
 
 		case ch := <-c.unsubc:
 			delete(c.subscribers, ch)
-
-		case q := <-c.quitc:
-			c.logs.exit()
-			close(q)
-			return
 		}
 	}
 }
@@ -318,10 +333,6 @@ func (c *realContainer) destroy() error {
 
 	c.subscribers = map[chan<- agent.ContainerInstance]struct{}{}
 
-	q := make(chan struct{})
-	c.quitc <- q
-	<-q
-
 	return nil
 }
 
@@ -379,12 +390,14 @@ func (c *realContainer) heartbeat(hb agent.Heartbeat) string {
 	case want == "DOWN" && have == "UP":
 		// Waiting for the container to shutdown normally
 		if time.Now().After(c.downDeadline) {
+			incContainerStatusKilled(1)
 			return "FORCEDOWN" // too long: kill -9
 		}
 		return "DOWN" // keep waiting
 
 	case want == "DOWN" && have == "DOWN":
 		// Normal shutdown successful; won't receive more updates
+		incContainerStatusDownSuccessful(1)
 		c.updateStatus(agent.ContainerStatusFinished)
 		return "DOWN" // TODO(pb): this was FORCEDOWN, but DOWN makes more sense to me?
 
@@ -394,6 +407,7 @@ func (c *realContainer) heartbeat(hb agent.Heartbeat) string {
 
 	case want == "FORCEDOWN" && have == "DOWN":
 		// Aggressive shutdown successful
+		incContainerStatusForceDownSuccessful(1)
 		c.updateStatus(agent.ContainerStatusFinished)
 		return "FORCEDOWN"
 	}

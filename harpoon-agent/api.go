@@ -17,7 +17,7 @@ import (
 
 type api struct {
 	http.Handler
-	registry *registry
+	*registry
 
 	enabled bool
 	sync.RWMutex
@@ -112,7 +112,13 @@ func (a *api) handleStop(w http.ResponseWriter, r *http.Request) {
 
 	container, ok := a.registry.get(id)
 	if !ok {
-		http.Error(w, "", http.StatusNotFound)
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+
+	if container.Instance().Status == agent.ContainerStatusFinished {
+		log.Printf("[%s] start: already stopped", id)
+		http.Error(w, "already stopped", http.StatusConflict)
 		return
 	}
 
@@ -130,7 +136,13 @@ func (a *api) handleStart(w http.ResponseWriter, r *http.Request) {
 
 	container, ok := a.registry.get(id)
 	if !ok {
-		http.Error(w, "", http.StatusNotFound)
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+
+	if container.Instance().Status == agent.ContainerStatusRunning {
+		log.Printf("[%s] start: already running", id)
+		http.Error(w, "already running", http.StatusConflict)
 		return
 	}
 
@@ -160,7 +172,7 @@ func (a *api) handleDestroy(w http.ResponseWriter, r *http.Request) {
 
 	a.registry.remove(id)
 
-	w.WriteHeader(http.StatusNoContent)
+	w.WriteHeader(http.StatusOK)
 }
 
 func (a *api) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
@@ -205,7 +217,7 @@ func (a *api) handleContainerStream(_ string, enc *eventsource.Encoder, stop <-c
 		case <-stop:
 			return
 		case state := <-statec:
-			b, err := json.Marshal([]agent.ContainerInstance{state})
+			b, err := json.Marshal(map[string]agent.ContainerInstance{state.ID: state})
 			if err != nil {
 				log.Printf("container stream: fatal error: %s", err)
 				return

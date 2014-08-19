@@ -121,7 +121,9 @@ func (cl *containerLog) insert(line string) {
 	for linec := range cl.notifications {
 		select {
 		case linec <- line:
+			incLogDeliverableLines(1)
 		default:
+			incLogUndeliveredLines(1)
 		}
 	}
 }
@@ -172,16 +174,19 @@ func receiveLogs(r *registry) {
 			log.Printf("logs: while reading from port: %s", err)
 			return
 		}
+		incLogReceivedLines(1)
 
 		line := string(buf[:n])
 		matches := containsPtrn.FindStringSubmatch(line)
 		if len(matches) != 2 {
+			incLogUnparsableLines(1)
 			log.Printf("logs: %s: message to unknown container: %s", addr, line)
 			continue
 		}
 
 		container, ok := r.get(matches[1])
 		if !ok {
+			incLogUnroutableLines(1)
 			log.Printf("logs: %s: message to unknown container: %s", addr, line)
 			continue
 		}

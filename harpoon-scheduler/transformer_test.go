@@ -1,156 +1,56 @@
 package main
 
 import (
-	"fmt"
-	"io/ioutil"
-	"log"
-	"net/http/httptest"
+	"reflect"
 	"testing"
-	"time"
+
+	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
-func TestTransformerAgentEndpointUpdates(t *testing.T) {
-	//log.SetFlags(log.Lmicroseconds) // use this when debugging problems
-	log.SetOutput(ioutil.Discard) // use this when everything is copacetic
-
+func TestTransform(t *testing.T) {
 	var (
-		registry       = newTestRegistry(t)
-		agentDiscovery = newMockAgentDiscovery()
-		numAgents      = 3
+		endpoint1 = "http://berlin.info:1234"
+		id1       = "professor-wiggles"
+		taskSpec1 = taskSpec{Endpoint: endpoint1, ContainerID: id1}
 	)
 
-	testAgents := make([]*httptest.Server, numAgents)
-	for i := 0; i < numAgents; i++ {
-		testAgents[i] = httptest.NewServer(newMockAgent())
-		defer testAgents[i].Close()
+	type testCase struct {
+		want    map[string]map[string]taskSpec
+		have    map[string]map[string]agent.ContainerInstance
+		started []taskSpec
+		stopped []endpointID
 	}
 
-	transformer := newTransformer(agentDiscovery, registry, 2*time.Millisecond)
-	defer transformer.stop()
+	for i, input := range []testCase{
+		{
+			want:    map[string]map[string]taskSpec{endpoint1: map[string]taskSpec{id1: taskSpec1}},
+			have:    map[string]map[string]agent.ContainerInstance{},
+			started: []taskSpec{taskSpec1},
+			stopped: []endpointID{},
+		},
+		{
+			want:    map[string]map[string]taskSpec{endpoint1: map[string]taskSpec{id1: taskSpec1}},
+			have:    map[string]map[string]agent.ContainerInstance{endpoint1: map[string]agent.ContainerInstance{id1: agent.ContainerInstance{}}},
+			started: []taskSpec{},
+			stopped: []endpointID{},
+		},
+		{
+			want:    map[string]map[string]taskSpec{},
+			have:    map[string]map[string]agent.ContainerInstance{endpoint1: map[string]agent.ContainerInstance{id1: agent.ContainerInstance{}}},
+			started: []taskSpec{},
+			stopped: []endpointID{{endpoint1, id1}},
+		},
+	} {
+		target := newMockTaskScheduler()
 
-	// Preflight, we should have 0 remote agents.
-	if expected, got := 0, len(transformer.agentStates()); expected != got {
-		t.Errorf("before setup: expected %d agent(s), got %d", expected, got)
-	}
+		transform(input.want, input.have, target)
 
-	// Add numAgents to the discovery.
-	for i := 0; i < numAgents; i++ {
-		agentDiscovery.add(testAgents[i].URL)
-	}
-
-	// Now we should have them all.
-	if expected, got := numAgents, len(transformer.agentStates()); expected != got {
-		t.Errorf("after adds: expected %d agent(s), got %d", expected, got)
-	}
-
-	// Kill one from the discovery.
-	agentDiscovery.delete(testAgents[0].URL)
-	testAgents[0].CloseClientConnections()
-
-	// Now we should have one less.
-	if expected, got := (numAgents - 1), len(transformer.agentStates()); expected != got {
-		t.Errorf("after delete: expected %d agent(s), got %d", expected, got)
-	}
-}
-
-func TestTransformerScheduleUnschedule(t *testing.T) {
-	//log.SetFlags(log.Lmicroseconds) // use this when debugging problems
-	log.SetOutput(ioutil.Discard) // use this when everything is copacetic
-
-	var (
-		s           = httptest.NewServer(newMockAgent())
-		registry    = newTestRegistry(t)
-		transformer = newTransformer(staticAgentDiscovery([]string{s.URL}), registry, 2*time.Millisecond)
-	)
-	defer s.Close()
-	defer transformer.stop()
-
-	var (
-		containerID  = "test-container-id"
-		testTaskSpec = taskSpec{
-			Endpoint: s.URL,
-			JobName:  "test-job-name",
-			TaskName: "test-task-name",
+		if want, have := input.started, target.started; !reflect.DeepEqual(want, have) {
+			t.Errorf("%d: started: want %v, have %v", i, want, have)
 		}
-		do = func(f func(string, taskSpec, chan schedulingSignalWithContext) error, acceptable schedulingSignal) error {
-			// When we're done, we need to give the agent state machine some
-			// CPU cycles, so it can receive information from the agent.
-			defer time.Sleep(1 * time.Millisecond)
-			c := make(chan schedulingSignalWithContext, 1)
-			if err := f(containerID, testTaskSpec, c); err != nil {
-				return err
-			}
-			select {
-			case sig := <-c:
-				if sig.schedulingSignal != acceptable {
-					return fmt.Errorf("got %s (%s)", sig.schedulingSignal, sig.context)
-				}
-				return nil
-			case <-time.After(10 * time.Millisecond):
-				return fmt.Errorf("timeout")
-			}
+
+		if want, have := input.stopped, target.stopped; !reflect.DeepEqual(want, have) {
+			t.Errorf("%d: stopped: want %v, have %v", i, want, have)
 		}
-		schedule   = func() error { return do(registry.schedule, signalScheduleSuccessful) }
-		unschedule = func() error { return do(registry.unschedule, signalUnscheduleSuccessful) }
-	)
-
-	log.Printf("☞ bogus unschedule")
-	err := unschedule()
-	if err == nil {
-		t.Fatal("expected error when unscheduling nonexistant, but got none!")
-	}
-	t.Logf("when unscheduling nonexistent, got %s (good)", err)
-
-	log.Printf("☞ proper schedule")
-	err = schedule()
-	if err != nil {
-		t.Fatalf("during schedule: %s", err)
-	}
-	t.Logf("successfully scheduled")
-
-	log.Printf("☞ double schedule")
-	err = schedule()
-	if err == nil {
-		t.Fatal("expected error when double-scheduling, but got none!")
-	}
-	t.Logf("when double-scheduling, got %s (good)", err)
-
-	log.Printf("☞ proper unschedule")
-	err = unschedule()
-	if err != nil {
-		t.Fatalf("during unschedule: %s", err)
-	}
-	t.Logf("successfully unscheduled")
-
-	log.Printf("☞ double unschedule")
-	err = unschedule()
-	if err == nil {
-		t.Fatal("expected error when unscheduling nonexistant, but got none!")
-	}
-	t.Logf("when unscheduling nonexistent, got %s (good)", err)
-
-	log.Printf("☞ finished")
-}
-
-func TestFwdState(t *testing.T) {
-	var (
-		in   = make(chan registryState)
-		out  = make(chan registryState)
-		done = make(chan struct{})
-	)
-	go func() { fwdState(out, in); close(done) }()
-
-	go func() {
-		in <- registryState{}
-		in <- registryState{}
-		<-out
-		in <- registryState{}
-		close(in)
-	}()
-
-	select {
-	case <-done:
-	case <-time.After(10 * time.Millisecond):
-		t.Error("timeout")
 	}
 }
