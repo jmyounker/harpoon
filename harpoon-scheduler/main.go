@@ -14,7 +14,7 @@ import (
 
 func main() {
 	var (
-		httpAddress      = flag.String("http.address", ":4444", "HTTP listen address")
+		listen           = flag.String("listen", ":4444", "HTTP listen address")
 		registryFilename = flag.String("registry.filename", "scheduler-registry.json", "persistence filename")
 		agents           = multiagent{}
 	)
@@ -36,13 +36,13 @@ func main() {
 	defer scheduler.quit()
 
 	log.Printf("there are %d static agent(s)", len(agents.slice()))
-	log.Printf("the shepherd flock size is %d", shepherd.size())
+	log.Printf("the shepherd's flock size is %d", shepherd.size())
 
 	err := make(chan error, 2)
 
 	go func() {
-		log.Printf("listening on %s", *httpAddress)
-		err <- http.ListenAndServe(*httpAddress, api)
+		log.Printf("listening on %s", *listen)
+		err <- http.ListenAndServe(*listen, api)
 	}()
 
 	go func() {
