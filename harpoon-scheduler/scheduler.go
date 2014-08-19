@@ -1,6 +1,3 @@
-// The scheduler implements the public scheduler API, allowing users to
-// schedule and unschedule jobs, and migrate scheduled jobs to a new job
-// config.
 package main
 
 import (
@@ -8,436 +5,259 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math"
 	"reflect"
 	"time"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 	"github.com/soundcloud/harpoon/harpoon-configstore/lib"
-	"github.com/soundcloud/harpoon/harpoon-scheduler/lib"
 )
 
-// Some facts about container IDs:
-//  - Operational atom in the scheduler
-//  - A reference type that uniquely identifies a container
-//  - Captures all dimensions of job config, including artifact URL and scale
-//  - Changing any dimension of job config = new set of container IDs
-//  - A hash of job, task, and task scale index
-//  - 1 job = N container IDs
+var (
+	algorithm = randomChoice
+)
 
-type basicScheduler struct {
-	scheduleRequests   chan scheduleRequest
-	migrateRequests    chan migrateRequest
-	unscheduleRequests chan unscheduleRequest
-	quit               chan chan struct{}
+type jobScheduler interface {
+	schedule(configstore.JobConfig) error
+	unschedule(configstore.JobConfig) error
+	migrate(from, to configstore.JobConfig) error
 }
 
-func newBasicScheduler(
-	registryPublic registryPublic,
-	agentStater agentStater,
-	lost chan map[string]taskSpec,
-) *basicScheduler {
-	s := &basicScheduler{
-		scheduleRequests:   make(chan scheduleRequest),
-		migrateRequests:    make(chan migrateRequest),
-		unscheduleRequests: make(chan unscheduleRequest),
-		quit:               make(chan chan struct{}),
+type snapshotter interface {
+	snapshot() map[string]map[string]agent.ContainerInstance
+}
+
+type scheduler interface {
+	jobScheduler
+	snapshotter
+}
+
+type realScheduler struct {
+	schedc    chan schedJobReq
+	unschedc  chan schedJobReq
+	migratec  chan migrateJobReq
+	snapshotc chan map[string]map[string]agent.ContainerInstance
+	quitc     chan chan struct{}
+}
+
+var _ scheduler = &realScheduler{}
+
+func newRealScheduler(actual actualBroadcaster, target taskScheduler) *realScheduler {
+	s := &realScheduler{
+		schedc:    make(chan schedJobReq),
+		unschedc:  make(chan schedJobReq),
+		migratec:  make(chan migrateJobReq),
+		snapshotc: make(chan map[string]map[string]agent.ContainerInstance),
+		quitc:     make(chan chan struct{}),
 	}
-	go s.loop(registryPublic, agentStater, lost)
+
+	go s.loop(actual, target)
+
 	return s
 }
 
-func (s *basicScheduler) Schedule(job scheduler.Job) error {
-	req := scheduleRequest{
-		job:  job,
-		resp: make(chan error),
+func (s *realScheduler) schedule(job configstore.JobConfig) error {
+	if err := job.Valid(); err != nil {
+		return err
 	}
-	s.scheduleRequests <- req
-	return <-req.resp
+
+	req := schedJobReq{job, make(chan error)}
+
+	s.schedc <- req
+
+	return <-req.err
+
 }
 
-func (s *basicScheduler) Migrate(existingJob scheduler.Job, newJobConfig configstore.JobConfig) error {
-	req := migrateRequest{
-		existingJob:  existingJob,
-		newJobConfig: newJobConfig,
-		resp:         make(chan error),
+func (s *realScheduler) unschedule(job configstore.JobConfig) error {
+	if err := job.Valid(); err != nil {
+		return err
 	}
-	s.migrateRequests <- req
-	return <-req.resp
+
+	req := schedJobReq{job, make(chan error)}
+
+	s.unschedc <- req
+
+	return <-req.err
 }
 
-func (s *basicScheduler) Unschedule(job scheduler.Job) error {
-	req := unscheduleRequest{
-		job:  job,
-		resp: make(chan error),
+func (s *realScheduler) migrate(from, to configstore.JobConfig) error {
+	if err := from.Valid(); err != nil {
+		return err
 	}
-	s.unscheduleRequests <- req
-	return <-req.resp
+
+	if err := to.Valid(); err != nil {
+		return err
+	}
+
+	req := migrateJobReq{from, to, make(chan error)}
+
+	s.migratec <- req
+
+	return <-req.err
 }
 
-func (s *basicScheduler) stop() {
+func (s *realScheduler) snapshot() map[string]map[string]agent.ContainerInstance {
+	return <-s.snapshotc
+}
+
+func (s *realScheduler) quit() {
 	q := make(chan struct{})
-	s.quit <- q
+	s.quitc <- q
 	<-q
 }
 
-func (s *basicScheduler) loop(
-	registryPublic registryPublic,
-	agentStater agentStater,
-	lost chan map[string]taskSpec,
-) {
-	algo := randomNonDirty
+func (s *realScheduler) loop(actual actualBroadcaster, target taskScheduler) {
+	var (
+		updatec = make(chan map[string]map[string]agent.ContainerInstance)
+		current = map[string]map[string]agent.ContainerInstance{}
+	)
+
+	actual.subscribe(updatec)
+	defer actual.unsubscribe(updatec)
+
+	select {
+	case current = <-updatec:
+	case <-time.After(time.Millisecond):
+		panic("misbehaving actual-state broadcaster")
+	}
 
 	for {
 		select {
-		case req := <-s.scheduleRequests:
-			incJobScheduleRequests(1)
-			taskSpecMap, err := placeJob(req.job, algo, agentStater.agentStates())
-			if err != nil {
-				req.resp <- err
-				continue
-			}
-			log.Printf("scheduler: schedule %s: %d taskSpec(s)", req.job.JobName, len(taskSpecMap))
-			req.resp <- schedule(taskSpecMap, registryPublic)
+		case req := <-s.schedc:
+			req.err <- scheduleJob(req.JobConfig, current, target)
 
-		case req := <-s.migrateRequests:
-			incJobMigrateRequests(1)
-			log.Printf("scheduler: migrate %s", req.existingJob.JobName)
-			artifactURL, err := getArtifactURL(req.existingJob)
-			if err != nil {
-				req.resp <- fmt.Errorf("can't migrate job %q: %s", req.existingJob.JobName, err)
-				continue
-			}
-			req.resp <- migrate(
-				req.existingJob,
-				makeJob(req.newJobConfig, artifactURL),
-				algo,
-				agentStater.agentStates(),
-				registryPublic,
-			)
+		case req := <-s.unschedc:
+			req.err <- unscheduleJob(req.JobConfig, current, target)
 
-		case req := <-s.unscheduleRequests:
-			incJobUnscheduleRequests(1)
-			taskSpecMap := findJob(req.job, agentStater.agentStates())
-			log.Printf("scheduler: unschedule %q: %d taskSpec(s)", req.job.JobName, len(taskSpecMap))
-			req.resp <- unschedule(taskSpecMap, registryPublic)
+		case req := <-s.migratec:
+			req.err <- migrateJob(req.from, req.to, current, target)
 
-		case m := <-lost:
-			incContainersLost(len(m))
-			log.Printf("scheduler: LOST: %v (TODO: something with this)", m)
+		case current = <-updatec:
+		case s.snapshotc <- current:
 
-		case q := <-s.quit:
+		case q := <-s.quitc:
 			close(q)
 			return
 		}
 	}
 }
 
-// 1 job -> N tasks -> M taskSpecs: use the scheduling algorithm
-// (placeContainer) to find homes for all the instances of all the tasks, and
-// return a map of container ID to taskSpec.
-func placeJob(job scheduler.Job, algo schedulingAlgorithm, agentStates map[string]agentState) (map[string]taskSpec, error) {
-	out := map[string]taskSpec{} // containerID: taskSpec
-
-	for _, task := range job.Tasks {
-		for instance := 0; instance < task.Scale; instance++ {
-			endpoint, err := algo(agentStates, task.ContainerConfig)
-			if err != nil {
-				return map[string]taskSpec{}, fmt.Errorf("couldn't place instance %d/%d of %q: %s", instance+1, task.Scale, task.TaskName, err)
-			}
-
-			out[makeContainerID(job, task, instance)] = taskSpec{
-				Endpoint:        endpoint,
-				JobName:         job.JobName,
-				TaskName:        task.TaskName,
-				ContainerConfig: task.ContainerConfig,
-			}
-		}
-	}
-
-	incContainersPlaced(len(out))
-
-	return out, nil
-}
-
-// findJob locates all of the taskSpecs for a job in a set of agent states.
-func findJob(job scheduler.Job, agentStates map[string]agentState) map[string]taskSpec {
-	type tuple struct{ jobName, taskName string }
-
-	var (
-		targets = map[string]tuple{} // container ID: { jobName, taskName }
-		out     = map[string]taskSpec{}
-	)
-
-	for _, task := range job.Tasks {
-		for instance := 0; instance < task.Scale; instance++ {
-			targets[makeContainerID(job, task, instance)] = tuple{job.JobName, task.TaskName}
-		}
-	}
-
-	for endpoint, agentState := range agentStates {
-		for _, liveInstance := range agentState.ContainerInstances {
-			target, ok := targets[liveInstance.ID]
-			if !ok {
-				continue
-			}
-
-			out[liveInstance.ID] = taskSpec{
-				Endpoint:        endpoint,
-				JobName:         target.jobName,
-				TaskName:        target.taskName,
-				ContainerConfig: liveInstance.Config,
-			}
-		}
-	}
-
-	return out
-}
-
-// Unschedule oldJob and schedule newJob, one task instance at a time.
-func migrate(
-	oldJob, newJob scheduler.Job,
-	algo schedulingAlgorithm,
-	agentStates map[string]agentState,
-	registryPublic registryPublic,
-) error {
-	undo := []func(){}
-	defer func() {
-		for i := len(undo) - 1; i >= 0; i-- { // LIFO
-			undo[i]()
-		}
-	}()
-
-	// Get old/new taskSpecs grouped by name, so we can migrate in a safe way.
-	newTaskSpecMap, err := placeJob(newJob, algo, agentStates)
+func scheduleJob(jobConfig configstore.JobConfig, current map[string]map[string]agent.ContainerInstance, target taskScheduler) error {
+	specs, err := algorithm(jobConfig, current)
 	if err != nil {
-		return fmt.Errorf("when placing tasks for new job: %s", err)
-	}
-	var (
-		oldTaskGroups = groupByTask(findJob(oldJob, agentStates))
-		newTaskGroups = groupByTask(newTaskSpecMap)
-	)
-
-	// Per-task: schedule 1, unschedule 1.
-	for taskName, newContainerIDTaskSpecs := range newTaskGroups {
-		oldContainerIDTaskSpecs := oldTaskGroups[taskName]
-		log.Printf("scheduler: migrate: job %s task %s: old scale %d, new scale %d", newJob.JobName, taskName, len(oldContainerIDTaskSpecs), len(newContainerIDTaskSpecs))
-		for i := 0; i < max(len(newContainerIDTaskSpecs), len(oldContainerIDTaskSpecs)); i++ {
-			// Schedule 1 new.
-			if i < len(newContainerIDTaskSpecs) {
-				var (
-					id   = newContainerIDTaskSpecs[i].containerID
-					spec = newContainerIDTaskSpecs[i].taskSpec
-					m    = map[string]taskSpec{id: spec}
-				)
-				if err := schedule(m, registryPublic); err != nil {
-					return fmt.Errorf("while scheduling instance of task %q: %s", taskName, err)
-				}
-				undo = append(undo, func() { unschedule(m, registryPublic) })
-				log.Printf("scheduler: migrate: %q: schedule-1 OK", taskName)
-			}
-			// Unschedule 1 old.
-			if i < len(oldContainerIDTaskSpecs) {
-				var (
-					id   = oldContainerIDTaskSpecs[i].containerID
-					spec = oldContainerIDTaskSpecs[i].taskSpec
-					m    = map[string]taskSpec{id: spec}
-				)
-				if err := unschedule(m, registryPublic); err != nil {
-					return fmt.Errorf("while unscheduling instance of task %q: %s", taskName, err)
-				}
-				undo = append(undo, func() { schedule(m, registryPublic) })
-				log.Printf("scheduler: migrate: %q: unschedule-1 OK", taskName)
-			}
-		}
-		delete(oldTaskGroups, taskName) // everything is unscheduled
-		log.Printf("scheduler: migrate: job %q task %q: migrated", newJob.JobName, taskName)
+		return err
 	}
 
-	// If the old job had tasks that aren't in the new job, they'll still be
-	// lingering in the oldTaskGroups map. Unschedule them.
-	for taskName, containerIDTaskSpecs := range oldTaskGroups {
-		log.Printf("scheduler: migrate: job %q task %q: old scale %d, new scale 0", newJob.JobName, taskName, len(containerIDTaskSpecs))
-		for i := 0; i < len(containerIDTaskSpecs); i++ {
-			var (
-				id   = containerIDTaskSpecs[i].containerID
-				spec = containerIDTaskSpecs[i].taskSpec
-				m    = map[string]taskSpec{id: spec}
-			)
-			if err := unschedule(m, registryPublic); err != nil {
-				return fmt.Errorf("while unscheduling instance of task %q: %s", taskName, err)
-			}
-			undo = append(undo, func() { schedule(m, registryPublic) })
-			log.Printf("scheduler: migrate: %q unschedule-1 OK", taskName)
-		}
-		log.Printf("scheduler: migrate: job %q task %q: unscheduled", oldJob.JobName, taskName)
+	if len(specs) <= 0 {
+		return fmt.Errorf("job contained no tasks")
 	}
 
-	// Getting this far without error means the migration was successful.
-	undo = []func(){} // clear undo stack, so we can return cleanly
-	log.Printf("scheduler: migrate: job %q: migrated", newJob.JobName)
-	return nil
-}
+	incContainersPlaced(len(specs))
 
-func schedule(taskSpecMap map[string]taskSpec, registryPublic registryPublic) error {
-	return xsched(
-		"schedule",
-		signalScheduleSuccessful,
-		registryPublic.schedule,
-		registryPublic.unschedule,
-		taskSpecMap,
-		func(g agent.Grace) time.Duration { return time.Duration(g.Startup) * time.Second },
-	)
-}
-
-func unschedule(taskSpecMap map[string]taskSpec, registryPublic registryPublic) error {
-	return xsched(
-		"unschedule",
-		signalUnscheduleSuccessful,
-		registryPublic.unschedule,
-		registryPublic.schedule,
-		taskSpecMap,
-		func(g agent.Grace) time.Duration { return time.Duration(g.Shutdown) * time.Second },
-	)
-}
-
-func xsched(
-	what string,
-	acceptable schedulingSignal,
-	apply, revert func(string, taskSpec, chan schedulingSignalWithContext) error,
-	taskSpecMap map[string]taskSpec,
-	choose func(agent.Grace) time.Duration,
-) error {
 	undo := []func(){}
+
 	defer func() {
-		for i := len(undo) - 1; i >= 0; i-- { // LIFO
+		for i := len(undo) - 1; i >= 0; i-- {
 			undo[i]()
 		}
 	}()
 
-	// Could make this concurrent.
-	for containerID, taskSpec := range taskSpecMap {
-		c := make(chan schedulingSignalWithContext)
-
-		if err := apply(containerID, taskSpec, c); err != nil {
-			log.Printf("scheduler: %s %s on %s: %s", what, containerID, taskSpec.Endpoint, err)
+	for _, spec := range specs {
+		if err := target.schedule(spec); err != nil {
 			return err
 		}
 
-		select {
-		case sig := <-c:
-			log.Printf("scheduler: %s %s on %s: %s (%s)", what, containerID, taskSpec.Endpoint, sig.schedulingSignal, sig.context)
-			if sig.schedulingSignal != acceptable {
-				return fmt.Errorf("%s %s on %s: unacceptable signal (%s), giving up", what, containerID, taskSpec.Endpoint, sig.schedulingSignal)
-			}
-			undo = append(undo, func() { revert(containerID, taskSpec, nil) })
-
-		case <-time.After(2 * choose(taskSpec.Grace)):
-			return fmt.Errorf("%s %s on %s: timeout", what, containerID, taskSpec.Endpoint)
-		}
+		undo = append(undo, func() { target.unschedule(spec.Endpoint, spec.ContainerID) })
 	}
 
-	undo = []func(){} // clear undo stack, so we can return cleanly
+	undo = []func(){}
+
 	return nil
 }
 
-func makeJob(c configstore.JobConfig, artifactURL string) scheduler.Job {
-	tasks := []scheduler.Task{}
-	for _, taskConfig := range c.Tasks {
-		tasks = append(tasks, makeTask(taskConfig, c.JobName, artifactURL))
+func unscheduleJob(jobConfig configstore.JobConfig, current map[string]map[string]agent.ContainerInstance, target taskScheduler) error {
+	type tuple struct{ jobName, taskName string }
+
+	var targets = map[string]tuple{}
+
+	for _, taskConfig := range jobConfig.Tasks {
+		for i := 0; i < taskConfig.Scale; i++ {
+			targets[makeContainerID(jobConfig, taskConfig, i)] = tuple{jobConfig.JobName, taskConfig.TaskName}
+		}
 	}
-	return scheduler.Job{
-		JobName: c.JobName,
-		Tasks:   tasks,
+
+	var (
+		orig = len(targets)
+		undo = []func(){}
+	)
+
+	defer func() {
+		for i := len(undo) - 1; i >= 0; i-- {
+			undo[i]()
+		}
+	}()
+
+	for endpoint, instances := range current {
+		for id, instance := range instances {
+			if tuple, ok := targets[id]; ok {
+				revertSpec := taskSpec{
+					Endpoint:        endpoint,
+					JobName:         tuple.jobName,
+					TaskName:        tuple.taskName,
+					ContainerID:     id,
+					ContainerConfig: instance.Config,
+				}
+
+				if err := target.unschedule(endpoint, id); err != nil {
+					return err
+				}
+
+				undo = append(undo, func() { target.schedule(revertSpec) })
+
+				delete(targets, id)
+			}
+		}
 	}
+
+	if len(targets) >= orig {
+		return fmt.Errorf("job not scheduled")
+	}
+
+	if len(targets) > 0 {
+		log.Printf("scheduler: unschedule job: failed to find %d container(s) (%v)", len(targets), targets)
+	}
+
+	undo = []func(){}
+
+	return nil
 }
 
-func makeTask(c configstore.TaskConfig, jobName, artifactURL string) scheduler.Task {
-	return scheduler.Task{
-		TaskName:        c.TaskName,
-		Scale:           c.Scale,
-		HealthChecks:    c.HealthChecks,
-		ContainerConfig: c.MakeContainerConfig(artifactURL),
-	}
+func migrateJob(from, to configstore.JobConfig, current map[string]map[string]agent.ContainerInstance, target taskScheduler) error {
+	return fmt.Errorf("not yet implemented")
 }
 
-func makeContainerID(job scheduler.Job, task scheduler.Task, instance int) string {
-	return fmt.Sprintf("%s-%s:%s-%s:%d", job.JobName, refHash(job), task.TaskName, refHash(task), instance)
+func makeContainerID(j configstore.JobConfig, t configstore.TaskConfig, i int) string {
+	return fmt.Sprintf("%s-%s:%s-%s:%d", j.JobName, refHash(j), t.TaskName, refHash(t), i)
 }
 
 func refHash(v interface{}) string {
 	// TODO(pb): need stable encoding, either not-JSON (most likely), or some
 	// way of getting stability out of JSON.
 	h := md5.New()
+
 	if err := json.NewEncoder(h).Encode(v); err != nil {
 		panic(fmt.Sprintf("%s: refHash error: %s", reflect.TypeOf(v), err))
 	}
+
 	return fmt.Sprintf("%x", h.Sum(nil))[:7]
 }
 
-// Extract the (hopefully common) artifact URL from the job. If it's not
-// the same artifact URL for all tasks, that's an error.
-func getArtifactURL(job scheduler.Job) (string, error) {
-	m := map[string]int{} // artifactURL: count
-	for _, task := range job.Tasks {
-		m[task.ArtifactURL]++
-	}
-	if len(m) != 1 {
-		return "", fmt.Errorf("job %s: %d unique artifact URLs detected", job.JobName, len(m))
-	}
-	for artifactURL := range m {
-		return artifactURL, nil
-	}
-	panic("unreachable")
+type schedJobReq struct {
+	configstore.JobConfig
+	err chan error
 }
 
-// Split 1 taskSpecMap into N taskSpecMaps by task name.
-func groupByTask(in map[string]taskSpec) map[string][]containerIDTaskSpec {
-	var out = map[string][]containerIDTaskSpec{}
-
-	for containerID, taskSpec := range in {
-		var (
-			key = taskSpec.TaskName
-			val = containerIDTaskSpec{containerID, taskSpec}
-		)
-		out[key] = append(out[key], val)
-	}
-
-	return out
-}
-
-// Simple max integer.
-func max(candidates ...int) int {
-	i := int64(math.MinInt64)
-	for _, candidate := range candidates {
-		if int64(candidate) > int64(i) {
-			i = int64(candidate)
-		}
-	}
-	return int(i)
-}
-
-type scheduleRequest struct {
-	job  scheduler.Job
-	resp chan error
-}
-
-type migrateRequest struct {
-	existingJob  scheduler.Job
-	newJobConfig configstore.JobConfig
-	resp         chan error
-}
-
-type unscheduleRequest struct {
-	job  scheduler.Job
-	resp chan error
-}
-
-type containerIDTaskSpec struct {
-	containerID string
-	taskSpec
-}
-
-type agentStater interface {
-	agentStates() map[string]agentState
+type migrateJobReq struct {
+	from, to configstore.JobConfig
+	err      chan error
 }

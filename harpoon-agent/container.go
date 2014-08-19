@@ -57,7 +57,6 @@ type realContainer struct {
 	heartbeatc chan heartbeatRequest
 	subc       chan chan<- agent.ContainerInstance
 	unsubc     chan chan<- agent.ContainerInstance
-	quitc      chan chan struct{}
 }
 
 // Satisfaction guaranteed.
@@ -79,7 +78,6 @@ func newContainer(id string, config agent.ContainerConfig) *realContainer {
 		heartbeatc: make(chan heartbeatRequest),
 		subc:       make(chan chan<- agent.ContainerInstance),
 		unsubc:     make(chan chan<- agent.ContainerInstance),
-		quitc:      make(chan chan struct{}),
 	}
 
 	c.buildContainerConfig()
@@ -151,6 +149,8 @@ func (c *realContainer) Unsubscribe(ch chan<- agent.ContainerInstance) {
 }
 
 func (c *realContainer) loop() {
+	defer c.logs.exit()
+
 	for {
 		select {
 		case req := <-c.actionc:
@@ -163,9 +163,15 @@ func (c *realContainer) loop() {
 					incContainerCreateFailure(1)
 				}
 				req.res <- err
+
 			case containerDestroy:
 				incContainerDestroy(1)
-				req.res <- c.destroy()
+				err := c.destroy()
+				req.res <- err
+				if err == nil {
+					return
+				}
+
 			case containerStart:
 				incContainerStart(1)
 				err := c.start()
@@ -173,9 +179,11 @@ func (c *realContainer) loop() {
 					incContainerStartFailure(1)
 				}
 				req.res <- err
+
 			case containerStop:
 				incContainerStop(1)
 				req.res <- c.stop()
+
 			default:
 				panic(fmt.Sprintf("unknown action %q", req.action))
 			}
@@ -188,11 +196,6 @@ func (c *realContainer) loop() {
 
 		case ch := <-c.unsubc:
 			delete(c.subscribers, ch)
-
-		case q := <-c.quitc:
-			c.logs.exit()
-			close(q)
-			return
 		}
 	}
 }
@@ -329,10 +332,6 @@ func (c *realContainer) destroy() error {
 	}
 
 	c.subscribers = map[chan<- agent.ContainerInstance]struct{}{}
-
-	q := make(chan struct{})
-	c.quitc <- q
-	<-q
 
 	return nil
 }

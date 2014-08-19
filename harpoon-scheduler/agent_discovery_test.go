@@ -2,122 +2,112 @@ package main
 
 import (
 	"reflect"
-	"sync"
 	"testing"
-	"time"
 )
 
-func TestMockAgentDiscovery(t *testing.T) {
-	d := newMockAgentDiscovery()
-
+func TestStaticAgentDiscovery(t *testing.T) {
 	const (
 		endpoint1 = "http://computers.berlin:31337"
 		endpoint2 = "http://kraftwerk.info:8080"
 	)
 
-	// Initial endpoints
-	if expected, got := []string{}, d.endpoints(); !reflect.DeepEqual(expected, got) {
-		t.Errorf("expected %v, got %v", expected, got)
-	}
+	var (
+		discovery = staticAgentDiscovery{endpoint1, endpoint2}
+		updatec   = make(chan []string)
+		requestc  = make(chan []string)
+	)
 
-	// Set up notification subscriber
-	c := make(chan []string)
-	d.notify(c)
-	defer d.stop(c)
+	discovery.subscribe(updatec)
+	defer close(updatec)
+	defer discovery.unsubscribe(updatec)
 
-	// We'll use the same checking function.
-	assert := func(expected []string) {
-		select {
-		case got := <-c:
-			if !reflect.DeepEqual(expected, got) {
-				t.Fatalf("expected %v, got %v", expected, got)
-			}
-		case <-time.After(10 * time.Millisecond):
-			t.Fatal("timeout waiting for add notification")
-		}
-	}
-
-	go d.add(endpoint1)
-	assert([]string{endpoint1})
-
-	go d.add(endpoint2)
-	assert([]string{endpoint1, endpoint2})
-
-	if expected, got := []string{endpoint1, endpoint2}, d.endpoints(); !reflect.DeepEqual(expected, got) {
-		t.Errorf("expected %v, got %v", expected, got)
-	}
-
-	go d.delete(endpoint1)
-	assert([]string{endpoint2})
-
-	go d.delete(endpoint2)
-	assert([]string{})
-}
-
-type mockAgentDiscovery struct {
-	sync.RWMutex
-	current       []string
-	subscriptions map[chan<- []string]struct{}
-}
-
-func newMockAgentDiscovery() *mockAgentDiscovery {
-	return &mockAgentDiscovery{
-		current:       []string{},
-		subscriptions: map[chan<- []string]struct{}{},
-	}
-}
-
-func (d *mockAgentDiscovery) add(endpoint string) {
-	d.Lock()
-	defer d.Unlock()
-	for _, existing := range d.current {
-		if existing == endpoint {
+	go func() {
+		endpoints, ok := <-updatec
+		if !ok {
 			return
 		}
-	}
-	d.current = append(d.current, endpoint)
-	d.broadcast()
-}
 
-func (d *mockAgentDiscovery) delete(endpoint string) {
-	d.Lock()
-	defer d.Unlock()
-	replacement := []string{}
-	for _, existing := range d.current {
-		if existing == endpoint {
-			continue
+		for {
+			select {
+			case requestc <- endpoints:
+			case endpoints, ok = <-updatec:
+				if !ok {
+					return
+				}
+			}
 		}
-		replacement = append(replacement, existing)
+	}()
+
+	if want, have := []string{endpoint1, endpoint2}, <-requestc; !reflect.DeepEqual(want, have) {
+		t.Errorf("want %v, have %v", want, have)
 	}
-	d.current = replacement
-	d.broadcast()
 }
 
-func (d *mockAgentDiscovery) endpoints() []string {
-	d.RLock()
-	defer d.RUnlock()
-	return d.current
-}
+func TestManualAgentDiscovery(t *testing.T) {
+	const (
+		endpoint1 = "http://computers.berlin:31337"
+		endpoint2 = "http://kraftwerk.info:8080"
+		endpoint3 = "http://hats.for.cats.biz"
+	)
 
-func (d *mockAgentDiscovery) notify(c chan<- []string) {
-	d.Lock()
-	defer d.Unlock()
-	d.subscriptions[c] = struct{}{}
-}
+	var (
+		discovery = newManualAgentDiscovery([]string{endpoint1})
+		updatec   = make(chan []string)
+		requestc  = make(chan []string)
+	)
 
-func (d *mockAgentDiscovery) stop(c chan<- []string) {
-	d.Lock()
-	defer d.Unlock()
-	delete(d.subscriptions, c)
-}
+	discovery.subscribe(updatec)
+	defer close(updatec)
+	defer discovery.unsubscribe(updatec)
 
-func (d *mockAgentDiscovery) broadcast() {
-	// already have lock
-	for c := range d.subscriptions {
-		select {
-		case c <- d.current:
-		case <-time.After(10 * time.Millisecond):
-			panic("mock agent discovery notification receiver wasn't ready")
+	go func() {
+		endpoints, ok := <-updatec
+		if !ok {
+			return
 		}
+
+		for {
+			select {
+			case requestc <- endpoints:
+			case endpoints, ok = <-updatec:
+				if !ok {
+					return
+				}
+			}
+		}
+	}()
+
+	if want, have := []string{endpoint1}, <-requestc; !reflect.DeepEqual(want, have) {
+		t.Errorf("want %v, have %v", want, have)
+	}
+
+	discovery.add(endpoint2)
+
+	if want, have := []string{endpoint1, endpoint2}, <-requestc; !reflect.DeepEqual(want, have) {
+		t.Errorf("want %v, have %v", want, have)
+	}
+
+	discovery.add(endpoint3)
+
+	if want, have := []string{endpoint1, endpoint2, endpoint3}, <-requestc; !reflect.DeepEqual(want, have) {
+		t.Errorf("want %v, have %v", want, have)
+	}
+
+	discovery.del(endpoint1)
+
+	if want, have := []string{endpoint2, endpoint3}, <-requestc; !reflect.DeepEqual(want, have) {
+		t.Errorf("want %v, have %v", want, have)
+	}
+
+	discovery.del(endpoint2)
+
+	if want, have := []string{endpoint3}, <-requestc; !reflect.DeepEqual(want, have) {
+		t.Errorf("want %v, have %v", want, have)
+	}
+
+	discovery.del(endpoint3)
+
+	if want, have := []string{}, <-requestc; !reflect.DeepEqual(want, have) {
+		t.Errorf("want %v, have %v", want, have)
 	}
 }

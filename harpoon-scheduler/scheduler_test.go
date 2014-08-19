@@ -1,133 +1,132 @@
 package main
 
 import (
-	"fmt"
-	"io/ioutil"
-	"log"
-	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 	"github.com/soundcloud/harpoon/harpoon-configstore/lib"
 )
 
-func TestScheduler(t *testing.T) {
-	//log.SetFlags(log.Lmicroseconds)
-	log.SetOutput(ioutil.Discard)
-
-	s := httptest.NewServer(newMockAgent())
-	defer s.Close()
-
-	verify, err := newRemoteAgent(s.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-
+func TestScheduleJob(t *testing.T) {
 	var (
-		registry    = newTestRegistry(t)
-		transformer = newTransformer(staticAgentDiscovery{s.URL}, registry, 2*time.Millisecond)
-		scheduler   = newBasicScheduler(registry, transformer, nil)
-	)
-	defer transformer.stop()
-	defer scheduler.stop()
-
-	waitForClean(transformer, 50*time.Millisecond)
-
-	var (
-		dummyArtifactURL = "http://filestore.berlin/sven-says-no.img"
-		firstJobConfig   = configstore.JobConfig{
-			JobName:      "alpha",
-			Env:          map[string]string{},
-			HealthChecks: []configstore.HealthCheck{},
+		target    = newMockTaskScheduler()
+		current   = map[string]map[string]agent.ContainerInstance{"http://dummy.agent.cool": {}}
+		want      = map[string]int{}
+		jobConfig = configstore.JobConfig{
+			JobName: "armadillo",
 			Tasks: []configstore.TaskConfig{
-				configstore.TaskConfig{
-					TaskName: "beta",
-					Scale:    1,
-					ContainerConfig: agent.ContainerConfig{
-						Ports:     map[string]uint16{"PORT": 0},
-						Command:   agent.Command{WorkingDir: "/srv/beta", Exec: []string{"./beta", "-flag"}},
-						Resources: agent.Resources{Memory: 32, CPUs: 0.1},
-						Grace:     agent.Grace{Startup: 1, Shutdown: 1},
-					},
-				},
-				configstore.TaskConfig{
-					TaskName: "delta",
-					Scale:    2,
-					ContainerConfig: agent.ContainerConfig{
-						Ports:     map[string]uint16{"PORT": 0},
-						Command:   agent.Command{WorkingDir: "/srv/delta", Exec: []string{"./delta"}},
-						Resources: agent.Resources{Memory: 32, CPUs: 0.1},
-						Grace:     agent.Grace{Startup: 1, Shutdown: 1},
-					},
-				},
+				{TaskName: "buffalo", Scale: 1},
+				{TaskName: "chinchilla", Scale: 2},
 			},
 		}
 	)
-	if err := firstJobConfig.Valid(); err != nil {
-		t.Fatalf("first job config invalid: %s", err)
+
+	if err := scheduleJob(jobConfig, current, target); err != nil {
+		t.Fatal(err)
 	}
 
-	log.Printf("☞ schedule")
-	firstJob := makeJob(firstJobConfig, dummyArtifactURL)
-	if err := scheduler.Schedule(firstJob); err != nil {
-		t.Fatalf("during schedule: %s", err)
+	for _, taskConfig := range jobConfig.Tasks {
+		want[taskConfig.TaskName] = taskConfig.Scale
 	}
 
-	log.Printf("☞ verify")
-	if err := verifyContainerInstances(verify, firstJobConfig); err != nil {
-		t.Fatalf("when verifying the schedule: %s", err)
+	for _, spec := range target.started {
+		t.Logf("%s on %s", spec.ContainerID, spec.Endpoint)
+		want[spec.TaskName] = want[spec.TaskName] - 1
 	}
 
-	log.Printf("☞ migrate")
-	secondJobConfig := firstJobConfig
-	secondJobConfig.Env["SOME_VAR"] = "different.value"
-	secondJobConfig.Tasks[0].Scale = 5
-	secondJobConfig.Tasks = secondJobConfig.Tasks[:1] // test the lingering unschedule code path (scale=0 is invalid)
-	if err := secondJobConfig.Valid(); err != nil {
-		t.Fatalf("second job config invalid: %s", err)
-	}
-	if err := scheduler.Migrate(firstJob, secondJobConfig); err != nil {
-		t.Fatalf("during migrate: %s", err)
+	for taskName, zero := range want {
+		if zero != 0 {
+			t.Errorf("%s: offset of %d", taskName, zero)
+		}
+
+		delete(want, taskName)
 	}
 
-	log.Printf("☞ verify")
-	if err := verifyContainerInstances(verify, secondJobConfig); err != nil {
-		t.Fatalf("when verifying the migrate: %s", err)
+	if len(want) > 0 {
+		t.Errorf("%d unknown tasks: %v", len(want), want)
 	}
-
-	log.Printf("☞ unschedule")
-	secondJob := makeJob(secondJobConfig, dummyArtifactURL)
-	if err := scheduler.Unschedule(secondJob); err != nil {
-		t.Fatalf("during unschedule: %s", err)
-	}
-
-	log.Printf("☞ verify")
-	if err := verifyContainerInstances(verify, configstore.JobConfig{}); err != nil {
-		t.Fatalf("when verifying the unschedule: %s", err)
-	}
-
-	log.Printf("☞ finished")
 }
 
-func verifyContainerInstances(agent agent.Agent, jobConfig configstore.JobConfig) error {
-	return nil //return fmt.Errorf("not yet implemented") // TODO(pb)
-}
-
-func waitForClean(s agentStater, timeout time.Duration) error {
+func TestUnscheduleJob(t *testing.T) {
 	var (
-		attempts = 10
-		interval = timeout / time.Duration(attempts)
+		adam    = configstore.TaskConfig{TaskName: "adam", Scale: 1}
+		betty   = configstore.TaskConfig{TaskName: "betty", Scale: 2}
+		charlie = configstore.JobConfig{JobName: "charlie", Tasks: []configstore.TaskConfig{adam, betty}}
+		ygritte = configstore.TaskConfig{TaskName: "ygritte", Scale: 1}
+		zachary = configstore.JobConfig{JobName: "zachary", Tasks: []configstore.TaskConfig{ygritte}}
+		jobs    = []configstore.JobConfig{charlie, zachary}
+		target  = simpleMockTaskScheduler{}
 	)
-	for i := 0; i < attempts; i++ {
-		clean := true // let's be optimistic
-		for _, s := range s.agentStates() {
-			clean = clean && !s.Dirty
+
+	for _, jobConfig := range jobs {
+		for _, taskConfig := range jobConfig.Tasks {
+			for i := 0; i < taskConfig.Scale; i++ {
+				if err := target.schedule(taskSpec{
+					ContainerID: makeContainerID(jobConfig, taskConfig, i),
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
 		}
-		if clean {
-			return nil
-		}
-		time.Sleep(interval)
 	}
-	return fmt.Errorf("timeout waiting for clean state")
+
+	if err := unscheduleJob(charlie, target.current(), target); err != nil {
+		t.Fatal(err)
+	}
+
+	if want, have := map[string]int{
+		makeContainerID(charlie, adam, 0):    0,
+		makeContainerID(charlie, betty, 0):   0,
+		makeContainerID(charlie, betty, 1):   0,
+		makeContainerID(zachary, ygritte, 0): 1,
+	}, target; !deepEqualIgnoreOrder(want, have) {
+		t.Fatalf("want %#+v, have %#+v", want, have)
+	}
+}
+
+func TestMigrateJob(t *testing.T) {
+	t.Skip("TODO")
+}
+
+type simpleMockTaskScheduler map[string]int
+
+var _ taskScheduler = simpleMockTaskScheduler{}
+
+func (s simpleMockTaskScheduler) schedule(spec taskSpec) error {
+	s[spec.ContainerID] = s[spec.ContainerID] + 1
+	return nil
+}
+
+func (s simpleMockTaskScheduler) unschedule(_, containerID string) error {
+	s[containerID] = s[containerID] - 1
+	return nil
+}
+
+func (s simpleMockTaskScheduler) current() map[string]map[string]agent.ContainerInstance {
+	var (
+		ep  = "irrelevant-endpoint"
+		out = map[string]map[string]agent.ContainerInstance{ep: {}}
+	)
+
+	for containerID := range s {
+		out[ep][containerID] = agent.ContainerInstance{}
+	}
+
+	return out
+}
+
+func deepEqualIgnoreOrder(a, b map[string]int) bool {
+	for k, v := range a {
+		if v2, ok := b[k]; !ok || v != v2 {
+			return false
+		}
+	}
+
+	for k, v := range b {
+		if v2, ok := a[k]; !ok || v != v2 {
+			return false
+		}
+	}
+
+	return true
 }

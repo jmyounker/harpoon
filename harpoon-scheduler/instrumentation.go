@@ -13,17 +13,9 @@ var (
 	expvarTaskScheduleRequests        = expvar.NewInt("task_schedule_requests")
 	expvarTaskUnscheduleRequests      = expvar.NewInt("task_unschedule_requests")
 	expvarContainersPlaced            = expvar.NewInt("containers_placed")
-	expvarContainersLost              = expvar.NewInt("containers_lost")
-	expvarSignalScheduleSuccessful    = expvar.NewInt("signal_schedule_successful")
-	expvarSignalScheduleFailed        = expvar.NewInt("signal_schedule_failed")
-	expvarSignalUnscheduleSuccessful  = expvar.NewInt("signal_unschedule_successful")
-	expvarSignalUnscheduleFailed      = expvar.NewInt("signal_unschedule_failed")
-	expvarSignalContainerLost         = expvar.NewInt("signal_container_lost")
-	expvarSignalAgentUnavailable      = expvar.NewInt("signal_agent_unavailable")
-	expvarSignalContainerPutFailed    = expvar.NewInt("signal_container_put_failed")
-	expvarSignalContainerStartFailed  = expvar.NewInt("signal_container_start_failed")
-	expvarSignalContainerStopFailed   = expvar.NewInt("signal_container_stop_failed")
-	expvarSignalContainerDeleteFailed = expvar.NewInt("signal_container_delete_failed")
+	expvarAgentsLost                  = expvar.NewInt("agents_lost")
+	expvarAgentConnectionsEstablished = expvar.NewInt("agent_connections_established")
+	expvarAgentConnectionsInterrupted = expvar.NewInt("agent_connections_interrupted")
 	expvarContainerEventsReceived     = expvar.NewInt("container_events_received")
 )
 
@@ -64,77 +56,29 @@ var (
 		Name:      "containers_placed",
 		Help:      "Number of containers successfully placed by a scheduling algorithm.",
 	})
-	prometheusContainersLost = prometheus.NewCounter(prometheus.CounterOpts{
+	prometheusAgentsLost = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "scheduler",
-		Name:      "containers_lost",
-		Help:      "Number of containers lost.",
+		Name:      "agents_lost",
+		Help:      "Number of agents lost completely from agent discovery.",
 	})
-	prometheusSignalScheduleSuccessful = prometheus.NewCounter(prometheus.CounterOpts{
+	prometheusAgentConnectionsEstablished = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "scheduler",
-		Name:      "signal_schedule_successful",
-		Help:      "Number of 'schedule successful' signals received by the registry.",
+		Name:      "agent_connections_established",
+		Help:      "Number of event stream connections established to remote agents.",
 	})
-	prometheusSignalScheduleFailed = prometheus.NewCounter(prometheus.CounterOpts{
+	prometheusAgentConnectionsInterrupted = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "scheduler",
-		Name:      "signal_schedule_failed",
-		Help:      "Number of 'schedule failed' signals received by the registry.",
-	})
-	prometheusSignalUnscheduleSuccessful = prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: "harpoon",
-		Subsystem: "scheduler",
-		Name:      "signal_unschedule_successful",
-		Help:      "Number of 'unschedule successful' signals received by the registry.",
-	})
-	prometheusSignalUnscheduleFailed = prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: "harpoon",
-		Subsystem: "scheduler",
-		Name:      "signal_unschedule_failed",
-		Help:      "Number of 'unschedule failed' signals received by the registry.",
-	})
-	prometheusSignalContainerLost = prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: "harpoon",
-		Subsystem: "scheduler",
-		Name:      "signal_container_lost",
-		Help:      "Number of 'container lost' signals received by the registry.",
-	})
-	prometheusSignalAgentUnavailable = prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: "harpoon",
-		Subsystem: "scheduler",
-		Name:      "signal_agent_unavailable",
-		Help:      "Number of 'agent unavailable' signals received by the registry.",
-	})
-	prometheusSignalContainerPutFailed = prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: "harpoon",
-		Subsystem: "scheduler",
-		Name:      "signal_container_put_failed",
-		Help:      "Number of 'container put failed' signals received by the registry.",
-	})
-	prometheusSignalContainerStartFailed = prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: "harpoon",
-		Subsystem: "scheduler",
-		Name:      "signal_container_start_failed",
-		Help:      "Number of 'container start failed' signals received by the registry.",
-	})
-	prometheusSignalContainerStopFailed = prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: "harpoon",
-		Subsystem: "scheduler",
-		Name:      "signal_container_stop_failed",
-		Help:      "Number of 'container stop failed' signals received by the registry.",
-	})
-	prometheusSignalContainerDeleteFailed = prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: "harpoon",
-		Subsystem: "scheduler",
-		Name:      "signal_container_delete_failed",
-		Help:      "Number of 'container delete failed' signals received by the registry.",
+		Name:      "agent_connections_interrupted",
+		Help:      "Number of event stream connections to remote agents that have been interrupted.",
 	})
 	prometheusContainerEventsReceived = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "scheduler",
 		Name:      "container_events_received",
-		Help:      "Number of container(s) events received from remote agents.",
+		Help:      "Number of per-container events received from remote agents.",
 	})
 )
 
@@ -168,59 +112,19 @@ func incContainersPlaced(n int) {
 	prometheusContainersPlaced.Add(float64(n))
 }
 
-func incContainersLost(n int) {
-	expvarContainersLost.Add(int64(n))
-	prometheusContainersLost.Add(float64(n))
+func incAgentsLost(n int) {
+	expvarAgentsLost.Add(int64(n))
+	prometheusAgentsLost.Add(float64(n))
 }
 
-func incSignalScheduleSuccessful(n int) {
-	expvarSignalScheduleSuccessful.Add(int64(n))
-	prometheusSignalScheduleSuccessful.Add(float64(n))
+func incAgentConnectionsEstablished(n int) {
+	expvarAgentConnectionsEstablished.Add(int64(n))
+	prometheusAgentConnectionsEstablished.Add(float64(n))
 }
 
-func incSignalScheduleFailed(n int) {
-	expvarSignalScheduleFailed.Add(int64(n))
-	prometheusSignalScheduleFailed.Add(float64(n))
-}
-
-func incSignalUnscheduleSuccessful(n int) {
-	expvarSignalUnscheduleSuccessful.Add(int64(n))
-	prometheusSignalUnscheduleSuccessful.Add(float64(n))
-}
-
-func incSignalUnscheduleFailed(n int) {
-	expvarSignalUnscheduleFailed.Add(int64(n))
-	prometheusSignalUnscheduleFailed.Add(float64(n))
-}
-
-func incSignalContainerLost(n int) {
-	expvarSignalContainerLost.Add(int64(n))
-	prometheusSignalContainerLost.Add(float64(n))
-}
-
-func incSignalAgentUnavailable(n int) {
-	expvarSignalAgentUnavailable.Add(int64(n))
-	prometheusSignalAgentUnavailable.Add(float64(n))
-}
-
-func incSignalContainerPutFailed(n int) {
-	expvarSignalContainerPutFailed.Add(int64(n))
-	prometheusSignalContainerPutFailed.Add(float64(n))
-}
-
-func incSignalContainerStartFailed(n int) {
-	expvarSignalContainerStartFailed.Add(int64(n))
-	prometheusSignalContainerStartFailed.Add(float64(n))
-}
-
-func incSignalContainerStopFailed(n int) {
-	expvarSignalContainerStopFailed.Add(int64(n))
-	prometheusSignalContainerStopFailed.Add(float64(n))
-}
-
-func incSignalContainerDeleteFailed(n int) {
-	expvarSignalContainerDeleteFailed.Add(int64(n))
-	prometheusSignalContainerDeleteFailed.Add(float64(n))
+func incAgentConnectionsInterrupted(n int) {
+	expvarAgentConnectionsInterrupted.Add(int64(n))
+	prometheusAgentConnectionsInterrupted.Add(float64(n))
 }
 
 func incContainerEventsReceived(n int) {

@@ -112,7 +112,13 @@ func (a *api) handleStop(w http.ResponseWriter, r *http.Request) {
 
 	container, ok := a.registry.get(id)
 	if !ok {
-		http.Error(w, "", http.StatusNotFound)
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+
+	if container.Instance().Status == agent.ContainerStatusFinished {
+		log.Printf("[%s] start: already stopped", id)
+		http.Error(w, "already stopped", http.StatusConflict)
 		return
 	}
 
@@ -130,7 +136,13 @@ func (a *api) handleStart(w http.ResponseWriter, r *http.Request) {
 
 	container, ok := a.registry.get(id)
 	if !ok {
-		http.Error(w, "", http.StatusNotFound)
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+
+	if container.Instance().Status == agent.ContainerStatusRunning {
+		log.Printf("[%s] start: already running", id)
+		http.Error(w, "already running", http.StatusConflict)
 		return
 	}
 
@@ -160,7 +172,7 @@ func (a *api) handleDestroy(w http.ResponseWriter, r *http.Request) {
 
 	a.registry.remove(id)
 
-	w.WriteHeader(http.StatusNoContent)
+	w.WriteHeader(http.StatusOK)
 }
 
 func (a *api) handleHeartbeat(w http.ResponseWriter, r *http.Request) {

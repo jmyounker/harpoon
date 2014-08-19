@@ -19,7 +19,7 @@ type Mock struct {
 
 	sync.RWMutex
 	instances   map[string]ContainerInstance
-	subscribers map[chan ContainerInstance]struct{}
+	subscribers map[chan<- map[string]ContainerInstance]struct{}
 
 	listContainersCount   int32
 	createContainerCount  int32
@@ -36,7 +36,7 @@ func NewMock() *Mock {
 	m := &Mock{
 		Router:      httprouter.New(),
 		instances:   map[string]ContainerInstance{},
-		subscribers: map[chan ContainerInstance]struct{}{},
+		subscribers: map[chan<- map[string]ContainerInstance]struct{}{},
 	}
 
 	m.Router.GET(APIVersionPrefix+APIListContainersPath, m.listContainers)
@@ -51,25 +51,26 @@ func NewMock() *Mock {
 	return m
 }
 
-func (m *Mock) subscribe(c chan ContainerInstance) {
+func (m *Mock) subscribe(c chan<- map[string]ContainerInstance) {
 	m.Lock()
 	defer m.Unlock()
 
 	m.subscribers[c] = struct{}{}
 }
 
-func (m *Mock) unsubscribe(c chan ContainerInstance) {
+func (m *Mock) unsubscribe(c chan<- map[string]ContainerInstance) {
 	m.Lock()
 	defer m.Unlock()
 
 	delete(m.subscribers, c)
 }
 
-func broadcastContainerInstance(dst map[chan ContainerInstance]struct{}, containerInstance ContainerInstance) {
+func broadcast(dst map[chan<- map[string]ContainerInstance]struct{}, src map[string]ContainerInstance) {
 	for c := range dst {
 		select {
-		case c <- containerInstance:
+		case c <- src:
 		default:
+			log.Printf("mockAgent broadcast failed")
 		}
 	}
 }
@@ -86,7 +87,7 @@ func (m *Mock) listContainers(w http.ResponseWriter, r *http.Request, p httprout
 
 	if strings.Contains(r.Header.Get("Accept"), "text/event-stream") {
 		eventsource.Handler(func(lastID string, enc *eventsource.Encoder, stop <-chan bool) {
-			changec := make(chan ContainerInstance)
+			changec := make(chan map[string]ContainerInstance)
 
 			m.subscribe(changec)
 			defer m.unsubscribe(changec)
@@ -99,8 +100,9 @@ func (m *Mock) listContainers(w http.ResponseWriter, r *http.Request, p httprout
 				case <-stop:
 					log.Printf("mockAgent getContainerEvents: HTTP request closed")
 					return
-				case instance := <-changec:
-					buf, _ = json.Marshal(map[string]ContainerInstance{instance.ID: instance})
+
+				case instances := <-changec:
+					buf, _ = json.Marshal(instances)
 					enc.Encode(eventsource.Event{Data: buf})
 				}
 			}
@@ -123,7 +125,7 @@ func (m *Mock) getContainerEvents(w http.ResponseWriter, r *http.Request, p http
 	var (
 		enc     = eventsource.NewEncoder(w)
 		closec  = closeNotifier.CloseNotify()
-		changec = make(chan ContainerInstance)
+		changec = make(chan map[string]ContainerInstance)
 	)
 
 	m.subscribe(changec)
@@ -141,8 +143,8 @@ func (m *Mock) getContainerEvents(w http.ResponseWriter, r *http.Request, p http
 
 	for {
 		select {
-		case instance := <-changec:
-			buf, _ := json.Marshal(map[string]ContainerInstance{instance.ID: instance})
+		case instances := <-changec:
+			buf, _ := json.Marshal(instances)
 			enc.Encode(eventsource.Event{Data: buf})
 		case <-closec:
 			log.Printf("mockAgent getContainerEvents: HTTP request closed")
@@ -177,7 +179,7 @@ func (m *Mock) createContainer(w http.ResponseWriter, r *http.Request, p httprou
 		m.Lock()
 		defer m.Unlock()
 		m.instances[id] = instance
-		broadcastContainerInstance(m.subscribers, instance)
+		broadcast(m.subscribers, m.instances)
 	}()
 
 	w.WriteHeader(http.StatusCreated)
@@ -216,22 +218,23 @@ func (m *Mock) destroyContainer(w http.ResponseWriter, r *http.Request, p httpro
 	m.Lock()
 	defer m.Unlock()
 
-	containerInstance, ok := m.instances[id]
+	instance, ok := m.instances[id]
 	if !ok {
 		http.Error(w, fmt.Sprintf("%q not present", id), http.StatusNotFound)
 		return
 	}
 
-	switch containerInstance.Status {
+	switch instance.Status {
 	case ContainerStatusFailed, ContainerStatusFinished:
+		instance.Status = ContainerStatusDeleted
+		m.instances[id] = instance
+		broadcast(m.subscribers, m.instances)
 		delete(m.instances, id)
-		containerInstance.Status = ContainerStatusDeleted
-		broadcastContainerInstance(m.subscribers, containerInstance)
 		w.WriteHeader(http.StatusOK)
 		return
 
 	default:
-		http.Error(w, fmt.Sprintf("%q not in a finished state, currently %s", id, containerInstance.Status), http.StatusNotFound)
+		http.Error(w, fmt.Sprintf("%q not in a finished state, currently %s", id, instance.Status), http.StatusNotFound)
 		return
 	}
 }
@@ -279,7 +282,7 @@ func (m *Mock) stopContainer(w http.ResponseWriter, r *http.Request, p httproute
 		m.Lock()
 		defer m.Unlock()
 		m.instances[id] = containerInstance
-		broadcastContainerInstance(m.subscribers, containerInstance)
+		broadcast(m.subscribers, m.instances)
 	}()
 }
 
