@@ -28,9 +28,10 @@ var (
 // individual contributors out-of-band.
 
 type stateMachine interface {
+	endpoint() string
+	connected() bool
 	actualBroadcaster
 	taskScheduler
-	endpoint() string
 	quit()
 }
 
@@ -42,6 +43,7 @@ type realStateMachine struct {
 	snapshotc     chan map[string]map[string]agent.ContainerInstance
 	schedc        chan schedTaskReq
 	unschedc      chan unschedTaskReq
+	connectedc    chan bool
 	initializec   chan map[string]agent.ContainerInstance
 	updatec       chan map[string]agent.ContainerInstance
 	reconnectc    chan struct{} // signal from requestLoop to connectionLoop to reconnect
@@ -53,7 +55,7 @@ type realStateMachine struct {
 
 var _ stateMachine = &realStateMachine{}
 
-func newRealStateMachine(endpoint string) *realStateMachine {
+func newRealStateMachine(endpoint string, reconnect, abandon time.Duration) *realStateMachine {
 	m := &realStateMachine{
 		myEndpoint: endpoint,
 
@@ -62,6 +64,7 @@ func newRealStateMachine(endpoint string) *realStateMachine {
 		snapshotc:     make(chan map[string]map[string]agent.ContainerInstance),
 		schedc:        make(chan schedTaskReq),
 		unschedc:      make(chan unschedTaskReq),
+		connectedc:    make(chan bool),
 		initializec:   make(chan map[string]agent.ContainerInstance),
 		updatec:       make(chan map[string]agent.ContainerInstance),
 		reconnectc:    make(chan struct{}),
@@ -70,14 +73,18 @@ func newRealStateMachine(endpoint string) *realStateMachine {
 	}
 
 	m.Add(2)
-	go m.requestLoop()
-	go m.connectionLoop()
+	go m.connectionLoop(reconnect)
+	go m.requestLoop(abandon)
 
 	return m
 }
 
 func (m *realStateMachine) endpoint() string {
 	return m.myEndpoint
+}
+
+func (m *realStateMachine) connected() bool {
+	return <-m.connectedc
 }
 
 func (m *realStateMachine) subscribe(c chan<- map[string]map[string]agent.ContainerInstance) {
@@ -109,7 +116,7 @@ func (m *realStateMachine) quit() {
 	m.Wait()
 }
 
-func (m *realStateMachine) requestLoop() {
+func (m *realStateMachine) requestLoop(abandon time.Duration) {
 	defer m.Done()
 
 	var (
@@ -117,7 +124,7 @@ func (m *realStateMachine) requestLoop() {
 		current  = map[string]agent.ContainerInstance{}
 		tangos   = map[string]time.Time{} // container ID to be destroyed: deadline
 		tangoc   = time.Tick(1 * time.Second)
-		timeoutc <-chan time.Time // initially nil
+		abandonc <-chan time.Time // initially nil
 	)
 
 	client, err := agent.NewClient(m.myEndpoint)
@@ -143,7 +150,7 @@ func (m *realStateMachine) requestLoop() {
 	}
 
 	sched := func(spec taskSpec) error {
-		if timeoutc != nil {
+		if abandonc != nil {
 			return errAgentConnectionInterrupted
 		}
 
@@ -158,7 +165,7 @@ func (m *realStateMachine) requestLoop() {
 	}
 
 	unsched := func(id string) error {
-		if timeoutc != nil {
+		if abandonc != nil {
 			return errAgentConnectionInterrupted
 		}
 
@@ -273,9 +280,11 @@ func (m *realStateMachine) requestLoop() {
 		case req := <-m.unschedc:
 			req.err <- unsched(req.id)
 
+		case m.connectedc <- abandonc == nil:
+
 		case current = <-m.initializec:
 			incContainerEventsReceived(len(current))
-			timeoutc = nil
+			abandonc = nil
 			broadcast()
 
 		case state := <-m.updatec:
@@ -284,11 +293,11 @@ func (m *realStateMachine) requestLoop() {
 			broadcast()
 
 		case <-m.interruptionc:
-			if timeoutc == nil {
-				timeoutc = time.After(5 * time.Minute)
+			if abandonc == nil {
+				abandonc = time.After(abandon)
 			}
 
-		case <-timeoutc:
+		case <-abandonc:
 			current = map[string]agent.ContainerInstance{}
 			broadcast()
 
@@ -301,7 +310,7 @@ func (m *realStateMachine) requestLoop() {
 	}
 }
 
-func (m *realStateMachine) connectionLoop() {
+func (m *realStateMachine) connectionLoop(reconnect time.Duration) {
 	defer m.Done()
 
 	for {
@@ -312,7 +321,7 @@ func (m *realStateMachine) connectionLoop() {
 			select {
 			case <-m.quitc:
 				return
-			case <-time.After(1 * time.Second):
+			case <-time.After(reconnect):
 				continue
 			}
 		}
@@ -324,7 +333,7 @@ func (m *realStateMachine) connectionLoop() {
 			select {
 			case <-m.quitc:
 				return
-			case <-time.After(1 * time.Second):
+			case <-time.After(reconnect):
 				continue
 			}
 		}
@@ -341,7 +350,7 @@ func (m *realStateMachine) connectionLoop() {
 			select {
 			case <-m.quitc:
 				return
-			case <-time.After(1 * time.Second):
+			case <-time.After(reconnect):
 				continue
 			}
 		}

@@ -79,6 +79,14 @@ func NewClient(endpoint string) (Agent, error) {
 	return client{URL: *u}, nil
 }
 
+func MustNewClient(endpoint string) Agent {
+	agent, err := NewClient(endpoint)
+	if err != nil {
+		panic(err)
+	}
+	return agent
+}
+
 // Containers implements the Agent interface.
 func (c client) Containers() (map[string]ContainerInstance, error) {
 	c.URL.Path = APIVersionPrefix + APIListContainersPath
@@ -156,8 +164,6 @@ func (c client) Events() (<-chan map[string]ContainerInstance, Stopper, error) {
 				log.Printf("%s: decode: %s", c.URL.String(), err)
 				return
 			}
-
-			log.Printf("### %s", event.Data)
 
 			if err := json.Unmarshal(event.Data, &state); err != nil {
 				log.Printf("%s: unmarshal: %s", c.URL.String(), err)

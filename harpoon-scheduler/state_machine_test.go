@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 	"time"
 
@@ -18,7 +19,7 @@ func TestStateMachineBasicFunctionality(t *testing.T) {
 	var (
 		mock    = agent.NewMock()
 		server  = httptest.NewServer(mock)
-		machine = newRealStateMachine(server.URL)
+		machine = newRealStateMachine(server.URL, defaultStateMachineReconnect, defaultStateMachineAbandon)
 	)
 
 	defer server.Close()
@@ -84,22 +85,106 @@ func TestStateMachineBasicFunctionality(t *testing.T) {
 	}
 }
 
-func TestStateMachineResilience(t *testing.T) {
-	// This test requires we enhance the agent client to not use the default
-	// EventSource server, but manually manage the connection state and report
-	// interruptions to clients.
+func TestStateMachineInterruption(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	//log.SetFlags(log.Lmicroseconds)
 
-	t.Skip("not yet implemented")
+	// Create an agent with some container
 
-	// Create an agent with some containers
-	// Add a state machine for it
-	// Verify connection is live and containers are represented
-	// Kill the agent
-	// Verify it's been detected, but containers are still represented
-	// Restart the agent with the containers
-	// Verify the state machine re-establishes the connection
-	// Kill it again and wait for the timeout
-	// Verify containers are gone in the state machine
-	// Restart the agent with the containers
-	// Verify containers come back in the state machine
+	var (
+		id     = "alfred"
+		mock   = agent.NewMock()
+		server = httptest.NewUnstartedServer(mock)
+	)
+
+	server.Start()
+	defer server.Close()
+
+	client := agent.MustNewClient(server.URL)
+	if err := client.Put(id, agent.ContainerConfig{}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a state machine for it
+
+	var (
+		reconnect = 2 * time.Millisecond
+		abandon   = 10 * time.Millisecond
+	)
+
+	machine := newRealStateMachine(server.URL, reconnect, abandon)
+	defer machine.quit()
+	time.Sleep(time.Millisecond)
+
+	// Verify state machine got the container state
+
+	preSnapshot := machine.snapshot()
+
+	if _, ok := preSnapshot[machine.endpoint()]; !ok {
+		t.Fatal("machine snapshot missing its own endpoint")
+	}
+
+	if _, ok := preSnapshot[machine.endpoint()][id]; !ok {
+		t.Fatal("machine snapshot missing expected container")
+	}
+
+	// Kill the agent connection
+
+	server.CloseClientConnections()
+	time.Sleep(time.Millisecond)
+
+	// Verify state machine detected connection interruption
+
+	if want, have := false, machine.connected(); want != have {
+		t.Errorf("want %v, have %v", want, have)
+	}
+
+	// Wait for a reconnect
+
+	ok := make(chan struct{})
+	go func() {
+		defer close(ok)
+		for !machine.connected() {
+			time.Sleep(reconnect)
+		}
+	}()
+
+	select {
+	case <-ok:
+	case <-time.After(abandon):
+		t.Fatal("state machine never reconnected")
+	}
+
+	// Verify the container state wasn't cleared
+
+	if want, have := preSnapshot, machine.snapshot(); !reflect.DeepEqual(want, have) {
+		t.Fatalf("after reconnect, want %#v, have %#v", want, have)
+	}
+
+	// Kill the agent connection kinda permanently
+
+	server.CloseClientConnections()
+	server.Close()
+	server.URL = "" // needed to restart
+	time.Sleep(time.Millisecond)
+
+	// Verify state machine detected connection interruption
+
+	if want, have := false, machine.connected(); want != have {
+		t.Errorf("want %v, have %v", want, have)
+	}
+
+	// Verify state machine abandons the containers after the abandon interval
+
+	time.Sleep(2 * abandon)
+
+	postSnapshot := machine.snapshot()
+
+	if _, ok := postSnapshot[machine.endpoint()]; !ok {
+		t.Fatal("machine snapshot missing its own endpoint")
+	}
+
+	if _, ok := postSnapshot[machine.endpoint()][id]; ok {
+		t.Fatal("machine snapshot has container that should have been abandoned")
+	}
 }

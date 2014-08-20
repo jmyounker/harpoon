@@ -11,6 +11,11 @@ import (
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
+var (
+	defaultStateMachineReconnect = 1 * time.Second
+	defaultStateMachineAbandon   = 5 * time.Minute
+)
+
 type actualBroadcaster interface {
 	subscribe(c chan<- map[string]map[string]agent.ContainerInstance)
 	unsubscribe(c chan<- map[string]map[string]agent.ContainerInstance)
@@ -173,7 +178,7 @@ func diff(firstGen map[string]stateMachine, endpoints []string, updatec chan map
 	for _, endpoint := range endpoints {
 		machine, ok := firstGen[endpoint]
 		if !ok {
-			machine = newRealStateMachine(endpoint)
+			machine = newRealStateMachine(endpoint, defaultStateMachineReconnect, defaultStateMachineAbandon)
 			machine.subscribe(updatec)
 		}
 
