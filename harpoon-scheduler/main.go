@@ -14,9 +14,9 @@ import (
 
 func main() {
 	var (
-		listen           = flag.String("listen", ":4444", "HTTP listen address")
-		registryFilename = flag.String("registry.filename", "scheduler-registry.json", "persistence filename")
-		agents           = multiagent{}
+		listen  = flag.String("listen", ":4444", "HTTP listen address")
+		persist = flag.String("persist", "scheduler-registry.json", "filename to persist registry state")
+		agents  = multiagent{}
 	)
 	flag.Var(&agents, "agent", "repeatable list of agent endpoints")
 	flag.Parse()
@@ -24,7 +24,7 @@ func main() {
 	var (
 		discovery   = staticAgentDiscovery(agents.slice())
 		shepherd    = newRealShepherd(discovery)
-		registry    = newRealRegistry(*registryFilename)
+		registry    = newRealRegistry(*persist)
 		transformer = newTransformer(shepherd, registry, shepherd)
 		scheduler   = newRealJobScheduler(shepherd, registry)
 		api         = newAPI(scheduler, registry, shepherd)
