@@ -129,6 +129,8 @@ func (s *realJobScheduler) loop(actual actualBroadcaster, target taskScheduler) 
 }
 
 func scheduleJob(jobConfig configstore.JobConfig, current map[string]map[string]agent.ContainerInstance, target taskScheduler) error {
+	log.Printf("job scheduler: request to schedule %s", jobConfig.JobName)
+
 	specs, err := algorithm(jobConfig, current)
 	if err != nil {
 		return err
@@ -162,6 +164,8 @@ func scheduleJob(jobConfig configstore.JobConfig, current map[string]map[string]
 }
 
 func unscheduleJob(jobConfig configstore.JobConfig, actual map[string]map[string]agent.ContainerInstance, target taskScheduler) error {
+	log.Printf("job scheduler: request to unschedule %s", jobConfig.JobName)
+
 	type tuple struct{ jobName, taskName string }
 
 	var (
