@@ -87,10 +87,6 @@ func (s *realJobScheduler) migrate(from, to configstore.JobConfig) error {
 	return <-req.err
 }
 
-//func (s *realJobScheduler) snapshot() map[string]map[string]agent.ContainerInstance {
-//	return <-s.snapshotc
-//}
-
 func (s *realJobScheduler) quit() {
 	q := make(chan struct{})
 	s.quitc <- q
@@ -124,7 +120,6 @@ func (s *realJobScheduler) loop(actual actualBroadcaster, target taskScheduler) 
 			req.err <- migrateJob(req.from, req.to, current, target)
 
 		case current = <-updatec:
-		//case s.snapshotc <- current:
 
 		case q := <-s.quitc:
 			close(q)
@@ -166,10 +161,12 @@ func scheduleJob(jobConfig configstore.JobConfig, current map[string]map[string]
 	return nil
 }
 
-func unscheduleJob(jobConfig configstore.JobConfig, current map[string]map[string]agent.ContainerInstance, target taskScheduler) error {
+func unscheduleJob(jobConfig configstore.JobConfig, actual map[string]map[string]agent.ContainerInstance, target taskScheduler) error {
 	type tuple struct{ jobName, taskName string }
 
-	var targets = map[string]tuple{}
+	var (
+		targets = map[string]tuple{}
+	)
 
 	for _, taskConfig := range jobConfig.Tasks {
 		for i := 0; i < taskConfig.Scale; i++ {
@@ -188,22 +185,22 @@ func unscheduleJob(jobConfig configstore.JobConfig, current map[string]map[strin
 		}
 	}()
 
-	for endpoint, instances := range current {
+	for endpoint, instances := range actual {
 		for id, instance := range instances {
 			if tuple, ok := targets[id]; ok {
-				revertSpec := taskSpec{
-					Endpoint:        endpoint,
-					JobName:         tuple.jobName,
-					TaskName:        tuple.taskName,
-					ContainerID:     id,
-					ContainerConfig: instance.Config,
-				}
-
 				if err := target.unschedule(endpoint, id); err != nil {
 					return err
 				}
 
-				undo = append(undo, func() { target.schedule(revertSpec) })
+				undo = append(undo, func() {
+					target.schedule(taskSpec{
+						Endpoint:        endpoint,
+						JobName:         tuple.jobName,
+						TaskName:        tuple.taskName,
+						ContainerID:     id,
+						ContainerConfig: instance.Config,
+					})
+				})
 
 				delete(targets, id)
 			}

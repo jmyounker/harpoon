@@ -168,8 +168,10 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 		switch err := client.Put(spec.ContainerID, spec.ContainerConfig); err {
 		case nil:
 			return nil
+
 		case agent.ErrContainerAlreadyExists:
 			return client.Start(spec.ContainerID)
+
 		default:
 			return err
 		}
@@ -182,7 +184,8 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 
 		instance, ok := current[id]
 		if !ok {
-			return fmt.Errorf("%q not scheduled", id)
+			log.Printf("state machine: %s: unschedule request for %q, but it's not scheduled", m.myEndpoint, id)
+			return nil
 		}
 
 		// Unscheduling is a multi-step process. Stop, wait for status
@@ -192,7 +195,7 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 		// register a tango, i.e. a target to destroy, and wait.
 
 		if _, ok := tangos[id]; ok {
-			return fmt.Errorf("%q already being unscheduled, have patience", id)
+			return fmt.Errorf("%q already being unscheduled on %s, have patience", id, m.myEndpoint)
 		}
 
 		tangos[id] = time.Now().Add(2 * time.Duration(instance.Config.Grace.Shutdown) * time.Second)
