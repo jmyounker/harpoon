@@ -196,6 +196,17 @@ func (m *realStateMachine) requestLoop() {
 				continue
 			}
 
+			// Out-of-sync conditions arise in testing from two conditions:
+			//
+			// - The (overly) resilient eventsource package hides connection
+			//   interruptions between agent and scheduler.
+			//
+			// - The agent loses & kills containers on restart (known issue).
+			//
+			// Once these are fixed, it probably makes sense to simplify this
+			// code, by removing out-of-sync detection and the reconnectc
+			// altogether.
+
 			switch instance.Status {
 			case agent.ContainerStatusRunning, agent.ContainerStatusFailed:
 				log.Printf("state machine: %s: tango %s %s, issuing Stop", m.myEndpoint, id, instance.Status)
@@ -204,12 +215,12 @@ func (m *realStateMachine) requestLoop() {
 					continue // OK, wait for next update
 
 				case agent.ErrContainerAlreadyStopped:
-					log.Printf("state machine: %s: tango %s Stop: %s -- we're out of sync!", m.myEndpoint, id, err)
+					log.Printf("state machine: %s: tango %s Stop: %s -- out-of-sync", m.myEndpoint, id, err)
 					m.reconnectc <- struct{}{} // re-sync on the next initialize
 					continue
 
 				case agent.ErrContainerNotExist:
-					log.Printf("state machine: %s: tango %s Stop: %s -- we're out of sync!", m.myEndpoint, id, err)
+					log.Printf("state machine: %s: tango %s Stop: %s -- out-of-sync", m.myEndpoint, id, err)
 					delete(tangos, id)         // apparently the container is gone, sooo...
 					m.reconnectc <- struct{}{} // re-sync on the next initialize
 					continue
@@ -226,7 +237,7 @@ func (m *realStateMachine) requestLoop() {
 					continue // OK, wait for next update
 
 				case agent.ErrContainerNotExist:
-					log.Printf("state machine: %s: tango %s Delete: %s -- we're out of sync!", m.myEndpoint, id, err)
+					log.Printf("state machine: %s: tango %s Delete: %s -- out-of-sync", m.myEndpoint, id, err)
 					delete(tangos, id)         //  apparently the container is gone, sooo...
 					m.reconnectc <- struct{}{} // re-sync on the next initialize
 					continue
