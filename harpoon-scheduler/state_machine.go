@@ -28,10 +28,9 @@ var (
 // individual contributors out-of-band.
 
 type stateMachine interface {
-	endpoint() string
-	subscribe(c chan<- map[string]map[string]agent.ContainerInstance)
-	unsubscribe(c chan<- map[string]map[string]agent.ContainerInstance)
+	actualBroadcaster
 	taskScheduler
+	endpoint() string
 	quit()
 }
 
@@ -40,6 +39,7 @@ type realStateMachine struct {
 
 	subc          chan chan<- map[string]map[string]agent.ContainerInstance
 	unsubc        chan chan<- map[string]map[string]agent.ContainerInstance
+	snapshotc     chan map[string]map[string]agent.ContainerInstance
 	schedc        chan schedTaskReq
 	unschedc      chan unschedTaskReq
 	initializec   chan map[string]agent.ContainerInstance
@@ -59,6 +59,7 @@ func newRealStateMachine(endpoint string) *realStateMachine {
 
 		subc:          make(chan chan<- map[string]map[string]agent.ContainerInstance),
 		unsubc:        make(chan chan<- map[string]map[string]agent.ContainerInstance),
+		snapshotc:     make(chan map[string]map[string]agent.ContainerInstance),
 		schedc:        make(chan schedTaskReq),
 		unschedc:      make(chan unschedTaskReq),
 		initializec:   make(chan map[string]agent.ContainerInstance),
@@ -85,6 +86,10 @@ func (m *realStateMachine) subscribe(c chan<- map[string]map[string]agent.Contai
 
 func (m *realStateMachine) unsubscribe(c chan<- map[string]map[string]agent.ContainerInstance) {
 	m.unsubc <- c
+}
+
+func (m *realStateMachine) snapshot() map[string]map[string]agent.ContainerInstance {
+	return <-m.snapshotc
 }
 
 func (m *realStateMachine) schedule(spec taskSpec) error {
@@ -248,6 +253,8 @@ func (m *realStateMachine) requestLoop() {
 
 		case c := <-m.unsubc:
 			delete(subs, c)
+
+		case m.snapshotc <- map[string]map[string]agent.ContainerInstance{m.myEndpoint: current}:
 
 		case req := <-m.schedc:
 			req.err <- sched(req.taskSpec)
