@@ -22,16 +22,7 @@ type jobScheduler interface {
 	migrate(from, to configstore.JobConfig) error
 }
 
-type snapshotter interface {
-	snapshot() map[string]map[string]agent.ContainerInstance
-}
-
-type scheduler interface {
-	jobScheduler
-	snapshotter
-}
-
-type realScheduler struct {
+type realJobScheduler struct {
 	schedc    chan schedJobReq
 	unschedc  chan schedJobReq
 	migratec  chan migrateJobReq
@@ -39,10 +30,10 @@ type realScheduler struct {
 	quitc     chan chan struct{}
 }
 
-var _ scheduler = &realScheduler{}
+var _ jobScheduler = &realJobScheduler{}
 
-func newRealScheduler(actual actualBroadcaster, target taskScheduler) *realScheduler {
-	s := &realScheduler{
+func newRealJobScheduler(actual actualBroadcaster, target taskScheduler) *realJobScheduler {
+	s := &realJobScheduler{
 		schedc:    make(chan schedJobReq),
 		unschedc:  make(chan schedJobReq),
 		migratec:  make(chan migrateJobReq),
@@ -55,7 +46,7 @@ func newRealScheduler(actual actualBroadcaster, target taskScheduler) *realSched
 	return s
 }
 
-func (s *realScheduler) schedule(job configstore.JobConfig) error {
+func (s *realJobScheduler) schedule(job configstore.JobConfig) error {
 	if err := job.Valid(); err != nil {
 		return err
 	}
@@ -68,7 +59,7 @@ func (s *realScheduler) schedule(job configstore.JobConfig) error {
 
 }
 
-func (s *realScheduler) unschedule(job configstore.JobConfig) error {
+func (s *realJobScheduler) unschedule(job configstore.JobConfig) error {
 	if err := job.Valid(); err != nil {
 		return err
 	}
@@ -80,7 +71,7 @@ func (s *realScheduler) unschedule(job configstore.JobConfig) error {
 	return <-req.err
 }
 
-func (s *realScheduler) migrate(from, to configstore.JobConfig) error {
+func (s *realJobScheduler) migrate(from, to configstore.JobConfig) error {
 	if err := from.Valid(); err != nil {
 		return err
 	}
@@ -96,17 +87,17 @@ func (s *realScheduler) migrate(from, to configstore.JobConfig) error {
 	return <-req.err
 }
 
-func (s *realScheduler) snapshot() map[string]map[string]agent.ContainerInstance {
-	return <-s.snapshotc
-}
+//func (s *realJobScheduler) snapshot() map[string]map[string]agent.ContainerInstance {
+//	return <-s.snapshotc
+//}
 
-func (s *realScheduler) quit() {
+func (s *realJobScheduler) quit() {
 	q := make(chan struct{})
 	s.quitc <- q
 	<-q
 }
 
-func (s *realScheduler) loop(actual actualBroadcaster, target taskScheduler) {
+func (s *realJobScheduler) loop(actual actualBroadcaster, target taskScheduler) {
 	var (
 		updatec = make(chan map[string]map[string]agent.ContainerInstance)
 		current = map[string]map[string]agent.ContainerInstance{}
@@ -133,7 +124,7 @@ func (s *realScheduler) loop(actual actualBroadcaster, target taskScheduler) {
 			req.err <- migrateJob(req.from, req.to, current, target)
 
 		case current = <-updatec:
-		case s.snapshotc <- current:
+		//case s.snapshotc <- current:
 
 		case q := <-s.quitc:
 			close(q)

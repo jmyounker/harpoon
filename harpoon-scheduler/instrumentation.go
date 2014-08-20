@@ -66,7 +66,7 @@ var (
 		Namespace: "harpoon",
 		Subsystem: "scheduler",
 		Name:      "agent_connections_established",
-		Help:      "Number of event stream connections established to remote agents.",
+		Help:      "Number of event stream connections to remote agents that have been established.",
 	})
 	prometheusAgentConnectionsInterrupted = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
@@ -78,7 +78,7 @@ var (
 		Namespace: "harpoon",
 		Subsystem: "scheduler",
 		Name:      "container_events_received",
-		Help:      "Number of per-container events received from remote agents.",
+		Help:      "Number of complete events received from remote agents.",
 	})
 )
 

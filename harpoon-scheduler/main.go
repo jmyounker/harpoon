@@ -26,7 +26,7 @@ func main() {
 		shepherd    = newRealShepherd(discovery)
 		registry    = newRealRegistry(*registryFilename)
 		transformer = newTransformer(shepherd, registry, shepherd)
-		scheduler   = newRealScheduler(shepherd, registry)
+		scheduler   = newRealJobScheduler(shepherd, registry)
 		api         = newAPI(scheduler, registry, shepherd)
 	)
 
@@ -35,7 +35,6 @@ func main() {
 	defer transformer.quit()
 	defer scheduler.quit()
 
-	log.Printf("there are %d static agent(s)", len(agents.slice()))
 	log.Printf("the shepherd's flock size is %d", shepherd.size())
 
 	err := make(chan error, 2)

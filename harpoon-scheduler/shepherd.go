@@ -104,6 +104,20 @@ func (s *realShepherd) loop(d agentDiscovery) {
 		subs       = map[chan<- map[string]map[string]agent.ContainerInstance]struct{}{}
 	)
 
+	cp := func() map[string]map[string]agent.ContainerInstance {
+		out := make(map[string]map[string]agent.ContainerInstance, len(current))
+
+		for endpoint, instances := range current {
+			out[endpoint] = make(map[string]agent.ContainerInstance, len(instances))
+
+			for id, instance := range instances {
+				out[endpoint][id] = instance
+			}
+		}
+
+		return out
+	}
+
 	d.subscribe(discoveryc)
 	defer d.unsubscribe(discoveryc)
 
@@ -128,18 +142,20 @@ func (s *realShepherd) loop(d agentDiscovery) {
 				current[endpoint] = instances // deleted instances are managed in the state machine
 			}
 
+			m := cp()
+
 			for c := range subs {
-				c <- current
+				c <- m
 			}
 
 		case c := <-s.subc:
 			subs[c] = struct{}{}
-			go func() { c <- current }()
+			go func(m map[string]map[string]agent.ContainerInstance) { c <- m }(cp())
 
 		case c := <-s.unsubc:
 			delete(subs, c)
 
-		case s.snapshotc <- current:
+		case s.snapshotc <- cp():
 
 		case req := <-s.schedc:
 			stateMachine, ok := machines[req.Endpoint]

@@ -10,10 +10,10 @@ import (
 
 type api struct {
 	http.Handler
-	scheduler
+	jobScheduler
 }
 
-func newAPI(s scheduler, desired desiredBroadcaster, actual actualBroadcaster) http.Handler {
+func newAPI(s jobScheduler, desired desiredBroadcaster, actual actualBroadcaster) http.Handler {
 	r := httprouter.New()
 
 	r.POST("/schedule", handleSchedule(s))
@@ -24,7 +24,7 @@ func newAPI(s scheduler, desired desiredBroadcaster, actual actualBroadcaster) h
 	return r
 }
 
-func handleSchedule(s scheduler) httprouter.Handle {
+func handleSchedule(s jobScheduler) httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 		incJobScheduleRequests(1)
 
@@ -46,7 +46,7 @@ func handleSchedule(s scheduler) httprouter.Handle {
 	}
 }
 
-func handleUnschedule(s scheduler) httprouter.Handle {
+func handleUnschedule(s jobScheduler) httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 		incJobUnscheduleRequests(1)
 
@@ -68,7 +68,7 @@ func handleUnschedule(s scheduler) httprouter.Handle {
 	}
 }
 
-func handleMigrate(s scheduler) httprouter.Handle {
+func handleMigrate(s jobScheduler) httprouter.Handle {
 	return func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 		incJobMigrateRequests(1)
 

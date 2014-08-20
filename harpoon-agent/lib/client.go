@@ -153,8 +153,7 @@ func (c client) Events() (<-chan map[string]ContainerInstance, Stopper, error) {
 		defer close(statec)
 
 		var (
-			dec   = eventsource.NewDecoder(resp.Body)
-			state = map[string]ContainerInstance{}
+			dec = eventsource.NewDecoder(resp.Body)
 		)
 
 		for {
@@ -164,6 +163,8 @@ func (c client) Events() (<-chan map[string]ContainerInstance, Stopper, error) {
 				log.Printf("%s: decode: %s", c.URL.String(), err)
 				return
 			}
+
+			var state map[string]ContainerInstance
 
 			if err := json.Unmarshal(event.Data, &state); err != nil {
 				log.Printf("%s: unmarshal: %s", c.URL.String(), err)

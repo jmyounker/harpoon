@@ -8,8 +8,8 @@ import (
 	"github.com/soundcloud/harpoon/harpoon-configstore/lib"
 )
 
-// We need every representation of `current` to be an agentState, which should
-// include HostResources, probably a LastUpdatedAt, and maybe a dirty bit.
+// We need every value in `current` to be an agentState, which should include
+// HostResources, probably a LastUpdatedAt, and maybe a dirty bit.
 
 func randomChoice(jobConfig configstore.JobConfig, current map[string]map[string]agent.ContainerInstance) ([]taskSpec, error) {
 	if len(current) <= 0 {

@@ -132,9 +132,20 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 		panic(err)
 	}
 
+	cp := func() map[string]map[string]agent.ContainerInstance {
+		out := make(map[string]agent.ContainerInstance, len(current))
+
+		for k, v := range current {
+			out[k] = v
+		}
+
+		return map[string]map[string]agent.ContainerInstance{m.myEndpoint: out}
+	}
+
 	broadcast := func() {
+		m := cp()
 		for c := range subs {
-			c <- map[string]map[string]agent.ContainerInstance{m.myEndpoint: current}
+			c <- m
 		}
 	}
 
@@ -178,13 +189,14 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 		// finished, then delete. Because all updates to remote container
 		// state go through this very request loop, and we need to inspect
 		// that status to proceed, we have to yield immediately. So, we
-		// register a tango, i.e. a target to destroy.
+		// register a tango, i.e. a target to destroy, and wait.
 
 		if _, ok := tangos[id]; ok {
 			return fmt.Errorf("%q already being unscheduled, have patience", id)
 		}
 
 		tangos[id] = time.Now().Add(2 * time.Duration(instance.Config.Grace.Shutdown) * time.Second)
+
 		return nil
 	}
 
@@ -198,7 +210,7 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 			}
 
 			if time.Now().After(deadline) {
-				log.Printf("state machine: %s: tango %s hit deadline, got to %s", m.myEndpoint, id, instance.Status)
+				log.Printf("state machine: %s: tango %s hit deadline, got to %s, giving up", m.myEndpoint, id, instance.Status)
 				delete(tangos, id)
 				continue
 			}
@@ -206,9 +218,9 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 			// Out-of-sync conditions arise in testing from two conditions:
 			//
 			// - The (overly) resilient eventsource package hides connection
-			//   interruptions between agent and scheduler.
+			//   interruptions between agent and scheduler. (Now fixed.)
 			//
-			// - The agent loses & kills containers on restart (known issue).
+			// - The agent loses & kills containers on restart. (Known issue).
 			//
 			// Once these are fixed, it probably makes sense to simplify this
 			// code, by removing out-of-sync detection and the reconnectc
@@ -265,14 +277,12 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 		select {
 		case c := <-m.subc:
 			subs[c] = struct{}{}
-			go func(current0 map[string]agent.ContainerInstance) {
-				c <- map[string]map[string]agent.ContainerInstance{m.myEndpoint: current0}
-			}(current)
+			go func(m map[string]map[string]agent.ContainerInstance) { c <- m }(cp())
 
 		case c := <-m.unsubc:
 			delete(subs, c)
 
-		case m.snapshotc <- map[string]map[string]agent.ContainerInstance{m.myEndpoint: current}:
+		case m.snapshotc <- cp():
 
 		case req := <-m.schedc:
 			req.err <- sched(req.taskSpec)
@@ -283,12 +293,10 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 		case m.connectedc <- abandonc == nil:
 
 		case current = <-m.initializec:
-			incContainerEventsReceived(len(current))
 			abandonc = nil
 			broadcast()
 
 		case state := <-m.updatec:
-			incContainerEventsReceived(len(current))
 			update(state)
 			broadcast()
 
@@ -360,18 +368,13 @@ func (m *realStateMachine) connectionLoop(reconnect time.Duration) {
 }
 
 func (m *realStateMachine) readLoop(statec <-chan map[string]agent.ContainerInstance, stopper agent.Stopper) error {
-	// Currently, we'll never exit this loop organically, because the event
-	// stream will never fail, because EventSource takes care of transparently
-	// maintaining the connection. We should manage connection state directly,
-	// using only EventSource Encoder and Decoder.
-
 	defer stopper.Stop()
 
 	// When this function exits, we've lost our connection to the agent. When
-	// that happens, we start a timer, which (when fired) flushes the
-	// `current` in the request loop, and thereby declares all the instances
-	// lost. (That timeout chan in the request loop is neutralized when we
-	// send the first successful state update over initializec.)
+	// that happens, we start an "abandon" timer, which (when fired) flushes
+	// the `current` in the request loop, and thereby declares all the
+	// instances lost. (That abandon timer in the request loop is reset when
+	// we send the first successful state update over initializec.)
 
 	first := true
 
@@ -392,8 +395,10 @@ func (m *realStateMachine) readLoop(statec <-chan map[string]agent.ContainerInst
 				return errAgentConnectionInterrupted
 			}
 
+			incContainerEventsReceived(1)
+
 			if first {
-				m.initializec <- state // clears previous timeout timer
+				m.initializec <- state // clears previous abandon timer
 				first = false
 				continue
 			}

@@ -109,12 +109,12 @@ func TestStateMachineInterruption(t *testing.T) {
 
 	var (
 		reconnect = 2 * time.Millisecond
-		abandon   = 10 * time.Millisecond
+		abandon   = 50 * time.Millisecond
 	)
 
 	machine := newRealStateMachine(server.URL, reconnect, abandon)
 	defer machine.quit()
-	time.Sleep(time.Millisecond)
+	time.Sleep(5 * time.Millisecond)
 
 	// Verify state machine got the container state
 
@@ -166,7 +166,7 @@ func TestStateMachineInterruption(t *testing.T) {
 	server.CloseClientConnections()
 	server.Close()
 	server.URL = "" // needed to restart
-	time.Sleep(time.Millisecond)
+	time.Sleep(5 * time.Millisecond)
 
 	// Verify state machine detected connection interruption
 
