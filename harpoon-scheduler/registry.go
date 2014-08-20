@@ -10,9 +10,9 @@ import (
 )
 
 type desiredBroadcaster interface {
-	subscribe(chan<- map[string]map[string]taskSpec)
-	unsubscribe(chan<- map[string]map[string]taskSpec)
-	snapshot() map[string]map[string]taskSpec
+	subscribe(chan<- map[string]taskSpec)
+	unsubscribe(chan<- map[string]taskSpec)
+	snapshot() map[string]taskSpec
 }
 
 type registry interface {
@@ -21,11 +21,11 @@ type registry interface {
 }
 
 type realRegistry struct {
-	subc      chan chan<- map[string]map[string]taskSpec
-	unsubc    chan chan<- map[string]map[string]taskSpec
+	subc      chan chan<- map[string]taskSpec
+	unsubc    chan chan<- map[string]taskSpec
 	schedc    chan schedTaskReq
 	unschedc  chan unschedTaskReq
-	snapshotc chan map[string]map[string]taskSpec
+	snapshotc chan map[string]taskSpec
 	quitc     chan chan struct{}
 }
 
@@ -38,11 +38,11 @@ func newRealRegistry(filename string) *realRegistry {
 	}
 
 	r := &realRegistry{
-		subc:      make(chan chan<- map[string]map[string]taskSpec),
-		unsubc:    make(chan chan<- map[string]map[string]taskSpec),
+		subc:      make(chan chan<- map[string]taskSpec),
+		unsubc:    make(chan chan<- map[string]taskSpec),
 		schedc:    make(chan schedTaskReq),
 		unschedc:  make(chan unschedTaskReq),
-		snapshotc: make(chan map[string]map[string]taskSpec),
+		snapshotc: make(chan map[string]taskSpec),
 		quitc:     make(chan chan struct{}),
 	}
 
@@ -51,11 +51,11 @@ func newRealRegistry(filename string) *realRegistry {
 	return r
 }
 
-func (r *realRegistry) subscribe(c chan<- map[string]map[string]taskSpec) {
+func (r *realRegistry) subscribe(c chan<- map[string]taskSpec) {
 	r.subc <- c
 }
 
-func (r *realRegistry) unsubscribe(c chan<- map[string]map[string]taskSpec) {
+func (r *realRegistry) unsubscribe(c chan<- map[string]taskSpec) {
 	r.unsubc <- c
 }
 
@@ -71,7 +71,7 @@ func (r *realRegistry) unschedule(endpoint, id string) error {
 	return <-req.err
 }
 
-func (r *realRegistry) snapshot() map[string]map[string]taskSpec {
+func (r *realRegistry) snapshot() map[string]taskSpec {
 	return <-r.snapshotc
 }
 
@@ -81,39 +81,42 @@ func (r *realRegistry) quit() {
 	<-q
 }
 
-func (r *realRegistry) loop(filename string, scheduled map[string]map[string]taskSpec) {
-	schedule := func(spec taskSpec) error {
-		if _, ok := scheduled[spec.Endpoint]; !ok {
-			scheduled[spec.Endpoint] = map[string]taskSpec{}
+func (r *realRegistry) loop(filename string, scheduled map[string]taskSpec) {
+	cp := func() map[string]taskSpec {
+		out := make(map[string]taskSpec, len(scheduled))
+
+		for id, spec := range scheduled {
+			out[id] = spec
 		}
 
-		existing, ok := scheduled[spec.Endpoint][spec.ContainerID]
+		return out
+	}
+
+	schedule := func(spec taskSpec) error {
+		existing, ok := scheduled[spec.ContainerID]
 		if ok {
 			if reflect.DeepEqual(spec, existing) {
-				return fmt.Errorf("%s already scheduled on %s", spec.ContainerID, spec.Endpoint)
+				return fmt.Errorf("%s already scheduled on %s", spec.ContainerID, existing.Endpoint)
 			}
-			return fmt.Errorf("%s scheduled on %s with a different config (bad state!)", spec.ContainerID, spec.Endpoint)
+			return fmt.Errorf("%s scheduled on %s with a different config", spec.ContainerID, spec.Endpoint)
 		}
 
-		scheduled[spec.Endpoint][spec.ContainerID] = spec
+		scheduled[spec.ContainerID] = spec
 
 		return nil
 	}
 
 	unschedule := func(endpoint, id string) error {
-		if _, ok := scheduled[endpoint]; !ok {
-			return fmt.Errorf("%s already removed from scheduler registry (%s has nothing scheduled)", id, endpoint)
+		existing, ok := scheduled[id]
+		if !ok {
+			return fmt.Errorf("%s already removed from scheduler registry (it isn't scheduled anywhere)", id)
 		}
 
-		if _, ok := scheduled[endpoint][id]; !ok {
-			return fmt.Errorf("%s already removed from scheduler registry (it isn't scheduled on %s)", id, endpoint)
+		if existing.Endpoint != endpoint {
+			return fmt.Errorf("%s is scheduled, but not on %s (it's scheduled on %s)", id, endpoint, existing.Endpoint)
 		}
 
-		delete(scheduled[endpoint], id)
-
-		if len(scheduled[endpoint]) <= 0 {
-			delete(scheduled, endpoint)
-		}
+		delete(scheduled, id)
 
 		return nil
 	}
@@ -124,11 +127,14 @@ func (r *realRegistry) loop(filename string, scheduled map[string]map[string]tas
 		}
 	}
 
-	subscriptions := map[chan<- map[string]map[string]taskSpec]struct{}{}
+	var (
+		subscriptions = map[chan<- map[string]taskSpec]struct{}{}
+	)
 
 	broadcast := func() {
+		m := cp()
 		for c := range subscriptions {
-			c <- scheduled
+			c <- m
 		}
 	}
 
@@ -136,7 +142,7 @@ func (r *realRegistry) loop(filename string, scheduled map[string]map[string]tas
 		select {
 		case c := <-r.subc:
 			subscriptions[c] = struct{}{}
-			go func() { c <- scheduled }()
+			go func(m map[string]taskSpec) { c <- m }(cp())
 
 		case c := <-r.unsubc:
 			delete(subscriptions, c)
@@ -163,7 +169,7 @@ func (r *realRegistry) loop(filename string, scheduled map[string]map[string]tas
 
 			req.err <- err
 
-		case r.snapshotc <- scheduled:
+		case r.snapshotc <- cp():
 
 		case q := <-r.quitc:
 			close(q)
@@ -172,7 +178,7 @@ func (r *realRegistry) loop(filename string, scheduled map[string]map[string]tas
 	}
 }
 
-func save(filename string, scheduled map[string]map[string]taskSpec) error {
+func save(filename string, scheduled map[string]taskSpec) error {
 	if filename == "" {
 		return nil // no file (and no persistence) is OK
 	}
@@ -199,21 +205,21 @@ func save(filename string, scheduled map[string]map[string]taskSpec) error {
 	return os.Rename(f.Name(), filename) // atomic
 }
 
-func load(filename string) (map[string]map[string]taskSpec, error) {
+func load(filename string) (map[string]taskSpec, error) {
 	if _, err := os.Stat(filename); os.IsNotExist(err) {
-		return map[string]map[string]taskSpec{}, nil // no file is OK
+		return map[string]taskSpec{}, nil // no file is OK
 	} else if err != nil {
-		return map[string]map[string]taskSpec{}, err
+		return map[string]taskSpec{}, err
 	}
 
 	buf, err := ioutil.ReadFile(filename)
 	if err != nil {
-		return map[string]map[string]taskSpec{}, err
+		return map[string]taskSpec{}, err
 	}
 
-	var scheduled map[string]map[string]taskSpec
+	var scheduled map[string]taskSpec
 	if err := json.Unmarshal(buf, &scheduled); err != nil {
-		return map[string]map[string]taskSpec{}, err
+		return map[string]taskSpec{}, err
 	}
 
 	return scheduled, nil

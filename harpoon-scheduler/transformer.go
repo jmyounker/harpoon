@@ -29,9 +29,9 @@ func (t *transformer) loop(actual actualBroadcaster, desired desiredBroadcaster,
 	var (
 		ticker   = time.NewTicker(5 * time.Second)
 		actualc  = make(chan map[string]map[string]agent.ContainerInstance)
-		desiredc = make(chan map[string]map[string]taskSpec)
+		desiredc = make(chan map[string]taskSpec)
 		have     = map[string]map[string]agent.ContainerInstance{}
-		want     = map[string]map[string]taskSpec{}
+		want     = map[string]taskSpec{}
 	)
 
 	defer ticker.Stop()
@@ -72,7 +72,7 @@ func (t *transformer) loop(actual actualBroadcaster, desired desiredBroadcaster,
 	}
 }
 
-func transform(want map[string]map[string]taskSpec, have map[string]map[string]agent.ContainerInstance, target taskScheduler) {
+func transform(want map[string]taskSpec, have map[string]map[string]agent.ContainerInstance, target taskScheduler) {
 	// We need to make sure we don't double-schedule stuff. I think the best
 	// way is to lean on the state in the actual agents. That is, any mutation
 	// should first do a round-trip to the agent, to make sure the action
@@ -82,18 +82,18 @@ func transform(want map[string]map[string]taskSpec, have map[string]map[string]a
 
 	// Anything we want but don't have should be started.
 
-	for endpoint, specs := range want {
-		for id, spec := range specs {
-			instances, ok := have[endpoint]
-			if !ok {
-				todo = append(todo, func() error { return target.schedule(spec) })
-				continue
-			}
+	for id, spec := range want {
+		instances, ok := have[spec.Endpoint]
+		if !ok {
+			// The desired endpoint has nothing scheduled.
+			todo = append(todo, func() error { return target.schedule(spec) })
+			continue
+		}
 
-			if _, ok := instances[id]; !ok {
-				todo = append(todo, func() error { return target.schedule(spec) })
-				continue
-			}
+		if _, ok := instances[id]; !ok {
+			// The desired endpoint doesn't have this container scheduled.
+			todo = append(todo, func() error { return target.schedule(spec) })
+			continue
 		}
 	}
 
@@ -101,13 +101,15 @@ func transform(want map[string]map[string]taskSpec, have map[string]map[string]a
 
 	for endpoint, instances := range have {
 		for id := range instances {
-			specs, ok := want[endpoint]
+			spec, ok := want[id]
 			if !ok {
+				// The existing container isn't in our desired set at all.
 				todo = append(todo, func() error { return target.unschedule(endpoint, id) })
 				continue
 			}
 
-			if _, ok := specs[id]; !ok {
+			if endpoint != spec.Endpoint {
+				// The existing container is in our desired set, but not on this endpoint.
 				todo = append(todo, func() error { return target.unschedule(endpoint, id) })
 				continue
 			}

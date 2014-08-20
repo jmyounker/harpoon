@@ -15,7 +15,7 @@ func TestTransform(t *testing.T) {
 	)
 
 	type testCase struct {
-		want    map[string]map[string]taskSpec
+		want    map[string]taskSpec
 		have    map[string]map[string]agent.ContainerInstance
 		started []taskSpec
 		stopped []endpointID
@@ -23,19 +23,19 @@ func TestTransform(t *testing.T) {
 
 	for i, input := range []testCase{
 		{
-			want:    map[string]map[string]taskSpec{endpoint1: map[string]taskSpec{id1: taskSpec1}},
+			want:    map[string]taskSpec{id1: taskSpec1},
 			have:    map[string]map[string]agent.ContainerInstance{},
 			started: []taskSpec{taskSpec1},
 			stopped: []endpointID{},
 		},
 		{
-			want:    map[string]map[string]taskSpec{endpoint1: map[string]taskSpec{id1: taskSpec1}},
+			want:    map[string]taskSpec{id1: taskSpec1},
 			have:    map[string]map[string]agent.ContainerInstance{endpoint1: map[string]agent.ContainerInstance{id1: agent.ContainerInstance{}}},
 			started: []taskSpec{},
 			stopped: []endpointID{},
 		},
 		{
-			want:    map[string]map[string]taskSpec{},
+			want:    map[string]taskSpec{},
 			have:    map[string]map[string]agent.ContainerInstance{endpoint1: map[string]agent.ContainerInstance{id1: agent.ContainerInstance{}}},
 			started: []taskSpec{},
 			stopped: []endpointID{{endpoint1, id1}},

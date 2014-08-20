@@ -346,6 +346,7 @@ func (m *realStateMachine) connectionLoop(reconnect time.Duration) {
 			}
 		}
 
+		log.Printf("state machine: %s: connection established", m.myEndpoint)
 		incAgentConnectionsEstablished(1)
 
 		if err := m.readLoop(statec, stopper); err != nil {
