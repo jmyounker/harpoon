@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/bernerdschaefer/eventsource"
 )
@@ -118,33 +117,50 @@ func (c client) Events() (<-chan map[string]ContainerInstance, Stopper, error) {
 		return nil, nil, fmt.Errorf("problem constructing HTTP request (%s)", err)
 	}
 	req.Header.Set("Accept", "text/event-stream")
+	req.Header.Set("Cache-Control", "no-cache")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, nil, err
+	}
+	// Because we're streaming, we close the body in a different way.
+
+	if resp.StatusCode != http.StatusOK {
+		defer resp.Body.Close()
+		buf, _ := ioutil.ReadAll(resp.Body)
+		return nil, nil, fmt.Errorf("HTTP %d (%s)", resp.StatusCode, bytes.TrimSpace(buf))
+	}
 
 	var (
 		statec = make(chan map[string]ContainerInstance)
 		stopc  = make(chan struct{})
-		es     = eventsource.New(req, 1*time.Second)
 	)
 
 	go func() {
 		<-stopc
-		es.Close()
+		resp.Body.Close()
 	}()
 
 	go func() {
 		defer close(statec)
-		for {
-			// We need the EventSource to tell us when the connection is
-			// interrupted, rather than transparently handling it.
 
-			event, err := es.Read()
-			if err != nil {
-				log.Printf("%s: %s", c.URL.String(), err)
+		var (
+			dec   = eventsource.NewDecoder(resp.Body)
+			state = map[string]ContainerInstance{}
+		)
+
+		for {
+			var event eventsource.Event
+
+			if err := dec.Decode(&event); err != nil {
+				log.Printf("%s: decode: %s", c.URL.String(), err)
 				return
 			}
 
-			var state map[string]ContainerInstance
+			log.Printf("### %s", event.Data)
+
 			if err := json.Unmarshal(event.Data, &state); err != nil {
-				log.Printf("%s: %s", c.URL.String(), err)
+				log.Printf("%s: unmarshal: %s", c.URL.String(), err)
 				continue
 			}
 

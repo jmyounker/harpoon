@@ -30,7 +30,7 @@ func TestScheduleJob(t *testing.T) {
 	}
 
 	for _, spec := range target.started {
-		t.Logf("%s on %s", spec.ContainerID, spec.Endpoint)
+		//t.Logf("%s on %s", spec.ContainerID, spec.Endpoint)
 		want[spec.TaskName] = want[spec.TaskName] - 1
 	}
 
@@ -85,7 +85,7 @@ func TestUnscheduleJob(t *testing.T) {
 }
 
 func TestMigrateJob(t *testing.T) {
-	t.Skip("TODO")
+	t.Skip("not yet implemented")
 }
 
 type simpleMockTaskScheduler map[string]int

@@ -216,7 +216,7 @@ func verifyInstances(t *testing.T, have map[string]map[string]agent.ContainerIns
 				return fmt.Errorf("endpoint %s, container %q: want %s, have %s", endpoint, id, want, have)
 			}
 
-			t.Logf("%s: %s: %s OK", endpoint, id, status)
+			//t.Logf("%s: %s: %s OK", endpoint, id, status)
 		}
 	}
 

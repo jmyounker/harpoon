@@ -170,7 +170,7 @@ func verifySpecs(t *testing.T, have map[string]map[string]taskSpec, s ...string)
 				return fmt.Errorf("endpoint %s, want %q, but it's missing", endpoint, id)
 			}
 
-			t.Logf("%s: %s OK", endpoint, id)
+			//t.Logf("%s: %s OK", endpoint, id)
 		}
 	}
 
