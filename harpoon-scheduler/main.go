@@ -35,7 +35,7 @@ func main() {
 	defer transformer.quit()
 	defer scheduler.quit()
 
-	log.Printf("the shepherd's flock size is %d", shepherd.size())
+	log.Printf("the shepherd's state machine count is %d", shepherd.size())
 
 	err := make(chan error, 2)
 

@@ -11,7 +11,7 @@ import (
 // We need every value in `current` to be an agentState, which should include
 // HostResources, probably a LastUpdatedAt, and maybe a dirty bit.
 
-func randomChoice(jobConfig configstore.JobConfig, current map[string]map[string]agent.ContainerInstance) ([]taskSpec, error) {
+func randomChoice(cfg configstore.JobConfig, current map[string]map[string]agent.ContainerInstance) ([]taskSpec, error) {
 	if len(current) <= 0 {
 		return []taskSpec{}, fmt.Errorf("no available agents")
 	}
@@ -25,16 +25,13 @@ func randomChoice(jobConfig configstore.JobConfig, current map[string]map[string
 		endpoints = append(endpoints, endpoint)
 	}
 
-	for _, taskConfig := range jobConfig.Tasks {
-		for i := 0; i < taskConfig.Scale; i++ {
-			out = append(out, taskSpec{
-				Endpoint:        endpoints[rand.Intn(len(endpoints))],
-				JobName:         jobConfig.JobName,
-				TaskName:        taskConfig.TaskName,
-				ContainerID:     makeContainerID(jobConfig, taskConfig, i),
-				ContainerConfig: taskConfig.ContainerConfig,
-			})
-		}
+	for i := 0; i < cfg.Scale; i++ {
+		out = append(out, taskSpec{
+			Endpoint:        endpoints[rand.Intn(len(endpoints))],
+			Job:             cfg.Job,
+			ContainerID:     makeContainerID(cfg, i),
+			ContainerConfig: cfg.ContainerConfig,
+		})
 	}
 
 	return out, nil

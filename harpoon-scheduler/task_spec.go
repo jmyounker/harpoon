@@ -4,10 +4,11 @@ import (
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
+// taskSpec represents a scheduled container. They're emitted by scheduling
+// algorithms.
 type taskSpec struct {
 	Endpoint              string `json:"endpoint"`
-	JobName               string `json:"job_name"`
-	TaskName              string `json:"task_name"`
+	Job                   string `json:"job"`
 	ContainerID           string `json:"container_id"`
 	agent.ContainerConfig `json:"container_config"`
 }

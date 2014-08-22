@@ -1,6 +1,8 @@
 package main
 
 import (
+	"io/ioutil"
+	"log"
 	"testing"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
@@ -8,77 +10,76 @@ import (
 )
 
 func TestScheduleJob(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	//log.SetFlags(log.Lmicroseconds)
+
 	var (
-		target    = newMockTaskScheduler()
-		current   = map[string]map[string]agent.ContainerInstance{"http://dummy.agent.cool": {}}
-		want      = map[string]int{}
-		jobConfig = configstore.JobConfig{
-			JobName: "armadillo",
-			Tasks: []configstore.TaskConfig{
-				{TaskName: "buffalo", Scale: 1},
-				{TaskName: "chinchilla", Scale: 2},
-			},
-		}
+		target  = newMockTaskScheduler()
+		current = map[string]map[string]agent.ContainerInstance{"http://københavn.guru:1813": {}}
+		job     = "kierkegaard"
+		scale   = 3
+		want    = map[string]int{job: scale}
+		cfg     = configstore.JobConfig{Job: job, Scale: scale}
 	)
 
-	if err := scheduleJob(jobConfig, current, target); err != nil {
+	if err := scheduleJob(cfg, current, target); err != nil {
 		t.Fatal(err)
-	}
-
-	for _, taskConfig := range jobConfig.Tasks {
-		want[taskConfig.TaskName] = taskConfig.Scale
 	}
 
 	for _, spec := range target.started {
 		//t.Logf("%s on %s", spec.ContainerID, spec.Endpoint)
-		want[spec.TaskName] = want[spec.TaskName] - 1
+		want[spec.Job] = want[spec.Job] - 1
 	}
 
-	for taskName, zero := range want {
+	for job, zero := range want {
 		if zero != 0 {
-			t.Errorf("%s: offset of %d", taskName, zero)
+			t.Errorf("%s: offset of %d", job, zero)
 		}
 
-		delete(want, taskName)
+		delete(want, job)
 	}
 
 	if len(want) > 0 {
-		t.Errorf("%d unknown tasks: %v", len(want), want)
+		t.Errorf("%d unknown jobs: %v", len(want), want)
 	}
 }
 
 func TestUnscheduleJob(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	//log.SetFlags(log.Lmicroseconds)
+
 	var (
-		adam    = configstore.TaskConfig{TaskName: "adam", Scale: 1}
-		betty   = configstore.TaskConfig{TaskName: "betty", Scale: 2}
-		charlie = configstore.JobConfig{JobName: "charlie", Tasks: []configstore.TaskConfig{adam, betty}}
-		ygritte = configstore.TaskConfig{TaskName: "ygritte", Scale: 1}
-		zachary = configstore.JobConfig{JobName: "zachary", Tasks: []configstore.TaskConfig{ygritte}}
-		jobs    = []configstore.JobConfig{charlie, zachary}
-		target  = simpleMockTaskScheduler{}
+		aquinas  = configstore.JobConfig{Job: "aquinas", Scale: 2}
+		berkeley = configstore.JobConfig{Job: "berkeley", Scale: 3}
+		jobs     = []configstore.JobConfig{aquinas, berkeley}
+		target   = simpleMockTaskScheduler{}
 	)
 
-	for _, jobConfig := range jobs {
-		for _, taskConfig := range jobConfig.Tasks {
-			for i := 0; i < taskConfig.Scale; i++ {
-				if err := target.schedule(taskSpec{
-					ContainerID: makeContainerID(jobConfig, taskConfig, i),
-				}); err != nil {
-					t.Fatal(err)
-				}
+	// Schedule both jobs
+
+	for _, cfg := range jobs {
+		for i := 0; i < cfg.Scale; i++ {
+			spec := taskSpec{ContainerID: makeContainerID(cfg, i)}
+			if err := target.schedule(spec); err != nil {
+				t.Fatal(err)
 			}
 		}
 	}
 
-	if err := unscheduleJob(charlie, target.current(), target); err != nil {
+	// Unschedule one job
+
+	if err := unscheduleJob(aquinas, target.current(), target); err != nil {
 		t.Fatal(err)
 	}
 
+	// Verify counts
+
 	if want, have := map[string]int{
-		makeContainerID(charlie, adam, 0):    0,
-		makeContainerID(charlie, betty, 0):   0,
-		makeContainerID(charlie, betty, 1):   0,
-		makeContainerID(zachary, ygritte, 0): 1,
+		makeContainerID(aquinas, 0):  0,
+		makeContainerID(aquinas, 1):  0,
+		makeContainerID(berkeley, 0): 1,
+		makeContainerID(berkeley, 1): 1,
+		makeContainerID(berkeley, 2): 1,
 	}, target; !deepEqualIgnoreOrder(want, have) {
 		t.Fatalf("want %#+v, have %#+v", want, have)
 	}

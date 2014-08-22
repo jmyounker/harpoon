@@ -476,7 +476,7 @@ func (c *realContainer) stop() error {
 	}
 
 	c.desired = "DOWN"
-	c.downDeadline = time.Now().Add(time.Duration(c.Config.Grace.Shutdown) * time.Second).Add(heartbeatInterval)
+	c.downDeadline = time.Now().Add(c.Config.Grace.Shutdown.Duration).Add(heartbeatInterval)
 
 	return nil
 }

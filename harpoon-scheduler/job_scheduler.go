@@ -56,7 +56,6 @@ func (s *realJobScheduler) schedule(job configstore.JobConfig) error {
 	s.schedc <- req
 
 	return <-req.err
-
 }
 
 func (s *realJobScheduler) unschedule(job configstore.JobConfig) error {
@@ -129,7 +128,8 @@ func (s *realJobScheduler) loop(actual actualBroadcaster, target taskScheduler) 
 }
 
 func scheduleJob(jobConfig configstore.JobConfig, current map[string]map[string]agent.ContainerInstance, target taskScheduler) error {
-	log.Printf("job scheduler: request to schedule %s", jobConfig.JobName)
+	log.Printf("job scheduler: request to schedule %s", jobConfig.Job)
+	incJobScheduleRequests(1)
 
 	specs, err := algorithm(jobConfig, current)
 	if err != nil {
@@ -164,18 +164,15 @@ func scheduleJob(jobConfig configstore.JobConfig, current map[string]map[string]
 }
 
 func unscheduleJob(jobConfig configstore.JobConfig, actual map[string]map[string]agent.ContainerInstance, target taskScheduler) error {
-	log.Printf("job scheduler: request to unschedule %s", jobConfig.JobName)
-
-	type tuple struct{ jobName, taskName string }
+	log.Printf("job scheduler: request to unschedule %s", jobConfig.Job)
+	incJobUnscheduleRequests(1)
 
 	var (
-		targets = map[string]tuple{}
+		targets = map[string]string{}
 	)
 
-	for _, taskConfig := range jobConfig.Tasks {
-		for i := 0; i < taskConfig.Scale; i++ {
-			targets[makeContainerID(jobConfig, taskConfig, i)] = tuple{jobConfig.JobName, taskConfig.TaskName}
-		}
+	for i := 0; i < jobConfig.Scale; i++ {
+		targets[makeContainerID(jobConfig, i)] = jobConfig.Job
 	}
 
 	var (
@@ -191,7 +188,7 @@ func unscheduleJob(jobConfig configstore.JobConfig, actual map[string]map[string
 
 	for endpoint, instances := range actual {
 		for id, instance := range instances {
-			if tuple, ok := targets[id]; ok {
+			if job, ok := targets[id]; ok {
 				if err := target.unschedule(endpoint, id); err != nil {
 					return err
 				}
@@ -199,8 +196,7 @@ func unscheduleJob(jobConfig configstore.JobConfig, actual map[string]map[string
 				undo = append(undo, func() {
 					target.schedule(taskSpec{
 						Endpoint:        endpoint,
-						JobName:         tuple.jobName,
-						TaskName:        tuple.taskName,
+						Job:             job,
 						ContainerID:     id,
 						ContainerConfig: instance.Config,
 					})
@@ -228,13 +224,14 @@ func migrateJob(from, to configstore.JobConfig, current map[string]map[string]ag
 	return fmt.Errorf("not yet implemented")
 }
 
-func makeContainerID(j configstore.JobConfig, t configstore.TaskConfig, i int) string {
-	return fmt.Sprintf("%s-%s:%s-%s:%d", j.JobName, refHash(j), t.TaskName, refHash(t), i)
+func makeContainerID(cfg configstore.JobConfig, i int) string {
+	return fmt.Sprintf("%s-%s-%d", cfg.Job, refHash(cfg), i)
 }
 
 func refHash(v interface{}) string {
 	// TODO(pb): need stable encoding, either not-JSON (most likely), or some
 	// way of getting stability out of JSON.
+
 	h := md5.New()
 
 	if err := json.NewEncoder(h).Encode(v); err != nil {

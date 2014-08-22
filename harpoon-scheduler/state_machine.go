@@ -198,7 +198,7 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 			return fmt.Errorf("%q already being unscheduled on %s, have patience", id, m.myEndpoint)
 		}
 
-		tangos[id] = time.Now().Add(2 * time.Duration(instance.Config.Grace.Shutdown) * time.Second)
+		tangos[id] = time.Now().Add(2 * instance.Config.Grace.Shutdown.Duration)
 
 		return nil
 	}
