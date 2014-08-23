@@ -1,5 +1,6 @@
 package main
 
+/*
 import (
 	"crypto/md5"
 	"encoding/json"
@@ -250,3 +251,4 @@ type migrateJobReq struct {
 	from, to configstore.JobConfig
 	err      chan error
 }
+*/

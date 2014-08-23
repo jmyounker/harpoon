@@ -6,26 +6,32 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"reflect"
+
+	"github.com/soundcloud/harpoon/harpoon-configstore/lib"
 )
 
 type desiredBroadcaster interface {
-	subscribe(chan<- map[string]taskSpec)
-	unsubscribe(chan<- map[string]taskSpec)
-	snapshot() map[string]taskSpec
+	subscribe(chan<- map[string]configstore.JobConfig)
+	unsubscribe(chan<- map[string]configstore.JobConfig)
+	snapshot() map[string]configstore.JobConfig
+}
+
+type jobScheduler interface {
+	schedule(configstore.JobConfig) error
+	unschedule(configstore.JobConfig) error
 }
 
 type registry interface {
 	desiredBroadcaster
-	taskScheduler
+	jobScheduler
 }
 
 type realRegistry struct {
-	subc      chan chan<- map[string]taskSpec
-	unsubc    chan chan<- map[string]taskSpec
-	schedc    chan schedTaskReq
-	unschedc  chan unschedTaskReq
-	snapshotc chan map[string]taskSpec
+	subc      chan chan<- map[string]configstore.JobConfig
+	unsubc    chan chan<- map[string]configstore.JobConfig
+	schedc    chan schedJobReq
+	unschedc  chan schedJobReq
+	snapshotc chan map[string]configstore.JobConfig
 	quitc     chan chan struct{}
 }
 
@@ -38,11 +44,11 @@ func newRealRegistry(filename string) *realRegistry {
 	}
 
 	r := &realRegistry{
-		subc:      make(chan chan<- map[string]taskSpec),
-		unsubc:    make(chan chan<- map[string]taskSpec),
-		schedc:    make(chan schedTaskReq),
-		unschedc:  make(chan unschedTaskReq),
-		snapshotc: make(chan map[string]taskSpec),
+		subc:      make(chan chan<- map[string]configstore.JobConfig),
+		unsubc:    make(chan chan<- map[string]configstore.JobConfig),
+		schedc:    make(chan schedJobReq),
+		unschedc:  make(chan schedJobReq),
+		snapshotc: make(chan map[string]configstore.JobConfig),
 		quitc:     make(chan chan struct{}),
 	}
 
@@ -51,27 +57,27 @@ func newRealRegistry(filename string) *realRegistry {
 	return r
 }
 
-func (r *realRegistry) subscribe(c chan<- map[string]taskSpec) {
+func (r *realRegistry) subscribe(c chan<- map[string]configstore.JobConfig) {
 	r.subc <- c
 }
 
-func (r *realRegistry) unsubscribe(c chan<- map[string]taskSpec) {
+func (r *realRegistry) unsubscribe(c chan<- map[string]configstore.JobConfig) {
 	r.unsubc <- c
 }
 
-func (r *realRegistry) schedule(spec taskSpec) error {
-	req := schedTaskReq{spec, make(chan error)}
+func (r *realRegistry) schedule(cfg configstore.JobConfig) error {
+	req := schedJobReq{cfg, make(chan error)}
 	r.schedc <- req
 	return <-req.err
 }
 
-func (r *realRegistry) unschedule(endpoint, id string) error {
-	req := unschedTaskReq{endpoint, id, make(chan error)}
+func (r *realRegistry) unschedule(cfg configstore.JobConfig) error {
+	req := schedJobReq{cfg, make(chan error)}
 	r.unschedc <- req
 	return <-req.err
 }
 
-func (r *realRegistry) snapshot() map[string]taskSpec {
+func (r *realRegistry) snapshot() map[string]configstore.JobConfig {
 	return <-r.snapshotc
 }
 
@@ -81,9 +87,9 @@ func (r *realRegistry) quit() {
 	<-q
 }
 
-func (r *realRegistry) loop(filename string, scheduled map[string]taskSpec) {
-	cp := func() map[string]taskSpec {
-		out := make(map[string]taskSpec, len(scheduled))
+func (r *realRegistry) loop(filename string, scheduled map[string]configstore.JobConfig) {
+	cp := func() map[string]configstore.JobConfig {
+		out := make(map[string]configstore.JobConfig, len(scheduled))
 
 		for id, spec := range scheduled {
 			out[id] = spec
@@ -92,31 +98,26 @@ func (r *realRegistry) loop(filename string, scheduled map[string]taskSpec) {
 		return out
 	}
 
-	schedule := func(spec taskSpec) error {
-		existing, ok := scheduled[spec.ContainerID]
-		if ok {
-			if reflect.DeepEqual(spec, existing) {
-				return fmt.Errorf("%s already scheduled on %s", spec.ContainerID, existing.Endpoint)
-			}
-			return fmt.Errorf("%s scheduled on %s with a different config", spec.ContainerID, spec.Endpoint)
+	schedule := func(cfg configstore.JobConfig) error {
+		hash := cfg.Hash()
+
+		if _, ok := scheduled[hash]; ok {
+			return fmt.Errorf("%s already scheduled", hash)
 		}
 
-		scheduled[spec.ContainerID] = spec
+		scheduled[hash] = cfg
 
 		return nil
 	}
 
-	unschedule := func(endpoint, id string) error {
-		existing, ok := scheduled[id]
-		if !ok {
-			return fmt.Errorf("%s already removed from scheduler registry (it isn't scheduled anywhere)", id)
+	unschedule := func(cfg configstore.JobConfig) error {
+		hash := cfg.Hash()
+
+		if _, ok := scheduled[hash]; !ok {
+			return fmt.Errorf("%s not scheduled", hash)
 		}
 
-		if existing.Endpoint != endpoint {
-			return fmt.Errorf("%s is scheduled, but not on %s (it's scheduled on %s)", id, endpoint, existing.Endpoint)
-		}
-
-		delete(scheduled, id)
+		delete(scheduled, hash)
 
 		return nil
 	}
@@ -128,7 +129,7 @@ func (r *realRegistry) loop(filename string, scheduled map[string]taskSpec) {
 	}
 
 	var (
-		subscriptions = map[chan<- map[string]taskSpec]struct{}{}
+		subscriptions = map[chan<- map[string]configstore.JobConfig]struct{}{}
 	)
 
 	broadcast := func() {
@@ -142,7 +143,7 @@ func (r *realRegistry) loop(filename string, scheduled map[string]taskSpec) {
 		select {
 		case c := <-r.subc:
 			subscriptions[c] = struct{}{}
-			go func(m map[string]taskSpec) { c <- m }(cp())
+			go func(m map[string]configstore.JobConfig) { c <- m }(cp())
 
 		case c := <-r.unsubc:
 			delete(subscriptions, c)
@@ -150,7 +151,7 @@ func (r *realRegistry) loop(filename string, scheduled map[string]taskSpec) {
 		case req := <-r.schedc:
 			incTaskScheduleRequests(1)
 
-			err := schedule(req.taskSpec)
+			err := schedule(req.JobConfig)
 			if err == nil {
 				persist()
 				broadcast()
@@ -161,7 +162,7 @@ func (r *realRegistry) loop(filename string, scheduled map[string]taskSpec) {
 		case req := <-r.unschedc:
 			incTaskUnscheduleRequests(1)
 
-			err := unschedule(req.endpoint, req.id)
+			err := unschedule(req.JobConfig)
 			if err == nil {
 				persist()
 				broadcast()
@@ -178,7 +179,7 @@ func (r *realRegistry) loop(filename string, scheduled map[string]taskSpec) {
 	}
 }
 
-func save(filename string, scheduled map[string]taskSpec) error {
+func save(filename string, scheduled map[string]configstore.JobConfig) error {
 	if filename == "" {
 		return nil // no file (and no persistence) is OK
 	}
@@ -205,22 +206,27 @@ func save(filename string, scheduled map[string]taskSpec) error {
 	return os.Rename(f.Name(), filename) // atomic
 }
 
-func load(filename string) (map[string]taskSpec, error) {
+func load(filename string) (map[string]configstore.JobConfig, error) {
 	if _, err := os.Stat(filename); os.IsNotExist(err) {
-		return map[string]taskSpec{}, nil // no file is OK
+		return map[string]configstore.JobConfig{}, nil // no file is OK
 	} else if err != nil {
-		return map[string]taskSpec{}, err
+		return map[string]configstore.JobConfig{}, err
 	}
 
 	buf, err := ioutil.ReadFile(filename)
 	if err != nil {
-		return map[string]taskSpec{}, err
+		return map[string]configstore.JobConfig{}, err
 	}
 
-	var scheduled map[string]taskSpec
+	var scheduled map[string]configstore.JobConfig
 	if err := json.Unmarshal(buf, &scheduled); err != nil {
-		return map[string]taskSpec{}, err
+		return map[string]configstore.JobConfig{}, err
 	}
 
 	return scheduled, nil
+}
+
+type schedJobReq struct {
+	configstore.JobConfig
+	err chan error
 }

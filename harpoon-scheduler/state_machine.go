@@ -99,8 +99,8 @@ func (m *realStateMachine) snapshot() map[string]map[string]agent.ContainerInsta
 	return <-m.snapshotc
 }
 
-func (m *realStateMachine) schedule(spec taskSpec) error {
-	req := schedTaskReq{spec, make(chan error)}
+func (m *realStateMachine) schedule(_ string, id string, cfg agent.ContainerConfig) error {
+	req := schedTaskReq{"", id, cfg, make(chan error)}
 	m.schedc <- req
 	return <-req.err
 }
@@ -160,17 +160,17 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 		}
 	}
 
-	sched := func(spec taskSpec) error {
+	sched := func(id string, cfg agent.ContainerConfig) error {
 		if abandonc != nil {
 			return errAgentConnectionInterrupted
 		}
 
-		switch err := client.Put(spec.ContainerID, spec.ContainerConfig); err {
+		switch err := client.Put(id, cfg); err {
 		case nil:
 			return nil
 
 		case agent.ErrContainerAlreadyExists:
-			return client.Start(spec.ContainerID)
+			return client.Start(id)
 
 		default:
 			return err
@@ -288,7 +288,7 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 		case m.snapshotc <- cp():
 
 		case req := <-m.schedc:
-			req.err <- sched(req.taskSpec)
+			req.err <- sched(req.id, req.ContainerConfig)
 
 		case req := <-m.unschedc:
 			req.err <- unsched(req.id)

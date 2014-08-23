@@ -5,7 +5,10 @@ import (
 	"time"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
+	"github.com/soundcloud/harpoon/harpoon-configstore/lib"
 )
+
+var algo = randomChoice
 
 type transformer struct {
 	quitc chan chan struct{}
@@ -29,9 +32,9 @@ func (t *transformer) loop(actual actualBroadcaster, desired desiredBroadcaster,
 	var (
 		ticker   = time.NewTicker(5 * time.Second)
 		actualc  = make(chan map[string]map[string]agent.ContainerInstance)
-		desiredc = make(chan map[string]taskSpec)
+		desiredc = make(chan map[string]configstore.JobConfig)
 		have     = map[string]map[string]agent.ContainerInstance{}
-		want     = map[string]taskSpec{}
+		want     = map[string]configstore.JobConfig{}
 	)
 
 	defer ticker.Stop()
@@ -72,48 +75,55 @@ func (t *transformer) loop(actual actualBroadcaster, desired desiredBroadcaster,
 	}
 }
 
-func transform(want map[string]taskSpec, have map[string]map[string]agent.ContainerInstance, target taskScheduler) {
-	// We need to make sure we don't double-schedule stuff. I think the best
-	// way is to lean on the state in the actual agents. That is, any mutation
-	// should first do a round-trip to the agent, to make sure the action
-	// isn't already underway.
+func transform(wantJobs map[string]configstore.JobConfig, haveInstances map[string]map[string]agent.ContainerInstance, target taskScheduler) {
 
-	todo := []func() error{}
+	var (
+		todo        = []func() error{}
+		wantTasks   = map[string]agent.ContainerConfig{}
+		haveTasks   = map[string]agent.ContainerConfig{}
+		id2endpoint = map[string]string{}
+	)
+
+	for _, cfg := range wantJobs {
+		for i := 0; i < cfg.Scale; i++ {
+			wantTasks[makeContainerID(cfg, i)] = cfg.ContainerConfig
+		}
+	}
+
+	for endpoint, instances := range haveInstances {
+		for id, instance := range instances {
+			haveTasks[id] = instance.Config
+			id2endpoint[id] = endpoint
+		}
+	}
 
 	// Anything we want but don't have should be started.
 
-	for id, spec := range want {
-		instances, ok := have[spec.Endpoint]
-		if !ok {
-			// The desired endpoint has nothing scheduled.
-			todo = append(todo, func() error { return target.schedule(spec) })
+	for id, cfg := range wantTasks {
+		if _, ok := haveTasks[id]; ok {
+			delete(wantTasks, id)
+			delete(haveTasks, id)
 			continue
 		}
 
-		if _, ok := instances[id]; !ok {
-			// The desired endpoint doesn't have this container scheduled.
-			todo = append(todo, func() error { return target.schedule(spec) })
+		endpoint, err := algo(cfg, haveInstances)
+		if err != nil {
+			log.Printf("transformer: error scheduling %s: %s", id, err)
 			continue
 		}
+
+		todo = append(todo, func() error { return target.schedule(endpoint, id, cfg) })
 	}
 
 	// Anything we have but don't want should be stopped.
 
-	for endpoint, instances := range have {
-		for id := range instances {
-			spec, ok := want[id]
-			if !ok {
-				// The existing container isn't in our desired set at all.
-				todo = append(todo, func() error { return target.unschedule(endpoint, id) })
-				continue
-			}
-
-			if endpoint != spec.Endpoint {
-				// The existing container is in our desired set, but not on this endpoint.
-				todo = append(todo, func() error { return target.unschedule(endpoint, id) })
-				continue
-			}
+	for id := range haveTasks {
+		endpoint, ok := id2endpoint[id]
+		if !ok {
+			panic("invalid state in transform")
 		}
+
+		todo = append(todo, func() error { return target.unschedule(endpoint, id) })
 	}
 
 	// Engage.

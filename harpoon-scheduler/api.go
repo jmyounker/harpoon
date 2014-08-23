@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/julienschmidt/httprouter"
+
 	"github.com/soundcloud/harpoon/harpoon-configstore/lib"
 )
 
@@ -13,13 +14,13 @@ type api struct {
 	jobScheduler
 }
 
-func newAPI(s jobScheduler, desired desiredBroadcaster, actual actualBroadcaster) http.Handler {
+func newAPI(target registry, actual actualBroadcaster) http.Handler {
 	r := httprouter.New()
 
-	r.POST("/schedule", handleSchedule(s))
-	r.POST("/unschedule", handleUnschedule(s))
-	r.POST("/migrate", handleMigrate(s))
-	r.GET("/", handleState(desired, actual))
+	r.POST("/schedule", handleSchedule(target))
+	r.POST("/unschedule", handleUnschedule(target))
+	r.POST("/migrate", handleMigrate(target))
+	r.GET("/", handleState(target, actual))
 
 	return r
 }

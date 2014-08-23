@@ -1,5 +1,6 @@
 package main
 
+/*
 import (
 	"io/ioutil"
 	"log"
@@ -131,3 +132,4 @@ func deepEqualIgnoreOrder(a, b map[string]int) bool {
 
 	return true
 }
+*/

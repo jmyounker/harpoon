@@ -1,6 +1,8 @@
 package configstore
 
 import (
+	"crypto/md5"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -65,6 +67,19 @@ func (c JobConfig) Valid() error {
 	}
 
 	return nil
+}
+
+// Hash produces a short and unique content-addressable string.
+func (c JobConfig) Hash() string {
+	h := md5.New()
+
+	// JSON isn't a good encoding, because it's not stable.
+
+	if err := json.NewEncoder(h).Encode(c); err != nil {
+		panic(fmt.Sprintf("JobConfig Hash error: %s", err))
+	}
+
+	return fmt.Sprintf("%s-%s", c.Job, fmt.Sprintf("%x", h.Sum(nil))[:7])
 }
 
 // HealthCheck defines how a third party can determine if an instance of a
