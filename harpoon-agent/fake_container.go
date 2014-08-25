@@ -22,8 +22,8 @@ var _ container = &fakeContainer{}
 func newFakeContainer(id string) *fakeContainer {
 	c := &fakeContainer{
 		ContainerInstance: agent.ContainerInstance{
-			ID:     id,
-			Status: agent.ContainerStatusRunning,
+			ID:              id,
+			ContainerStatus: agent.ContainerStatusRunning,
 		},
 		logs:           newContainerLog(containerLogRingBufferSize),
 		subscribers:    map[chan<- agent.ContainerInstance]struct{}{},
@@ -164,7 +164,7 @@ func (c *fakeContainer) stop() error {
 }
 
 func (c *fakeContainer) updateStatus(status agent.ContainerStatus) {
-	c.ContainerInstance.Status = status
+	c.ContainerInstance.ContainerStatus = status
 
 	for subc := range c.subscribers {
 		subc <- c.ContainerInstance

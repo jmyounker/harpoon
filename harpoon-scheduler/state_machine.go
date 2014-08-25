@@ -151,7 +151,7 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 
 	update := func(delta map[string]agent.ContainerInstance) {
 		for id, instance := range delta {
-			switch instance.Status {
+			switch instance.ContainerStatus {
 			case agent.ContainerStatusDeleted:
 				delete(current, id)
 			default:
@@ -198,7 +198,7 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 			return fmt.Errorf("%q already being unscheduled on %s, have patience", id, m.myEndpoint)
 		}
 
-		tangos[id] = time.Now().Add(2 * instance.Config.Grace.Shutdown.Duration)
+		tangos[id] = time.Now().Add(2 * instance.ContainerConfig.Grace.Shutdown.Duration)
 
 		return nil
 	}
@@ -213,7 +213,7 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 			}
 
 			if time.Now().After(deadline) {
-				log.Printf("state machine: %s: tango %s hit deadline, got to %s, giving up", m.myEndpoint, id, instance.Status)
+				log.Printf("state machine: %s: tango %s hit deadline, got to %s, giving up", m.myEndpoint, id, instance.ContainerStatus)
 				delete(tangos, id)
 				continue
 			}
@@ -229,9 +229,9 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 			// code, by removing out-of-sync detection and the reconnectc
 			// altogether.
 
-			switch instance.Status {
+			switch instance.ContainerStatus {
 			case agent.ContainerStatusRunning, agent.ContainerStatusFailed:
-				log.Printf("state machine: %s: tango %s %s, issuing Stop", m.myEndpoint, id, instance.Status)
+				log.Printf("state machine: %s: tango %s %s, issuing Stop", m.myEndpoint, id, instance.ContainerStatus)
 				switch err := client.Stop(id); err {
 				case nil:
 					continue // OK, wait for next update
@@ -253,7 +253,7 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 				}
 
 			case agent.ContainerStatusCreated, agent.ContainerStatusFinished:
-				log.Printf("state machine: %s: tango %s %s, issuing Delete", m.myEndpoint, id, instance.Status)
+				log.Printf("state machine: %s: tango %s %s, issuing Delete", m.myEndpoint, id, instance.ContainerStatus)
 				switch err := client.Delete(id); err {
 				case nil:
 					continue // OK, wait for next update
@@ -270,7 +270,7 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 				}
 
 			default:
-				log.Printf("state machine: %s: tango %s %s, nop", m.myEndpoint, id, instance.Status)
+				log.Printf("state machine: %s: tango %s %s, nop", m.myEndpoint, id, instance.ContainerStatus)
 				continue
 			}
 		}

@@ -92,7 +92,7 @@ func transform(wantJobs map[string]configstore.JobConfig, haveInstances map[stri
 
 	for endpoint, instances := range haveInstances {
 		for id, instance := range instances {
-			haveTasks[id] = instance.Config
+			haveTasks[id] = instance.ContainerConfig
 			id2endpoint[id] = endpoint
 		}
 	}

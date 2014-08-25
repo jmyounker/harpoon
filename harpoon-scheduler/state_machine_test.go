@@ -51,7 +51,7 @@ func TestStateMachineBasicFunctionality(t *testing.T) {
 					if endpoint == server.URL {
 						for id0, instance := range instances {
 							if id0 == id {
-								current = fmt.Sprint(instance.Status)
+								current = fmt.Sprint(instance.ContainerStatus)
 							}
 						}
 					}

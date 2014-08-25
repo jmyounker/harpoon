@@ -169,9 +169,9 @@ func (m *Mock) createContainer(w http.ResponseWriter, r *http.Request, p httprou
 	}
 
 	instance := ContainerInstance{
-		ID:     id,
-		Status: ContainerStatusRunning, // PUT also starts
-		Config: config,
+		ID:              id,
+		ContainerStatus: ContainerStatusRunning, // PUT also starts
+		ContainerConfig: config,
 	}
 
 	// PUT also starts.
@@ -224,9 +224,9 @@ func (m *Mock) destroyContainer(w http.ResponseWriter, r *http.Request, p httpro
 		return
 	}
 
-	switch instance.Status {
+	switch instance.ContainerStatus {
 	case ContainerStatusFailed, ContainerStatusFinished:
-		instance.Status = ContainerStatusDeleted
+		instance.ContainerStatus = ContainerStatusDeleted
 		m.instances[id] = instance
 		broadcast(m.subscribers, m.instances)
 		delete(m.instances, id)
@@ -234,7 +234,7 @@ func (m *Mock) destroyContainer(w http.ResponseWriter, r *http.Request, p httpro
 		return
 
 	default:
-		http.Error(w, fmt.Sprintf("%q not in a finished state, currently %s", id, instance.Status), http.StatusNotFound)
+		http.Error(w, fmt.Sprintf("%q not in a finished state, currently %s", id, instance.ContainerStatus), http.StatusNotFound)
 		return
 	}
 }
@@ -263,25 +263,25 @@ func (m *Mock) stopContainer(w http.ResponseWriter, r *http.Request, p httproute
 	m.Lock()
 	defer m.Unlock()
 
-	containerInstance, ok := m.instances[id]
+	instance, ok := m.instances[id]
 	if !ok {
 		http.Error(w, fmt.Sprintf("%q unknown; can't stop", id), http.StatusNotFound)
 		return
 	}
 
-	if containerInstance.Status != ContainerStatusRunning {
-		http.Error(w, fmt.Sprintf("%q not running (%s), can't stop", id, containerInstance.Status), http.StatusBadRequest)
+	if instance.ContainerStatus != ContainerStatusRunning {
+		http.Error(w, fmt.Sprintf("%q not running (%s), can't stop", id, instance.ContainerStatus), http.StatusBadRequest)
 		return
 	}
 
-	containerInstance.Status = ContainerStatusFinished
+	instance.ContainerStatus = ContainerStatusFinished
 
 	w.WriteHeader(http.StatusAccepted) // "[Stop] returns immediately with 202 status."
 
 	go func() {
 		m.Lock()
 		defer m.Unlock()
-		m.instances[id] = containerInstance
+		m.instances[id] = instance
 		broadcast(m.subscribers, m.instances)
 	}()
 }
