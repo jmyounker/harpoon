@@ -135,17 +135,24 @@ type Grace struct {
 	Shutdown JSONDuration `json:"shutdown"`
 }
 
+const (
+	minStartupDuration  = 250 * time.Millisecond
+	maxStartupDuration  = 30 * time.Second
+	minShutdownDuration = 250 * time.Millisecond
+	maxShutdownDuration = 10 * time.Second
+)
+
 // Valid performs a validation check, to ensure invalid structures may be
 // detected as early as possible.
 func (g Grace) Valid() error {
 	var errs []string
 
-	if g.Startup.Duration < 250*time.Millisecond || g.Startup.Duration > 30*time.Second {
-		errs = append(errs, fmt.Sprintf("startup (%s) must be between 250ms and 30s", g.Startup))
+	if g.Startup.Duration < minStartupDuration || g.Startup.Duration > maxStartupDuration {
+		errs = append(errs, fmt.Sprintf("startup (%s) must be between %s and %s", g.Startup, minStartupDuration, maxStartupDuration))
 	}
 
-	if g.Shutdown.Duration < 250*time.Millisecond || g.Shutdown.Duration > 30*time.Second {
-		errs = append(errs, fmt.Sprintf("shutdown (%s) must be between 250ms and 30s", g.Shutdown))
+	if g.Shutdown.Duration < minShutdownDuration || g.Shutdown.Duration > maxShutdownDuration {
+		errs = append(errs, fmt.Sprintf("shutdown (%s) must be between %s and %s", g.Shutdown, minShutdownDuration, maxShutdownDuration))
 	}
 
 	if len(errs) > 0 {
