@@ -41,24 +41,31 @@ type ContainerConfig struct {
 // detected as early as possible.
 func (c ContainerConfig) Valid() error {
 	var errs []string
+
 	if _, err := url.Parse(c.ArtifactURL); err != nil {
 		errs = append(errs, fmt.Sprintf("artifact URL %q invalid: %s", c.ArtifactURL, err))
 	}
+
 	if err := c.Command.Valid(); err != nil {
 		errs = append(errs, fmt.Sprintf("command invalid: %s", err))
 	}
+
 	if err := c.Resources.Valid(); err != nil {
 		errs = append(errs, fmt.Sprintf("resources invalid: %s", err))
 	}
+
 	if err := c.Storage.Valid(); err != nil {
 		errs = append(errs, fmt.Sprintf("storage invalid: %s", err))
 	}
+
 	if err := c.Grace.Valid(); err != nil {
 		errs = append(errs, fmt.Sprintf("grace periods invalid: %s", err))
 	}
+
 	if len(errs) > 0 {
 		return fmt.Errorf(strings.Join(errs, "; "))
 	}
+
 	return nil
 }
 
@@ -124,23 +131,34 @@ func (s Storage) Valid() error {
 // that don't shut down within the shutdown window may be subject to a more
 // forceful kill.
 type Grace struct {
-	Startup  int `json:"startup"`
-	Shutdown int `json:"shutdown"`
+	Startup  JSONDuration `json:"startup"`
+	Shutdown JSONDuration `json:"shutdown"`
 }
+
+const (
+	minStartupDuration  = 250 * time.Millisecond
+	maxStartupDuration  = 30 * time.Second
+	minShutdownDuration = 250 * time.Millisecond
+	maxShutdownDuration = 10 * time.Second
+)
 
 // Valid performs a validation check, to ensure invalid structures may be
 // detected as early as possible.
 func (g Grace) Valid() error {
 	var errs []string
-	if g.Startup <= 0 || g.Startup > 30 {
-		errs = append(errs, fmt.Sprintf("startup (%d) must be between 1 and 30", g.Startup))
+
+	if g.Startup.Duration < minStartupDuration || g.Startup.Duration > maxStartupDuration {
+		errs = append(errs, fmt.Sprintf("startup (%s) must be between %s and %s", g.Startup, minStartupDuration, maxStartupDuration))
 	}
-	if g.Shutdown <= 0 || g.Shutdown > 30 {
-		errs = append(errs, fmt.Sprintf("shutdown (%d) must be between 1 and 30", g.Shutdown))
+
+	if g.Shutdown.Duration < minShutdownDuration || g.Shutdown.Duration > maxShutdownDuration {
+		errs = append(errs, fmt.Sprintf("shutdown (%s) must be between %s and %s", g.Shutdown, minShutdownDuration, maxShutdownDuration))
 	}
+
 	if len(errs) > 0 {
 		return fmt.Errorf(strings.Join(errs, "; "))
 	}
+
 	return nil
 }
 
@@ -182,9 +200,9 @@ type Stopper interface {
 // container IDs are provided with the PUT/POST, rather than assigned by the
 // agent.
 type ContainerInstance struct {
-	ID     string          `json:"container_id"`
-	Status ContainerStatus `json:"status"`
-	Config ContainerConfig `json:"config"`
+	ID              string `json:"container_id"`
+	ContainerStatus `json:"status"`
+	ContainerConfig `json:"config"`
 }
 
 // ContainerStatus describes the current state of a container in an agent. The
@@ -281,4 +299,28 @@ type ContainerMetrics struct {
 	CPUTime     uint64 `json:"cpu_time"`     // total counter of cpu time
 	MemoryUsage uint64 `json:"memory_usage"` // memory usage in bytes
 	MemoryLimit uint64 `json:"memory_limit"` // memory limit in bytes
+}
+
+// JSONDuration allows specification of time.Duration as strings in JSON-
+// serialized structs. For example, "250ms", "5s", "30m".
+type JSONDuration struct{ time.Duration }
+
+// String implements the Stringer interface, for convenience.
+func (d JSONDuration) String() string { return d.Duration.String() }
+
+// MarshalJSON implements the json.Marshaler interface.
+func (d JSONDuration) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf(`"%s"`, d.Duration.String())), nil
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface.
+func (d *JSONDuration) UnmarshalJSON(buf []byte) error {
+	dur, err := time.ParseDuration(strings.Trim(string(buf), `"`))
+	if err != nil {
+		return err
+	}
+
+	d.Duration = dur
+
+	return nil
 }

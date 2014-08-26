@@ -23,7 +23,7 @@ type actualBroadcaster interface {
 }
 
 type taskScheduler interface {
-	schedule(taskSpec) error
+	schedule(string, string, agent.ContainerConfig) error
 	unschedule(string, string) error
 }
 
@@ -72,8 +72,8 @@ func (s *realShepherd) snapshot() map[string]map[string]agent.ContainerInstance 
 	return <-s.snapshotc
 }
 
-func (s *realShepherd) schedule(spec taskSpec) error {
-	req := schedTaskReq{spec, make(chan error)}
+func (s *realShepherd) schedule(endpoint, id string, cfg agent.ContainerConfig) error {
+	req := schedTaskReq{endpoint, id, cfg, make(chan error)}
 	s.schedc <- req
 	return <-req.err
 }
@@ -123,7 +123,7 @@ func (s *realShepherd) loop(d agentDiscovery) {
 
 	select {
 	case endpoints = <-discoveryc:
-	case <-time.After(time.Millisecond):
+	case <-after(time.Millisecond):
 		panic("misbehaving agent discovery")
 	}
 
@@ -158,12 +158,12 @@ func (s *realShepherd) loop(d agentDiscovery) {
 		case s.snapshotc <- cp():
 
 		case req := <-s.schedc:
-			stateMachine, ok := machines[req.Endpoint]
+			stateMachine, ok := machines[req.endpoint]
 			if !ok {
-				req.err <- fmt.Errorf("endpoint %s not available", req.Endpoint)
+				req.err <- fmt.Errorf("endpoint %s not available", req.endpoint)
 				continue
 			}
-			req.err <- stateMachine.schedule(req.taskSpec)
+			req.err <- stateMachine.schedule("", req.id, req.ContainerConfig)
 
 		case req := <-s.unschedc:
 			stateMachine, ok := machines[req.endpoint]
@@ -222,7 +222,7 @@ func initialize(updatec chan map[string]map[string]agent.ContainerInstance, expe
 	var (
 		current     = map[string]map[string]agent.ContainerInstance{}
 		outstanding = map[string]struct{}{}
-		timeoutc    = time.After(1 * time.Second)
+		timeoutc    = after(1 * time.Second)
 	)
 
 	for _, endpoint := range expected {
@@ -249,7 +249,9 @@ func initialize(updatec chan map[string]map[string]agent.ContainerInstance, expe
 }
 
 type schedTaskReq struct {
-	taskSpec
+	endpoint string
+	id       string
+	agent.ContainerConfig
 	err chan error
 }
 
@@ -260,41 +262,35 @@ type unschedTaskReq struct {
 }
 
 type mockTaskScheduler struct {
-	started []taskSpec
-	stopped []endpointID
+	started map[string]map[string]agent.ContainerConfig
+	stopped map[string]map[string]struct{}
 }
 
 var _ taskScheduler = &mockTaskScheduler{}
 
 func newMockTaskScheduler() *mockTaskScheduler {
 	return &mockTaskScheduler{
-		started: []taskSpec{},
-		stopped: []endpointID{},
+		started: map[string]map[string]agent.ContainerConfig{},
+		stopped: map[string]map[string]struct{}{},
 	}
 }
 
-func (t *mockTaskScheduler) schedule(spec taskSpec) error {
-	t.started = append(t.started, spec)
+func (t *mockTaskScheduler) schedule(endpoint, id string, cfg agent.ContainerConfig) error {
+	if _, ok := t.started[endpoint]; !ok {
+		t.started[endpoint] = map[string]agent.ContainerConfig{}
+	}
+
+	t.started[endpoint][id] = cfg
+
 	return nil
 }
 
 func (t *mockTaskScheduler) unschedule(endpoint, id string) error {
-	t.stopped = append(t.stopped, endpointID{endpoint, id})
-	return nil
-}
-
-func (t *mockTaskScheduler) current(fakeEndpoint string) map[string]map[string]agent.ContainerInstance {
-	var out = map[string]map[string]agent.ContainerInstance{}
-
-	for _, spec := range t.started {
-		if _, ok := out[fakeEndpoint]; !ok {
-			out[fakeEndpoint] = map[string]agent.ContainerInstance{}
-		}
-
-		out[fakeEndpoint][spec.ContainerID] = agent.ContainerInstance{}
+	if _, ok := t.stopped[endpoint]; !ok {
+		t.stopped[endpoint] = map[string]struct{}{}
 	}
 
-	return out
-}
+	t.stopped[endpoint][id] = struct{}{}
 
-type endpointID struct{ endpoint, id string }
+	return nil
+}

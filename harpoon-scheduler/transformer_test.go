@@ -1,49 +1,56 @@
 package main
 
 import (
+	"io/ioutil"
+	"log"
 	"reflect"
 	"testing"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
+	"github.com/soundcloud/harpoon/harpoon-configstore/lib"
 )
 
 func TestTransform(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	//log.SetFlags(log.Lmicroseconds)
+
 	var (
-		endpoint1 = "http://berlin.info:1234"
-		id1       = "professor-wiggles"
-		taskSpec1 = taskSpec{Endpoint: endpoint1, ContainerID: id1}
+		job      = "professor-wiggles"
+		cfg      = configstore.JobConfig{Job: job, Scale: 1}
+		id       = makeContainerID(cfg, 0) // just one task
+		endpoint = "http://some.arbitrary.endpoint.info:9191"
 	)
 
 	type testCase struct {
-		want    map[string]taskSpec
-		have    map[string]map[string]agent.ContainerInstance
-		started []taskSpec
-		stopped []endpointID
+		wantJobs      map[string]configstore.JobConfig
+		haveInstances map[string]map[string]agent.ContainerInstance
+		started       map[string]map[string]agent.ContainerConfig
+		stopped       map[string]map[string]struct{}
 	}
 
 	for i, input := range []testCase{
 		{
-			want:    map[string]taskSpec{id1: taskSpec1},
-			have:    map[string]map[string]agent.ContainerInstance{},
-			started: []taskSpec{taskSpec1},
-			stopped: []endpointID{},
+			wantJobs:      map[string]configstore.JobConfig{job: cfg},
+			haveInstances: map[string]map[string]agent.ContainerInstance{endpoint: map[string]agent.ContainerInstance{}},
+			started:       map[string]map[string]agent.ContainerConfig{endpoint: map[string]agent.ContainerConfig{id: agent.ContainerConfig{}}},
+			stopped:       map[string]map[string]struct{}{},
 		},
 		{
-			want:    map[string]taskSpec{id1: taskSpec1},
-			have:    map[string]map[string]agent.ContainerInstance{endpoint1: map[string]agent.ContainerInstance{id1: agent.ContainerInstance{}}},
-			started: []taskSpec{},
-			stopped: []endpointID{},
+			wantJobs:      map[string]configstore.JobConfig{job: cfg},
+			haveInstances: map[string]map[string]agent.ContainerInstance{endpoint: map[string]agent.ContainerInstance{id: agent.ContainerInstance{}}},
+			started:       map[string]map[string]agent.ContainerConfig{},
+			stopped:       map[string]map[string]struct{}{},
 		},
 		{
-			want:    map[string]taskSpec{},
-			have:    map[string]map[string]agent.ContainerInstance{endpoint1: map[string]agent.ContainerInstance{id1: agent.ContainerInstance{}}},
-			started: []taskSpec{},
-			stopped: []endpointID{{endpoint1, id1}},
+			wantJobs:      map[string]configstore.JobConfig{},
+			haveInstances: map[string]map[string]agent.ContainerInstance{endpoint: map[string]agent.ContainerInstance{job: agent.ContainerInstance{}}},
+			started:       map[string]map[string]agent.ContainerConfig{},
+			stopped:       map[string]map[string]struct{}{endpoint: map[string]struct{}{job: struct{}{}}},
 		},
 	} {
 		target := newMockTaskScheduler()
 
-		transform(input.want, input.have, target)
+		transform(input.wantJobs, input.haveInstances, target)
 
 		if want, have := input.started, target.started; !reflect.DeepEqual(want, have) {
 			t.Errorf("%d: started: want %v, have %v", i, want, have)

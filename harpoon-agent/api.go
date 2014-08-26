@@ -116,7 +116,7 @@ func (a *api) handleStop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if container.Instance().Status == agent.ContainerStatusFinished {
+	if container.Instance().ContainerStatus == agent.ContainerStatusFinished {
 		log.Printf("[%s] start: already stopped", id)
 		http.Error(w, "already stopped", http.StatusConflict)
 		return
@@ -140,7 +140,7 @@ func (a *api) handleStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if container.Instance().Status == agent.ContainerStatusRunning {
+	if container.Instance().ContainerStatus == agent.ContainerStatusRunning {
 		log.Printf("[%s] start: already running", id)
 		http.Error(w, "already running", http.StatusConflict)
 		return
@@ -325,8 +325,8 @@ func (a *api) handleResources(w http.ResponseWriter, r *http.Request) {
 	var reservedMem, reservedCPU float64
 
 	for _, instance := range a.registry.instances() {
-		reservedMem += float64(instance.Config.Resources.Memory)
-		reservedCPU += float64(instance.Config.Resources.CPUs)
+		reservedMem += float64(instance.ContainerConfig.Resources.Memory)
+		reservedCPU += float64(instance.ContainerConfig.Resources.CPUs)
 	}
 
 	json.NewEncoder(w).Encode(&agent.HostResources{

@@ -212,7 +212,7 @@ func verifyInstances(t *testing.T, have map[string]map[string]agent.ContainerIns
 				return fmt.Errorf("endpoint %s, want %q, but it's missing", endpoint, id)
 			}
 
-			if want, have := status, fmt.Sprint(instance.Status); want != have {
+			if want, have := status, fmt.Sprint(instance.ContainerStatus); want != have {
 				return fmt.Errorf("endpoint %s, container %q: want %s, have %s", endpoint, id, want, have)
 			}
 

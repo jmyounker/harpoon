@@ -79,6 +79,8 @@ func NewClient(endpoint string) (Agent, error) {
 	return client{URL: *u}, nil
 }
 
+// MustNewClient returns a new Agent representing the remote endpoint, or
+// panics if the endpoint URL is invalid.
 func MustNewClient(endpoint string) Agent {
 	agent, err := NewClient(endpoint)
 	if err != nil {

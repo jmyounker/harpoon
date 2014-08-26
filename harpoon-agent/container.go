@@ -65,9 +65,9 @@ var _ container = &realContainer{}
 func newContainer(id string, config agent.ContainerConfig) *realContainer {
 	c := &realContainer{
 		ContainerInstance: agent.ContainerInstance{
-			ID:     id,
-			Status: agent.ContainerStatusCreated,
-			Config: config,
+			ID:              id,
+			ContainerStatus: agent.ContainerStatusCreated,
+			ContainerConfig: config,
 		},
 
 		logs: newContainerLog(containerLogRingBufferSize),
@@ -209,15 +209,15 @@ func (c *realContainer) buildContainerConfig() {
 		}
 	)
 
-	if c.Config.Env == nil {
-		c.Config.Env = map[string]string{}
+	if c.ContainerConfig.Env == nil {
+		c.ContainerConfig.Env = map[string]string{}
 	}
 
-	for k, v := range c.Config.Env {
+	for k, v := range c.ContainerConfig.Env {
 		env = append(env, fmt.Sprintf("%s=%s", k, v))
 	}
 
-	for dest, source := range c.Config.Storage.Volumes {
+	for dest, source := range c.ContainerConfig.Storage.Volumes {
 		if _, ok := configuredVolumes[source]; !ok {
 			// TODO: this needs to happen as a part of a validation step, so the
 			// container is rejected.
@@ -235,7 +235,7 @@ func (c *realContainer) buildContainerConfig() {
 		// daemon user and group; must be numeric as we make no assumptions about
 		// the presence or contents of "/etc/passwd" in the container.
 		User:       "1:1",
-		WorkingDir: c.Config.Command.WorkingDir,
+		WorkingDir: c.ContainerConfig.Command.WorkingDir,
 		Env:        env,
 		Namespaces: map[string]bool{
 			"NEWNS":  true, // mounts
@@ -247,7 +247,7 @@ func (c *realContainer) buildContainerConfig() {
 			Name:   c.ID,
 			Parent: "harpoon",
 
-			Memory: int64(c.Config.Resources.Memory * 1024 * 1024),
+			Memory: int64(c.ContainerConfig.Resources.Memory * 1024 * 1024),
 
 			AllowedDevices: devices.DefaultAllowedDevices,
 		},
@@ -287,22 +287,22 @@ func (c *realContainer) create() error {
 		return err
 	}
 
-	for name, port := range c.Config.Ports {
+	for name, port := range c.ContainerConfig.Ports {
 		if port == 0 {
 			port = uint16(nextPort())
 		}
 
 		portName := fmt.Sprintf("PORT_%s", strings.ToUpper(name))
 
-		c.Config.Ports[name] = port
-		c.Config.Env[portName] = strconv.Itoa(int(port))
+		c.ContainerConfig.Ports[name] = port
+		c.ContainerConfig.Env[portName] = strconv.Itoa(int(port))
 	}
 
 	// expand variable in command
-	command := c.Config.Command.Exec
+	command := c.ContainerConfig.Command.Exec
 	for i, arg := range command {
 		command[i] = os.Expand(arg, func(k string) string {
-			return c.Config.Env[k]
+			return c.ContainerConfig.Env[k]
 		})
 	}
 
@@ -314,10 +314,10 @@ func (c *realContainer) destroy() error {
 		rundir = filepath.Join("/run/harpoon", c.ID)
 	)
 
-	switch c.ContainerInstance.Status {
+	switch c.ContainerInstance.ContainerStatus {
 	default:
 	case agent.ContainerStatusCreated, agent.ContainerStatusRunning:
-		return fmt.Errorf("can't destroy container in status %s", c.ContainerInstance.Status)
+		return fmt.Errorf("can't destroy container in status %s", c.ContainerInstance.ContainerStatus)
 	}
 
 	c.updateStatus(agent.ContainerStatusDeleted)
@@ -338,7 +338,7 @@ func (c *realContainer) destroy() error {
 
 func (c *realContainer) fetchArtifact() (string, error) {
 	var (
-		artifactURL  = c.Config.ArtifactURL
+		artifactURL  = c.ContainerConfig.ArtifactURL
 		artifactPath = getArtifactPath(artifactURL)
 	)
 
@@ -374,8 +374,8 @@ func (c *realContainer) fetchArtifact() (string, error) {
 // packaged and sent in the HeartbeatReply, to tell the container process what
 // to do next.
 //
-// This also potentially updates the ContainerInstance.Status, but it can only
-// possibly move to ContainerStatusFinished.
+// This also potentially updates the status, but it can only possibly move to
+// ContainerStatusFinished.
 func (c *realContainer) heartbeat(hb agent.Heartbeat) string {
 	switch want, have := c.desired, hb.Status; true {
 	case want == "UP" && have == "UP":
@@ -415,9 +415,9 @@ func (c *realContainer) heartbeat(hb agent.Heartbeat) string {
 }
 
 func (c *realContainer) start() error {
-	switch c.ContainerInstance.Status {
+	switch c.ContainerInstance.ContainerStatus {
 	default:
-		return fmt.Errorf("can't start container with status %s", c.ContainerInstance.Status)
+		return fmt.Errorf("can't start container with status %s", c.ContainerInstance.ContainerStatus)
 	case agent.ContainerStatusCreated, agent.ContainerStatusFinished, agent.ContainerStatusFailed:
 	}
 
@@ -436,7 +436,7 @@ func (c *realContainer) start() error {
 
 	cmd := exec.Command(
 		"harpoon-container",
-		c.Config.Command.Exec...,
+		c.ContainerConfig.Command.Exec...,
 	)
 
 	cmd.Env = os.Environ()
@@ -469,20 +469,20 @@ func (c *realContainer) start() error {
 }
 
 func (c *realContainer) stop() error {
-	switch c.ContainerInstance.Status {
+	switch c.ContainerInstance.ContainerStatus {
 	default:
-		return fmt.Errorf("can't stop container with status %s", c.ContainerInstance.Status)
+		return fmt.Errorf("can't stop container with status %s", c.ContainerInstance.ContainerStatus)
 	case agent.ContainerStatusRunning:
 	}
 
 	c.desired = "DOWN"
-	c.downDeadline = time.Now().Add(time.Duration(c.Config.Grace.Shutdown) * time.Second).Add(heartbeatInterval)
+	c.downDeadline = time.Now().Add(c.ContainerConfig.Grace.Shutdown.Duration).Add(heartbeatInterval)
 
 	return nil
 }
 
 func (c *realContainer) updateStatus(status agent.ContainerStatus) {
-	c.ContainerInstance.Status = status
+	c.ContainerInstance.ContainerStatus = status
 
 	for subc := range c.subscribers {
 		subc <- c.ContainerInstance

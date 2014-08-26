@@ -99,8 +99,8 @@ func (m *realStateMachine) snapshot() map[string]map[string]agent.ContainerInsta
 	return <-m.snapshotc
 }
 
-func (m *realStateMachine) schedule(spec taskSpec) error {
-	req := schedTaskReq{spec, make(chan error)}
+func (m *realStateMachine) schedule(_ string, id string, cfg agent.ContainerConfig) error {
+	req := schedTaskReq{"", id, cfg, make(chan error)}
 	m.schedc <- req
 	return <-req.err
 }
@@ -123,7 +123,7 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 		subs     = map[chan<- map[string]map[string]agent.ContainerInstance]struct{}{}
 		current  = map[string]agent.ContainerInstance{}
 		tangos   = map[string]time.Time{} // container ID to be destroyed: deadline
-		tangoc   = time.Tick(1 * time.Second)
+		tangoc   = tick(1 * time.Second)
 		abandonc <-chan time.Time // initially nil
 	)
 
@@ -151,7 +151,7 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 
 	update := func(delta map[string]agent.ContainerInstance) {
 		for id, instance := range delta {
-			switch instance.Status {
+			switch instance.ContainerStatus {
 			case agent.ContainerStatusDeleted:
 				delete(current, id)
 			default:
@@ -160,17 +160,17 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 		}
 	}
 
-	sched := func(spec taskSpec) error {
+	sched := func(id string, cfg agent.ContainerConfig) error {
 		if abandonc != nil {
 			return errAgentConnectionInterrupted
 		}
 
-		switch err := client.Put(spec.ContainerID, spec.ContainerConfig); err {
+		switch err := client.Put(id, cfg); err {
 		case nil:
 			return nil
 
 		case agent.ErrContainerAlreadyExists:
-			return client.Start(spec.ContainerID)
+			return client.Start(id)
 
 		default:
 			return err
@@ -198,7 +198,7 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 			return fmt.Errorf("%q already being unscheduled on %s, have patience", id, m.myEndpoint)
 		}
 
-		tangos[id] = time.Now().Add(2 * time.Duration(instance.Config.Grace.Shutdown) * time.Second)
+		tangos[id] = now().Add(2 * instance.ContainerConfig.Grace.Shutdown.Duration)
 
 		return nil
 	}
@@ -212,8 +212,8 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 				continue
 			}
 
-			if time.Now().After(deadline) {
-				log.Printf("state machine: %s: tango %s hit deadline, got to %s, giving up", m.myEndpoint, id, instance.Status)
+			if now().After(deadline) {
+				log.Printf("state machine: %s: tango %s hit deadline, got to %s, giving up", m.myEndpoint, id, instance.ContainerStatus)
 				delete(tangos, id)
 				continue
 			}
@@ -229,9 +229,9 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 			// code, by removing out-of-sync detection and the reconnectc
 			// altogether.
 
-			switch instance.Status {
+			switch instance.ContainerStatus {
 			case agent.ContainerStatusRunning, agent.ContainerStatusFailed:
-				log.Printf("state machine: %s: tango %s %s, issuing Stop", m.myEndpoint, id, instance.Status)
+				log.Printf("state machine: %s: tango %s %s, issuing Stop", m.myEndpoint, id, instance.ContainerStatus)
 				switch err := client.Stop(id); err {
 				case nil:
 					continue // OK, wait for next update
@@ -253,7 +253,7 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 				}
 
 			case agent.ContainerStatusCreated, agent.ContainerStatusFinished:
-				log.Printf("state machine: %s: tango %s %s, issuing Delete", m.myEndpoint, id, instance.Status)
+				log.Printf("state machine: %s: tango %s %s, issuing Delete", m.myEndpoint, id, instance.ContainerStatus)
 				switch err := client.Delete(id); err {
 				case nil:
 					continue // OK, wait for next update
@@ -270,7 +270,7 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 				}
 
 			default:
-				log.Printf("state machine: %s: tango %s %s, nop", m.myEndpoint, id, instance.Status)
+				log.Printf("state machine: %s: tango %s %s, nop", m.myEndpoint, id, instance.ContainerStatus)
 				continue
 			}
 		}
@@ -288,7 +288,7 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 		case m.snapshotc <- cp():
 
 		case req := <-m.schedc:
-			req.err <- sched(req.taskSpec)
+			req.err <- sched(req.id, req.ContainerConfig)
 
 		case req := <-m.unschedc:
 			req.err <- unsched(req.id)
@@ -305,7 +305,7 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 
 		case <-m.interruptionc:
 			if abandonc == nil {
-				abandonc = time.After(abandon)
+				abandonc = after(abandon)
 			}
 
 		case <-abandonc:
@@ -332,7 +332,7 @@ func (m *realStateMachine) connectionLoop(reconnect time.Duration) {
 			select {
 			case <-m.quitc:
 				return
-			case <-time.After(reconnect):
+			case <-after(reconnect):
 				continue
 			}
 		}
@@ -344,7 +344,7 @@ func (m *realStateMachine) connectionLoop(reconnect time.Duration) {
 			select {
 			case <-m.quitc:
 				return
-			case <-time.After(reconnect):
+			case <-after(reconnect):
 				continue
 			}
 		}
@@ -362,7 +362,7 @@ func (m *realStateMachine) connectionLoop(reconnect time.Duration) {
 			select {
 			case <-m.quitc:
 				return
-			case <-time.After(reconnect):
+			case <-after(reconnect):
 				continue
 			}
 		}

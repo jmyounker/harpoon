@@ -10,6 +10,13 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
+)
+
+var (
+	now   = time.Now
+	after = time.After
+	tick  = time.Tick
 )
 
 func main() {
@@ -26,16 +33,14 @@ func main() {
 		shepherd    = newRealShepherd(discovery)
 		registry    = newRealRegistry(*persist)
 		transformer = newTransformer(shepherd, registry, shepherd)
-		scheduler   = newRealJobScheduler(shepherd, registry)
-		api         = newAPI(scheduler, registry, shepherd)
+		api         = newAPI(registry, shepherd)
 	)
 
 	defer shepherd.quit()
 	defer registry.quit()
 	defer transformer.quit()
-	defer scheduler.quit()
 
-	log.Printf("the shepherd's flock size is %d", shepherd.size())
+	log.Printf("the shepherd's state machine count is %d", shepherd.size())
 
 	err := make(chan error, 2)
 

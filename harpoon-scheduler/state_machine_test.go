@@ -51,7 +51,7 @@ func TestStateMachineBasicFunctionality(t *testing.T) {
 					if endpoint == server.URL {
 						for id0, instance := range instances {
 							if id0 == id {
-								current = fmt.Sprint(instance.Status)
+								current = fmt.Sprint(instance.ContainerStatus)
 							}
 						}
 					}
@@ -151,7 +151,7 @@ func TestStateMachineInterruption(t *testing.T) {
 
 	select {
 	case <-ok:
-	case <-time.After(abandon):
+	case <-after(abandon):
 		t.Fatal("state machine never reconnected")
 	}
 
