@@ -123,7 +123,7 @@ func (s *realShepherd) loop(d agentDiscovery) {
 
 	select {
 	case endpoints = <-discoveryc:
-	case <-time.After(time.Millisecond):
+	case <-after(time.Millisecond):
 		panic("misbehaving agent discovery")
 	}
 
@@ -222,7 +222,7 @@ func initialize(updatec chan map[string]map[string]agent.ContainerInstance, expe
 	var (
 		current     = map[string]map[string]agent.ContainerInstance{}
 		outstanding = map[string]struct{}{}
-		timeoutc    = time.After(1 * time.Second)
+		timeoutc    = after(1 * time.Second)
 	)
 
 	for _, endpoint := range expected {

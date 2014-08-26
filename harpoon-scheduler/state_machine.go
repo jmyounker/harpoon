@@ -123,7 +123,7 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 		subs     = map[chan<- map[string]map[string]agent.ContainerInstance]struct{}{}
 		current  = map[string]agent.ContainerInstance{}
 		tangos   = map[string]time.Time{} // container ID to be destroyed: deadline
-		tangoc   = time.Tick(1 * time.Second)
+		tangoc   = tick(1 * time.Second)
 		abandonc <-chan time.Time // initially nil
 	)
 
@@ -198,7 +198,7 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 			return fmt.Errorf("%q already being unscheduled on %s, have patience", id, m.myEndpoint)
 		}
 
-		tangos[id] = time.Now().Add(2 * instance.ContainerConfig.Grace.Shutdown.Duration)
+		tangos[id] = now().Add(2 * instance.ContainerConfig.Grace.Shutdown.Duration)
 
 		return nil
 	}
@@ -212,7 +212,7 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 				continue
 			}
 
-			if time.Now().After(deadline) {
+			if now().After(deadline) {
 				log.Printf("state machine: %s: tango %s hit deadline, got to %s, giving up", m.myEndpoint, id, instance.ContainerStatus)
 				delete(tangos, id)
 				continue
@@ -305,7 +305,7 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 
 		case <-m.interruptionc:
 			if abandonc == nil {
-				abandonc = time.After(abandon)
+				abandonc = after(abandon)
 			}
 
 		case <-abandonc:
@@ -332,7 +332,7 @@ func (m *realStateMachine) connectionLoop(reconnect time.Duration) {
 			select {
 			case <-m.quitc:
 				return
-			case <-time.After(reconnect):
+			case <-after(reconnect):
 				continue
 			}
 		}
@@ -344,7 +344,7 @@ func (m *realStateMachine) connectionLoop(reconnect time.Duration) {
 			select {
 			case <-m.quitc:
 				return
-			case <-time.After(reconnect):
+			case <-after(reconnect):
 				continue
 			}
 		}
@@ -362,7 +362,7 @@ func (m *realStateMachine) connectionLoop(reconnect time.Duration) {
 			select {
 			case <-m.quitc:
 				return
-			case <-time.After(reconnect):
+			case <-after(reconnect):
 				continue
 			}
 		}

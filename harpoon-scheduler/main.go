@@ -10,6 +10,13 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
+)
+
+var (
+	now   = time.Now
+	after = time.After
+	tick  = time.Tick
 )
 
 func main() {

@@ -44,7 +44,7 @@ func (t *transformer) loop(actual actualBroadcaster, desired desiredBroadcaster,
 
 	select {
 	case have = <-actualc:
-	case <-time.After(time.Millisecond):
+	case <-after(time.Millisecond):
 		panic("misbehaving actual-state broadcaster")
 	}
 
@@ -53,7 +53,7 @@ func (t *transformer) loop(actual actualBroadcaster, desired desiredBroadcaster,
 
 	select {
 	case want = <-desiredc:
-	case <-time.After(time.Millisecond):
+	case <-after(time.Millisecond):
 		panic("misbehaving desired-state broadcaster")
 	}
 
@@ -76,7 +76,6 @@ func (t *transformer) loop(actual actualBroadcaster, desired desiredBroadcaster,
 }
 
 func transform(wantJobs map[string]configstore.JobConfig, haveInstances map[string]map[string]agent.ContainerInstance, target taskScheduler) {
-
 	var (
 		todo        = []func() error{}
 		wantTasks   = map[string]agent.ContainerConfig{}
