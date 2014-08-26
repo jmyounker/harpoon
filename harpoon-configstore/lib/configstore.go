@@ -28,7 +28,7 @@ type JobConfig struct {
 	Env          map[string]string `json:"env"`
 	HealthChecks []HealthCheck     `json:"health_checks"`
 
-	agent.ContainerConfig `json:"container_config"`
+	agent.ContainerConfig
 }
 
 // Valid performs a validation check, to ensure invalid structures may be
