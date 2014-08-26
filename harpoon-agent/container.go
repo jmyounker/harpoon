@@ -316,7 +316,7 @@ func (c *realContainer) destroy() error {
 
 	switch c.ContainerInstance.ContainerStatus {
 	default:
-	case agent.ContainerStatusCreated, agent.ContainerStatusRunning:
+	case agent.ContainerStatusRunning:
 		return fmt.Errorf("can't destroy container in status %s", c.ContainerInstance.ContainerStatus)
 	}
 
