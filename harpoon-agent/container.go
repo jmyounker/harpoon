@@ -276,15 +276,15 @@ func (c *realContainer) create() error {
 	// TODO(pb): it's a problem that this is blocking
 	rootfs, err := c.fetchArtifact()
 	if err != nil {
-		return err
+		return fmt.Errorf("fetch: %s", err)
 	}
 
 	if err := os.Symlink(rootfs, filepath.Join(rundir, "rootfs")); err != nil && !os.IsExist(err) {
-		return err
+		return fmt.Errorf("symlink rootfs: %s", err)
 	}
 
 	if err := os.Symlink(logdir, filepath.Join(rundir, "log")); err != nil && !os.IsExist(err) {
-		return err
+		return fmt.Errorf("symlink log: %s", err)
 	}
 
 	for name, port := range c.ContainerConfig.Ports {
