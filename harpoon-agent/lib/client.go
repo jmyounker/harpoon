@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
@@ -402,16 +401,26 @@ func (c client) Log(id string, history int) (<-chan string, Stopper, error) {
 			defer resp.Body.Close()
 			defer close(c)
 
-			rd := bufio.NewReader(resp.Body)
+			dec := eventsource.NewDecoder(resp.Body)
+
 			for {
-				line, err := rd.ReadString('\n')
-				if err != nil {
+				var event eventsource.Event
+				if err := dec.Decode(&event); err != nil {
 					return
 				}
-				select {
-				case c <- line:
-				case <-stop:
+
+				lines := []string{}
+
+				if err := json.Unmarshal(event.Data, &lines); err != nil {
 					return
+				}
+
+				for _, line := range lines {
+					select {
+					case c <- string(line):
+					case <-stop:
+						return
+					}
 				}
 			}
 		}()
