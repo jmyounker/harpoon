@@ -91,7 +91,7 @@ func TestShepherdBasicFunctionality(t *testing.T) {
 	if err := clients[0].Put("first-container", agent.ContainerConfig{}); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(time.Millisecond)
+	time.Sleep(5 * time.Millisecond)
 
 	// Verify the shepherd told us about it.
 
