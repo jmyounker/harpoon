@@ -105,6 +105,7 @@ func (a *api) handleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusCreated)
+	w.Write([]byte("created OK"))
 }
 
 func (a *api) handleStop(w http.ResponseWriter, r *http.Request) {
@@ -129,6 +130,7 @@ func (a *api) handleStop(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusAccepted)
+	w.Write([]byte("stop accepted"))
 }
 
 func (a *api) handleStart(w http.ResponseWriter, r *http.Request) {
@@ -153,6 +155,7 @@ func (a *api) handleStart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusAccepted)
+	w.Write([]byte("start accepted"))
 }
 
 func (a *api) handleDestroy(w http.ResponseWriter, r *http.Request) {
@@ -173,6 +176,7 @@ func (a *api) handleDestroy(w http.ResponseWriter, r *http.Request) {
 	a.registry.remove(id)
 
 	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("destroy OK"))
 }
 
 func (a *api) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
