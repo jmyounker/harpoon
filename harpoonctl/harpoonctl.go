@@ -9,6 +9,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/codegangsta/cli"
+
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
@@ -52,7 +53,7 @@ func (c *harpoonctl) setAgents(ctx *cli.Context) error {
 			return err
 		}
 
-		c.cluster = append(c.cluster, Agent{addr, client})
+		c.cluster = append(c.cluster, agentAddr{client, addr})
 	}
 
 	return nil
@@ -174,12 +175,31 @@ func (c *harpoonctl) run(ctx *cli.Context) {
 		log.Fatal("unable to parse config file: ", err)
 	}
 
+	target := c.choose()
+
+	if err := target.Put(id, config); err != nil {
+		log.Fatal("unable to start: ", err)
+	}
+
+	c.wait(target, id)
+	return
+}
+
+func (c *harpoonctl) choose() agent.Agent {
+	if len(c.cluster) <= 0 {
+		panic("empty cluster")
+	}
+
+	if len(c.cluster) == 1 {
+		return c.cluster[0].Agent
+	}
+
 	resources, err := c.cluster.Resources()
 	if err != nil {
 		log.Fatal("unable to get resources: ", err)
 	}
 
-	options := map[int]string{} // map of option to agent
+	options := map[int]string{} // map of option (agent number) to agent addr
 
 	i := 0
 	fmt.Fprintln(c, "	AGENT	MEM	RESERVED	CPU	RESERVED	VOLUMES")
@@ -210,18 +230,15 @@ func (c *harpoonctl) run(ctx *cli.Context) {
 	}
 
 	for _, a := range c.cluster {
-		if a.Addr == options[choice] {
-			if err := a.Put(id, config); err != nil {
-				log.Fatal("unable to start: ", err)
-			}
-
-			c.wait(a, id)
-			return
+		if a.addr == options[choice] {
+			return a.Agent
 		}
 	}
+
+	panic("didn't find choice")
 }
 
-func (*harpoonctl) wait(a Agent, id string) {
+func (*harpoonctl) wait(a agent.Agent, id string) {
 	events, stopper, err := a.Events()
 	if err != nil {
 		log.Fatal("unable to get event stream: ", err)

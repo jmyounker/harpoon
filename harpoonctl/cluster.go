@@ -1,17 +1,15 @@
 package main
 
-import (
-	"github.com/soundcloud/harpoon/harpoon-agent/lib"
-)
+import "github.com/soundcloud/harpoon/harpoon-agent/lib"
 
 type containers map[string]agent.ContainerInstance
 
-type Agent struct {
-	Addr string
+type agentAddr struct {
 	agent.Agent
+	addr string
 }
 
-type cluster []Agent
+type cluster []agentAddr
 
 func (c cluster) Resources() (map[string]agent.HostResources, error) {
 	results := map[string]agent.HostResources{}
@@ -22,7 +20,7 @@ func (c cluster) Resources() (map[string]agent.HostResources, error) {
 			return nil, err
 		}
 
-		results[a.Addr] = resources
+		results[a.addr] = resources
 	}
 
 	return results, nil
@@ -37,7 +35,7 @@ func (c cluster) Containers() (map[string]containers, error) {
 			return nil, err
 		}
 
-		results[a.Addr] = containers
+		results[a.addr] = containers
 	}
 
 	return results, nil
