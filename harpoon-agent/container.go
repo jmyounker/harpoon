@@ -204,7 +204,6 @@ func (c *realContainer) buildContainerConfig() {
 	var (
 		env    = []string{}
 		mounts = []*mount.Mount{
-			{Type: "devtmpfs"},
 			{Type: "bind", Source: "/etc/resolv.conf", Destination: "/etc/resolv.conf", Private: true},
 		}
 	)
