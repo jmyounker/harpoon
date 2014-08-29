@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"syscall"
 
 	"github.com/docker/libcontainer"
 	"github.com/docker/libcontainer/namespaces"
@@ -27,9 +28,20 @@ func init() {
 	// errors are communicated over it instead of through logging.
 	syncPipe, err := syncpipe.NewSyncPipeFromFd(0, uintptr(3))
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "harpoon-container: unable to initialize sync pipe: %s", err)
+		fmt.Fprintf(os.Stderr, "unable to initialize sync pipe: %s", err)
 		os.Exit(2)
 	}
+
+	// redirect stderr to stdout; harpoon-container will not write to stderr from
+	// this point on.
+	syscall.Dup2(syscall.Stdout, syscall.Stderr)
+
+	defer func() {
+		if e := recover(); e != nil {
+			syncPipe.ReportChildError(fmt.Errorf("panic: %s", e))
+			os.Exit(2)
+		}
+	}()
 
 	args := os.Args[1:]
 

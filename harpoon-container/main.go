@@ -11,9 +11,6 @@ import (
 )
 
 func main() {
-	log.SetFlags(0)
-	log.SetPrefix("harpoon-container: ")
-
 	var (
 		heartbeatURL = os.Getenv("heartbeat_url")
 		client       = newClient(heartbeatURL)
@@ -54,9 +51,6 @@ func monitorRunningContainer(client *client, c *Container, heartbeat *agent.Hear
 			}
 
 			heartbeat.ContainerProcessStatus = status
-
-			buf, _ := json.Marshal(status)
-			log.Printf("container status: %s", buf)
 
 			want, err := client.sendHeartbeat(*heartbeat)
 			if err != nil {
