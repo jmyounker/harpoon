@@ -230,6 +230,16 @@ func (c *realContainer) buildContainerConfig() {
 		})
 	}
 
+	for dest, size := range c.ContainerConfig.Storage.Temp {
+		if size != -1 {
+			log.Printf("sized tmpfs storage not supported; defaulting %s to unlimited", dest)
+		}
+
+		mounts = append(mounts, &mount.Mount{
+			Type: "tmpfs", Destination: dest, Private: true,
+		})
+	}
+
 	c.config = &libcontainer.Config{
 		Hostname: hostname,
 		// daemon user and group; must be numeric as we make no assumptions about
