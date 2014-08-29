@@ -14,14 +14,6 @@ func main() {
 	log.SetFlags(0)
 	log.SetPrefix("harpoon-container: ")
 
-	if os.Getpid() == 1 {
-		if err := Init(); err != nil {
-			log.Fatal("failed to initialize container:", err)
-		}
-
-		panic("unreachable")
-	}
-
 	var (
 		heartbeatURL = os.Getenv("heartbeat_url")
 		client       = newClient(heartbeatURL)

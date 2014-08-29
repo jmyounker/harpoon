@@ -29,6 +29,7 @@ func kill(cmd *exec.Cmd) {
 func commandBuilder(cmd **exec.Cmd) namespaces.CreateCommand {
 	return func(container *libcontainer.Config, _, _, _, init string, childPipe *os.File, args []string) *exec.Cmd {
 		command := exec.Command(init, args...)
+		command.Args[0] = "harpoon-container-init"
 		command.ExtraFiles = []*os.File{childPipe}
 
 		command.SysProcAttr = &syscall.SysProcAttr{
