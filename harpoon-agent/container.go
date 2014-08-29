@@ -203,7 +203,7 @@ func (c *realContainer) loop() {
 func (c *realContainer) buildContainerConfig() {
 	var (
 		env    = []string{}
-		mounts = mount.Mounts{
+		mounts = []*mount.Mount{
 			{Type: "devtmpfs"},
 			{Type: "bind", Source: "/etc/resolv.conf", Destination: "/etc/resolv.conf", Private: true},
 		}
@@ -225,7 +225,7 @@ func (c *realContainer) buildContainerConfig() {
 			continue
 		}
 
-		mounts = append(mounts, mount.Mount{
+		mounts = append(mounts, &mount.Mount{
 			Type: "bind", Source: source, Destination: dest, Private: true,
 		})
 	}
