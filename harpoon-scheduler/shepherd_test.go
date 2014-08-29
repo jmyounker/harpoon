@@ -11,6 +11,22 @@ import (
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
+func noDelay(time.Duration) <-chan time.Time {
+	c := make(chan time.Time)
+	go func() { c <- time.Now() }()
+	return c
+}
+
+func TestEmptyShepherdDoesntCrash(t *testing.T) {
+	after = noDelay
+	defer func() { after = time.After }()
+
+	s := newRealShepherd(staticAgentDiscovery{})
+	defer s.quit()
+
+	time.Sleep(1 * time.Millisecond) // just don't crash!
+}
+
 func TestShepherdBasicFunctionality(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	//log.SetFlags(log.Lmicroseconds)

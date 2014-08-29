@@ -229,6 +229,10 @@ func initialize(updatec chan map[string]map[string]agent.ContainerInstance, expe
 		outstanding[endpoint] = struct{}{}
 	}
 
+	if len(outstanding) <= 0 {
+		return current
+	}
+
 	for {
 		select {
 		case update := <-updatec:
