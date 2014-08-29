@@ -75,6 +75,9 @@ func shutDownContainer(client *client, c *Container, heartbeat *agent.Heartbeat)
 		heartbeat.ContainerProcessStatus = agent.ContainerProcessStatus{}
 	}
 
+	buf, _ := json.Marshal(heartbeat)
+	log.Printf("shutting down; final state: %s", buf)
+
 	// The container process has exited and will not be restarted; send
 	// heartbeats to the agent until it replies with a terminal state (DOWN or
 	// FORCEDOWN).
