@@ -11,17 +11,6 @@ import (
 )
 
 func main() {
-	log.SetFlags(0)
-	log.SetPrefix("harpoon-container: ")
-
-	if os.Getpid() == 1 {
-		if err := Init(); err != nil {
-			log.Fatal("failed to initialize container:", err)
-		}
-
-		panic("unreachable")
-	}
-
 	var (
 		heartbeatURL = os.Getenv("heartbeat_url")
 		client       = newClient(heartbeatURL)
@@ -63,9 +52,6 @@ func monitorRunningContainer(client *client, c *Container, heartbeat *agent.Hear
 
 			heartbeat.ContainerProcessStatus = status
 
-			buf, _ := json.Marshal(status)
-			log.Printf("container status: %s", buf)
-
 			want, err := client.sendHeartbeat(*heartbeat)
 			if err != nil {
 				log.Println("unable to send heartbeat: ", err)
@@ -88,6 +74,9 @@ func shutDownContainer(client *client, c *Container, heartbeat *agent.Heartbeat)
 		heartbeat.Err = c.err.Error()
 		heartbeat.ContainerProcessStatus = agent.ContainerProcessStatus{}
 	}
+
+	buf, _ := json.Marshal(heartbeat)
+	log.Printf("shutting down; final state: %s", buf)
 
 	// The container process has exited and will not be restarted; send
 	// heartbeats to the agent until it replies with a terminal state (DOWN or

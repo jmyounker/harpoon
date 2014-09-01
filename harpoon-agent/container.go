@@ -435,6 +435,14 @@ func (c *realContainer) start() error {
 		logdir = filepath.Join("/srv/harpoon/log/", c.ID)
 	)
 
+	containerLog, err := os.Create(path.Join(rundir, "container.log"))
+	if err != nil {
+		return fmt.Errorf("unable to create log file for container: %s", err)
+	}
+
+	// don't hold on to this log file after exec or error
+	defer containerLog.Close()
+
 	logPipe, err := startLogger(c.ID, logdir)
 	if err != nil {
 		return err
@@ -456,7 +464,7 @@ func (c *realContainer) start() error {
 	))
 
 	cmd.Stdout = logPipe
-	cmd.Stderr = logPipe
+	cmd.Stderr = containerLog
 	cmd.Dir = rundir
 
 	c.desired = "UP"
