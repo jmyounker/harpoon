@@ -30,7 +30,7 @@ func (c *harpoonctl) setAgents(ctx *cli.Context) error {
 	}
 
 	if len(agents) == 0 && cluster == "" {
-		if _, err := os.Stat("~/.harpoonctl/clusters/default"); err == nil {
+		if _, err := os.Stat("~/.harpoonctl/cluster/default"); err == nil {
 			cluster = "default"
 		} else {
 			agents = []string{"localhost:3333"}
@@ -38,7 +38,7 @@ func (c *harpoonctl) setAgents(ctx *cli.Context) error {
 	}
 
 	if cluster != "" {
-		a, err := c.loadCluster(fmt.Sprintf("~/.harpoonctl/clusters/%s", cluster))
+		a, err := c.loadCluster(fmt.Sprintf("~/.harpoonctl/cluster/%s", cluster))
 
 		if err != nil {
 			return fmt.Errorf("unable to load cluster: %s", err)
