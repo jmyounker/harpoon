@@ -31,7 +31,6 @@ func (c *harpoonctl) setAgents(ctx *cli.Context) error {
 	}
 
 	if len(agents) == 0 && cluster == "" {
-		println("### check")
 		if _, err := os.Stat(defaultCluster); err == nil {
 			cluster = "default"
 		} else {
