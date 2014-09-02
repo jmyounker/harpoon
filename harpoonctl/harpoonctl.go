@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"text/tabwriter"
 
 	"github.com/codegangsta/cli"
@@ -30,7 +31,8 @@ func (c *harpoonctl) setAgents(ctx *cli.Context) error {
 	}
 
 	if len(agents) == 0 && cluster == "" {
-		if _, err := os.Stat("~/.harpoonctl/cluster/default"); err == nil {
+		println("### check")
+		if _, err := os.Stat(defaultCluster); err == nil {
 			cluster = "default"
 		} else {
 			agents = []string{"localhost:3333"}
@@ -38,7 +40,7 @@ func (c *harpoonctl) setAgents(ctx *cli.Context) error {
 	}
 
 	if cluster != "" {
-		a, err := c.loadCluster(fmt.Sprintf("~/.harpoonctl/cluster/%s", cluster))
+		a, err := c.loadCluster(filepath.Join(clusterPath, cluster))
 
 		if err != nil {
 			return fmt.Errorf("unable to load cluster: %s", err)

@@ -3,9 +3,15 @@ package main
 import (
 	"log"
 	"os"
+	"path/filepath"
 	"text/tabwriter"
 
 	"github.com/codegangsta/cli"
+)
+
+var (
+	clusterPath    = filepath.Join(os.Getenv("HOME"), ".harpoonctl", "cluster")
+	defaultCluster = filepath.Join(clusterPath, "default")
 )
 
 func main() {
@@ -20,7 +26,7 @@ func main() {
 		Usage: `control one or more harpoon agents without a central scheduler
 
 Commands default to communicating with a local harpoon agent, unless a default
-cluster (~/.harpoonctl/cluster/default) is defined.`,
+cluster (` + defaultCluster + `) is defined.`,
 		Version: "0.0.1",
 
 		Action: cli.ShowAppHelp,
@@ -29,7 +35,7 @@ cluster (~/.harpoonctl/cluster/default) is defined.`,
 			cli.StringFlag{
 				Name:  "c,cluster",
 				Value: "",
-				Usage: "read agent addresses from ~/.harpoonctl/cluster/NAME",
+				Usage: "read agent addresses from " + clusterPath + "/NAME",
 			},
 
 			cli.StringSliceFlag{
