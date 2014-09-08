@@ -1,17 +1,33 @@
 # harpoon-scheduler
 
-The scheduling component in the harpoon ecosystem.
-
-## Operations
-
-TODO
+A general-purpose scheduling component in the harpoon ecosystem.
 
 ## Architecture
 
 ```
-             +-----------+     +----------+     +-------------+
-Clients <--->| Scheduler |<--->| Registry |<--->| Transformer |<---> Remote agents
-             +-----------+     +----------+     +-------------+
++------------------+
+|       API        |
++------------------+
+  |              ^
+  v              |
++----------+     |
+| Registry |     |
++----------+     |
+  |              |
+  v              |
++-------------+  |
+| Transformer |  |
++-------------+  |
+  ^ |            |
+  | v            |
++------------------+
+|     Shepherd     |
++------------------+
+        | ^
+        v |
+ +----------------+
+ | State machines |
+ +----------------+
 ```
 
 ### Scheduler
@@ -24,12 +40,18 @@ domain requests may include
 2. Migrate a scheduled (running) job to a new configuration
 3. Unschedule (stop) a job
 
+### API
+
+The API converts REST-y HTTP actions into mutations on the registry. It also
+provides a view on the state of the scheduling domain, by subscribing to
+actual-state updates from the shepherd.
+
 ### Registry
 
-The registry is a plain data store, with no active goroutines. On the
-**public** side, the registry receives scheduling intents, e.g. container X
-should be running on agent Y. On the **private** side, the registry publishes
-changes, so listeners may reconcile the desired state and reality.
+The registry is a plain data store. It has two roles. It's a job scheduler,
+meaning it receives requests to schedule and unschedule jobs. It's also a
+desired-state broadcaster, which means other components can subscribe to it,
+to receive the current desired-state of the scheduling domain.
 
 The registry is a distinct component between the scheduler and transformer
 for two reasons:
@@ -44,13 +66,22 @@ and not necessarily the complete state of the candidate agents.
 
 ### Transformer
 
-The intermediary between our desired/logical state, as represented by the
-registry, and the actual/physical state, as represented by the remote agents.
-The transformer receives updates from the registry, and issues commands to
-remote agents.
+The transformer is an intermediary between our desired/logical state
+(represented by the registry) and the actual/physical state (represented by
+the shepherd). The transformer subscribes to updates from the registry and the
+shepherd, and whenever anything changes, it determines if it needs to emit
+task-schedule events to the shepherd.
 
-Remote agents are detected via a agent discovery component. For each agent,
-the transformer maintains a state machine. The state machine subscribes to the
-agent's event stream, and attempts to keep an up-to-date representation of the
-agent in memory. Since the event stream is designed to provide the complete
-state of the agent, the transformer doesn't persist any of that information.
+### Shepherd
+
+The shepherd simply provides a single interface point for all state machines.
+It's an actual-state broadcaster, so interested components can subscribe and
+get an up-to-date view of the scheduling domain. It also accepts task-schedule
+commands, from the transformer.
+
+### State machines
+
+A state machine represents a remote harpoon-agent. It contains all the code to
+make and maintain an event stream connection. State machines are created and
+updated by an agent discovery component, which (right now) only has a static
+list implementation.
