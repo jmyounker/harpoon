@@ -145,8 +145,6 @@ wait:
 				continue
 			}
 
-			// TODO(bernerd): a boolean is likely insufficient here, since the
-			// container may continue to run even after an OOM notification.
 			oomed = true
 		}
 	}
@@ -154,7 +152,10 @@ wait:
 	ws := c.cmd.ProcessState.Sys().(syscall.WaitStatus)
 
 	switch {
-	case oomed:
+	case oomed && ws.Signaled() && ws.Signal() == syscall.SIGKILL:
+		// The linux oomkiller kills with SIGKILL, so if we receive an OOM
+		// notification and the container exits from SIGKILL, report exit status as
+		// OOMed.
 		return agent.ContainerExitStatus{
 			OOMed: true,
 		}
