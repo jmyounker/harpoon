@@ -76,7 +76,7 @@ func (c *container) configure() error {
 // containerCommand implements namespaces.CreateCommand.
 func (c *container) containerCommand(container *libcontainer.Config, _, _, _, init string, childPipe *os.File, args []string) *exec.Cmd {
 	cmd := exec.Command(init, args...)
-	cmd.Args[0] = "harpoon-container-init"
+	cmd.Args[0] = containerInitName
 	cmd.ExtraFiles = []*os.File{childPipe}
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{

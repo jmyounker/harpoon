@@ -9,10 +9,18 @@ import (
 	"time"
 )
 
+const (
+	controlFileName   = "./control"
+	containerFileName = "./container.json"
+	rootfsFileName    = "./rootfs"
+
+	containerInitName = "harpoon-container-init"
+)
+
 func main() {
-	ln, err := net.Listen("unix", "./control")
+	ln, err := net.Listen("unix", controlFileName)
 	if err != nil {
-		log.Fatal("unable to listen on ./control: ", err)
+		log.Fatal("unable to listen on %q: ", controlFileName, err)
 	}
 	defer ln.Close()
 
@@ -20,7 +28,7 @@ func main() {
 	signal.Notify(sigc, syscall.SIGTERM, syscall.SIGINT)
 
 	var (
-		container     = newContainer("./container.json", "./rootfs", os.Args[1:])
+		container     = newContainer(containerFileName, rootfsFileName, os.Args[1:])
 		supervisor    = newSupervisor(container)
 		signalHandler = newSignalHandler(sigc, supervisor)
 		controller    = newController(ln, supervisor)

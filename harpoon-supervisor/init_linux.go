@@ -17,7 +17,7 @@ import (
 func init() {
 	// If the process name is harpoon-container-init (set by commandBuilder in
 	// container.go), execution will be hijacked from main().
-	if os.Args[0] != "harpoon-container-init" {
+	if os.Args[0] != containerInitName {
 		return
 	}
 
@@ -52,20 +52,20 @@ func init() {
 		os.Exit(2)
 	}
 
-	f, err := os.Open("./container.json")
+	f, err := os.Open(containerFileName)
 	if err != nil {
-		syncPipe.ReportChildError(fmt.Errorf("unable to open ./container.json: %s", err))
+		syncPipe.ReportChildError(fmt.Errorf("unable to open %q: %s", containerFileName, err))
 		os.Exit(2)
 	}
 
 	var container *libcontainer.Config
 
 	if err := json.NewDecoder(f).Decode(&container); err != nil {
-		syncPipe.ReportChildError(fmt.Errorf("unable to parse ./container.json: %s", err))
+		syncPipe.ReportChildError(fmt.Errorf("unable to parse %q: %s", containerFileName, err))
 		os.Exit(2)
 	}
 
-	namespaces.Init(container, "./rootfs", "", syncPipe, args)
+	namespaces.Init(container, rootfsFileName, "", syncPipe, args)
 
 	// If we get past namespaces.Init(), that means the container failed to exec.
 	// The error will have already been reported to the called via syncPipe, so
