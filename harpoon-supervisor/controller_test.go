@@ -36,8 +36,8 @@ func TestController(t *testing.T) {
 		enc = eventsource.NewEncoder(conn)
 	)
 
-	notify := <-s.notifyc
-	notify <- agent.ContainerProcessState{Up: true}
+	subscribe := <-s.subscribec
+	subscribe <- agent.ContainerProcessState{Up: true}
 
 	state, err := readStateEvent(conn)
 	if err != nil {
@@ -57,7 +57,7 @@ func TestController(t *testing.T) {
 	}
 
 	// supervisor reports down state
-	notify <- agent.ContainerProcessState{Up: false, Restarting: false}
+	subscribe <- agent.ContainerProcessState{Up: false, Restarting: false}
 
 	state, err = readStateEvent(conn)
 	if err != nil {
@@ -79,7 +79,7 @@ func TestController(t *testing.T) {
 	close(s.exited)
 
 	// user connection is removed
-	<-s.unnotifyc
+	<-s.unsubscribec
 
 	// controller terminates
 	<-done

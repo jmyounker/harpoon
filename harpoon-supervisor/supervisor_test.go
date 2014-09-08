@@ -61,8 +61,8 @@ func TestSupervisor(t *testing.T) {
 	// signal that container started successfully
 	container.startc <- nil
 
-	supervisor.Notify(statec)
-	defer supervisor.Unnotify(statec)
+	supervisor.Subscribe(statec)
+	defer supervisor.Unsubscribe(statec)
 
 	// check notification of initial state
 	<-statec
@@ -133,8 +133,8 @@ func TestSupervisorStop(t *testing.T) {
 	// signal that container started successfully
 	container.startc <- nil
 
-	supervisor.Notify(statec)
-	defer supervisor.Unnotify(statec)
+	supervisor.Subscribe(statec)
+	defer supervisor.Unsubscribe(statec)
 
 	// check notification of initial state
 	<-statec

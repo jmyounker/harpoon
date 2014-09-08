@@ -31,8 +31,8 @@ func (h *signalHandler) Run() {
 
 	h.s.Stop(syscall.SIGTERM)
 
-	h.s.Notify(statec)
-	defer h.s.Unnotify(statec)
+	h.s.Subscribe(statec)
+	defer h.s.Unsubscribe(statec)
 
 	for {
 		select {

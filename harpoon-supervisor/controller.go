@@ -124,8 +124,8 @@ func (c *controllerConn) serve() {
 		writec chan agent.ContainerProcessState
 	)
 
-	c.s.Notify(statec)
-	defer c.s.Unnotify(statec)
+	c.s.Subscribe(statec)
+	defer c.s.Unsubscribe(statec)
 
 	defer c.conn.Close()
 	defer close(closed)

@@ -10,21 +10,21 @@ import (
 )
 
 type testSupervisor struct {
-	notifyc   chan chan<- agent.ContainerProcessState
-	unnotifyc chan chan<- agent.ContainerProcessState
-	stopc     chan os.Signal
-	exitc     chan struct{}
-	exited    chan struct{}
+	subscribec   chan chan<- agent.ContainerProcessState
+	unsubscribec chan chan<- agent.ContainerProcessState
+	stopc        chan os.Signal
+	exitc        chan struct{}
+	exited       chan struct{}
 }
 
 func (*testSupervisor) Run(metricsTick <-chan time.Time, restartTimer func() <-chan time.Time) {}
 
-func (s *testSupervisor) Notify(c chan<- agent.ContainerProcessState) {
-	s.notifyc <- c
+func (s *testSupervisor) Subscribe(c chan<- agent.ContainerProcessState) {
+	s.subscribec <- c
 }
 
-func (s *testSupervisor) Unnotify(c chan<- agent.ContainerProcessState) {
-	s.unnotifyc <- c
+func (s *testSupervisor) Unsubscribe(c chan<- agent.ContainerProcessState) {
+	s.unsubscribec <- c
 }
 
 func (s *testSupervisor) Stop(sig os.Signal) {
@@ -42,11 +42,11 @@ func (s *testSupervisor) Exited() <-chan struct{} {
 
 func newTestSupervisor() *testSupervisor {
 	return &testSupervisor{
-		notifyc:   make(chan chan<- agent.ContainerProcessState, 1),
-		unnotifyc: make(chan chan<- agent.ContainerProcessState, 1),
-		stopc:     make(chan os.Signal, 1),
-		exitc:     make(chan struct{}, 1),
-		exited:    make(chan struct{}),
+		subscribec:   make(chan chan<- agent.ContainerProcessState, 1),
+		unsubscribec: make(chan chan<- agent.ContainerProcessState, 1),
+		stopc:        make(chan os.Signal, 1),
+		exitc:        make(chan struct{}, 1),
+		exited:       make(chan struct{}),
 	}
 }
 
@@ -80,15 +80,15 @@ func TestSignalHandlerSIGTERM(t *testing.T) {
 	// user sends interrupt
 	sigc <- os.Interrupt
 
-	// handler should call Notify
-	notify := <-s.notifyc
+	// handler should call Subscribe
+	subscribe := <-s.subscribec
 
 	if stop := <-s.stopc; stop != syscall.SIGTERM {
 		t.Fatalf("expected stop with SIGTERM, got %s", stop)
 	}
 
 	// supervisor reports down state
-	notify <- (agent.ContainerProcessState{Up: false, Restarting: false})
+	subscribe <- (agent.ContainerProcessState{Up: false, Restarting: false})
 
 	// handler should call Exit
 	<-s.exitc
@@ -113,8 +113,8 @@ func TestSignalHandlerSIGKILL(t *testing.T) {
 	// user sends signal
 	sigc <- os.Interrupt
 
-	// handler should call Notify
-	notify := <-s.notifyc
+	// handler should call Subscribe
+	subscribe := <-s.subscribec
 
 	// handler should call Stop(syscall.SIGTERM)
 	if stop := <-s.stopc; stop != syscall.SIGTERM {
@@ -122,7 +122,7 @@ func TestSignalHandlerSIGKILL(t *testing.T) {
 	}
 
 	// ignore SIGTERM request
-	notify <- (agent.ContainerProcessState{Up: true, Restarting: true})
+	subscribe <- (agent.ContainerProcessState{Up: true, Restarting: true})
 
 	// user sends another signal
 	sigc <- os.Interrupt
@@ -132,8 +132,8 @@ func TestSignalHandlerSIGKILL(t *testing.T) {
 		t.Fatalf("expected stop with SIGKILL, got %s", stop)
 	}
 
-	// notify supervisor is down
-	notify <- (agent.ContainerProcessState{Up: false, Restarting: false})
+	// subscribe supervisor is down
+	subscribe <- (agent.ContainerProcessState{Up: false, Restarting: false})
 
 	// handler should call Exit()
 	<-s.exitc
