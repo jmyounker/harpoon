@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/bernerdschaefer/eventsource"
+
+	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
 type controller struct {
@@ -51,14 +53,14 @@ func (c *controller) Run() {
 type controllerConn struct {
 	conn   net.Conn
 	s      Supervisor
-	writec chan ContainerProcessState
+	writec chan agent.ContainerProcessState
 }
 
 func newControllerConn(conn net.Conn, s Supervisor) *controllerConn {
 	return &controllerConn{
 		conn:   conn,
 		s:      s,
-		writec: make(chan ContainerProcessState),
+		writec: make(chan agent.ContainerProcessState),
 	}
 }
 
@@ -114,10 +116,10 @@ func (c *controllerConn) serve() {
 		exited = c.s.Exited()
 		errc   = make(chan error, 2)
 		closed = make(chan struct{})
-		statec = make(chan ContainerProcessState)
+		statec = make(chan agent.ContainerProcessState)
 
-		state  ContainerProcessState // last state notification
-		writec chan ContainerProcessState
+		state  agent.ContainerProcessState // last state notification
+		writec chan agent.ContainerProcessState
 	)
 
 	c.s.Notify(statec)

@@ -4,6 +4,8 @@ import (
 	"log"
 	"os"
 	"syscall"
+
+	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
 type signalHandler struct {
@@ -18,7 +20,7 @@ func newSignalHandler(sigc chan os.Signal, s Supervisor) *signalHandler {
 func (h *signalHandler) Run() {
 	var (
 		exited = h.s.Exited()
-		statec = make(chan ContainerProcessState, 1)
+		statec = make(chan agent.ContainerProcessState, 1)
 	)
 
 	select {
@@ -27,10 +29,10 @@ func (h *signalHandler) Run() {
 	case <-h.sigc:
 	}
 
+	h.s.Stop(syscall.SIGTERM)
+
 	h.s.Notify(statec)
 	defer h.s.Unnotify(statec)
-
-	h.s.Stop(syscall.SIGTERM)
 
 	for {
 		select {

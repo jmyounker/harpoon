@@ -5,11 +5,13 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
 type testSupervisor struct {
-	notifyc   chan chan<- ContainerProcessState
-	unnotifyc chan chan<- ContainerProcessState
+	notifyc   chan chan<- agent.ContainerProcessState
+	unnotifyc chan chan<- agent.ContainerProcessState
 	stopc     chan os.Signal
 	exitc     chan struct{}
 	exited    chan struct{}
@@ -17,11 +19,11 @@ type testSupervisor struct {
 
 func (*testSupervisor) Run(metricsTick <-chan time.Time, restartTimer func() <-chan time.Time) {}
 
-func (s *testSupervisor) Notify(c chan<- ContainerProcessState) {
+func (s *testSupervisor) Notify(c chan<- agent.ContainerProcessState) {
 	s.notifyc <- c
 }
 
-func (s *testSupervisor) Unnotify(c chan<- ContainerProcessState) {
+func (s *testSupervisor) Unnotify(c chan<- agent.ContainerProcessState) {
 	s.unnotifyc <- c
 }
 
@@ -40,8 +42,8 @@ func (s *testSupervisor) Exited() <-chan struct{} {
 
 func newTestSupervisor() *testSupervisor {
 	return &testSupervisor{
-		notifyc:   make(chan chan<- ContainerProcessState, 1),
-		unnotifyc: make(chan chan<- ContainerProcessState, 1),
+		notifyc:   make(chan chan<- agent.ContainerProcessState, 1),
+		unnotifyc: make(chan chan<- agent.ContainerProcessState, 1),
 		stopc:     make(chan os.Signal, 1),
 		exitc:     make(chan struct{}, 1),
 		exited:    make(chan struct{}),
@@ -86,7 +88,7 @@ func TestSignalHandlerSIGTERM(t *testing.T) {
 	}
 
 	// supervisor reports down state
-	notify <- (ContainerProcessState{Up: false, Restarting: false})
+	notify <- (agent.ContainerProcessState{Up: false, Restarting: false})
 
 	// handler should call Exit
 	<-s.exitc
@@ -120,7 +122,7 @@ func TestSignalHandlerSIGKILL(t *testing.T) {
 	}
 
 	// ignore SIGTERM request
-	notify <- (ContainerProcessState{Up: true, Restarting: true})
+	notify <- (agent.ContainerProcessState{Up: true, Restarting: true})
 
 	// user sends another signal
 	sigc <- os.Interrupt
@@ -131,7 +133,7 @@ func TestSignalHandlerSIGKILL(t *testing.T) {
 	}
 
 	// notify supervisor is down
-	notify <- (ContainerProcessState{Up: false, Restarting: false})
+	notify <- (agent.ContainerProcessState{Up: false, Restarting: false})
 
 	// handler should call Exit()
 	<-s.exitc

@@ -4,6 +4,8 @@ import (
 	"errors"
 	"os"
 	"time"
+
+	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
 var errNotDown = errors.New("supervisor not down")
@@ -13,8 +15,8 @@ type Supervisor interface {
 	// Run starts the supervisor. It blocks until Exit is called.
 	Run(metricsTick <-chan time.Time, restartTimer func() <-chan time.Time)
 
-	Notify(chan<- ContainerProcessState)
-	Unnotify(chan<- ContainerProcessState)
+	Notify(chan<- agent.ContainerProcessState)
+	Unnotify(chan<- agent.ContainerProcessState)
 
 	// Stop sends the signal to the supervised process. If the process exits it
 	// will not be restarted.
@@ -31,9 +33,9 @@ type Supervisor interface {
 type supervisor struct {
 	container Container
 
-	listeners map[chan<- ContainerProcessState]struct{}
-	notifyc   chan chan<- ContainerProcessState
-	unnotifyc chan chan<- ContainerProcessState
+	listeners map[chan<- agent.ContainerProcessState]struct{}
+	notifyc   chan chan<- agent.ContainerProcessState
+	unnotifyc chan chan<- agent.ContainerProcessState
 	downc     chan os.Signal
 	exitc     chan chan error
 	exited    chan struct{}
@@ -42,23 +44,23 @@ type supervisor struct {
 func newSupervisor(c Container) Supervisor {
 	return &supervisor{
 		container: c,
-		listeners: map[chan<- ContainerProcessState]struct{}{},
-		notifyc:   make(chan chan<- ContainerProcessState),
-		unnotifyc: make(chan chan<- ContainerProcessState),
+		listeners: map[chan<- agent.ContainerProcessState]struct{}{},
+		notifyc:   make(chan chan<- agent.ContainerProcessState),
+		unnotifyc: make(chan chan<- agent.ContainerProcessState),
 		downc:     make(chan os.Signal),
 		exitc:     make(chan chan error),
 		exited:    make(chan struct{}),
 	}
 }
 
-func (s *supervisor) Notify(c chan<- ContainerProcessState) {
+func (s *supervisor) Notify(c chan<- agent.ContainerProcessState) {
 	select {
 	case s.notifyc <- c:
 	case <-s.exited:
 	}
 }
 
-func (s *supervisor) Unnotify(c chan<- ContainerProcessState) {
+func (s *supervisor) Unnotify(c chan<- agent.ContainerProcessState) {
 	select {
 	case s.unnotifyc <- c:
 	case <-s.exited:
@@ -95,20 +97,20 @@ func (s *supervisor) Exited() <-chan struct{} {
 
 func (s *supervisor) Run(metricsTick <-chan time.Time, restartTimer func() <-chan time.Time) {
 	var (
-		state          ContainerProcessState
-		containerExitc chan ContainerExitStatus
+		state          agent.ContainerProcessState
+		containerExitc chan agent.ContainerExitStatus
 		restart        <-chan time.Time
 	)
 
 	defer close(s.exited)
 
 	if err := s.container.Start(); err != nil {
-		state = ContainerProcessState{Err: err.Error()}
+		state = agent.ContainerProcessState{Err: err.Error()}
 		metricsTick = nil
 	} else {
-		state = ContainerProcessState{Up: true, Restarting: true}
+		state = agent.ContainerProcessState{Up: true, Restarting: true}
 
-		containerExitc = make(chan ContainerExitStatus, 1)
+		containerExitc = make(chan agent.ContainerExitStatus, 1)
 		go func() { containerExitc <- s.container.Wait() }()
 	}
 
@@ -124,9 +126,9 @@ func (s *supervisor) Run(metricsTick <-chan time.Time, restartTimer func() <-cha
 
 			state.Up = true
 			state.Restarts++
-			state.ContainerExitStatus = ContainerExitStatus{}
+			state.ContainerExitStatus = agent.ContainerExitStatus{}
 
-			containerExitc = make(chan ContainerExitStatus, 1)
+			containerExitc = make(chan agent.ContainerExitStatus, 1)
 			go func() { containerExitc <- s.container.Wait() }()
 			s.broadcast(state)
 
@@ -189,7 +191,7 @@ func (s *supervisor) Run(metricsTick <-chan time.Time, restartTimer func() <-cha
 }
 
 // notify sends state to c, unless unnotify is called for c.
-func (s *supervisor) notify(c chan<- ContainerProcessState, state ContainerProcessState) {
+func (s *supervisor) notify(c chan<- agent.ContainerProcessState, state agent.ContainerProcessState) {
 	for {
 		select {
 		case c <- state:
@@ -206,7 +208,7 @@ func (s *supervisor) notify(c chan<- ContainerProcessState, state ContainerProce
 }
 
 // broadcast sends state to all listeners.
-func (s *supervisor) broadcast(state ContainerProcessState) {
+func (s *supervisor) broadcast(state agent.ContainerProcessState) {
 	for c := range s.listeners {
 		s.notify(c, state)
 	}

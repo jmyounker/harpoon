@@ -5,19 +5,21 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
 type testContainer struct {
 	startc  chan error
 	signalc chan os.Signal
-	waitc   chan ContainerExitStatus
+	waitc   chan agent.ContainerExitStatus
 }
 
 func newTestContainer() *testContainer {
 	return &testContainer{
 		startc:  make(chan error),
 		signalc: make(chan os.Signal, 1),
-		waitc:   make(chan ContainerExitStatus),
+		waitc:   make(chan agent.ContainerExitStatus),
 	}
 }
 
@@ -25,12 +27,12 @@ func (c *testContainer) Start() error {
 	return <-c.startc
 }
 
-func (c *testContainer) Wait() ContainerExitStatus {
+func (c *testContainer) Wait() agent.ContainerExitStatus {
 	return <-c.waitc
 }
 
-func (c *testContainer) Metrics() ContainerMetrics {
-	return ContainerMetrics{}
+func (c *testContainer) Metrics() agent.ContainerMetrics {
+	return agent.ContainerMetrics{}
 }
 
 func (c *testContainer) Signal(sig os.Signal) {
@@ -41,7 +43,7 @@ func TestSupervisor(t *testing.T) {
 	var (
 		container  = newTestContainer()
 		supervisor = newSupervisor(container)
-		statec     = make(chan ContainerProcessState)
+		statec     = make(chan agent.ContainerProcessState)
 
 		metricsTick  = make(chan time.Time)
 		restartTimer = make(chan time.Time)
@@ -66,7 +68,7 @@ func TestSupervisor(t *testing.T) {
 	<-statec
 
 	// container process OOMs
-	container.waitc <- ContainerExitStatus{OOMed: true}
+	container.waitc <- agent.ContainerExitStatus{OOMed: true}
 
 	{
 		state := <-statec
@@ -100,7 +102,7 @@ func TestSupervisor(t *testing.T) {
 	<-statec
 
 	// container process exits
-	container.waitc <- ContainerExitStatus{Exited: true, ExitStatus: 0}
+	container.waitc <- agent.ContainerExitStatus{Exited: true, ExitStatus: 0}
 
 	// wait for notification
 	{
@@ -121,7 +123,7 @@ func TestSupervisorStop(t *testing.T) {
 	var (
 		container  = newTestContainer()
 		supervisor = newSupervisor(container)
-		statec     = make(chan ContainerProcessState)
+		statec     = make(chan agent.ContainerProcessState)
 
 		done = make(chan struct{}, 1)
 	)
@@ -148,7 +150,7 @@ func TestSupervisorStop(t *testing.T) {
 	}
 
 	// container process exits
-	container.waitc <- ContainerExitStatus{}
+	container.waitc <- agent.ContainerExitStatus{}
 
 	// wait for notification
 	<-statec

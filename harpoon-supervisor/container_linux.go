@@ -13,6 +13,8 @@ import (
 	"github.com/docker/libcontainer"
 	"github.com/docker/libcontainer/cgroups/fs"
 	"github.com/docker/libcontainer/namespaces"
+
+	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
 type container struct {
@@ -129,7 +131,7 @@ func (c *container) Start() error {
 	return nil
 }
 
-func (c *container) Wait() ContainerExitStatus {
+func (c *container) Wait() agent.ContainerExitStatus {
 	var oomed bool
 
 wait:
@@ -153,22 +155,22 @@ wait:
 
 	switch {
 	case oomed:
-		return ContainerExitStatus{
+		return agent.ContainerExitStatus{
 			OOMed: true,
 		}
 	case ws.Exited():
-		return ContainerExitStatus{
+		return agent.ContainerExitStatus{
 			Exited:     true,
 			ExitStatus: ws.ExitStatus(),
 		}
 	case ws.Signaled():
-		return ContainerExitStatus{
+		return agent.ContainerExitStatus{
 			Signaled: true,
 			Signal:   int(ws.Signal()),
 		}
 	}
 
-	return ContainerExitStatus{}
+	return agent.ContainerExitStatus{}
 }
 
 func (c *container) Signal(sig os.Signal) {
@@ -179,13 +181,13 @@ func (c *container) Signal(sig os.Signal) {
 	c.cmd.Process.Signal(sig)
 }
 
-func (c *container) Metrics() ContainerMetrics {
+func (c *container) Metrics() agent.ContainerMetrics {
 	stats, err := fs.GetStats(c.containerConfig.Cgroups)
 	if err != nil {
-		return ContainerMetrics{}
+		return agent.ContainerMetrics{}
 	}
 
-	return ContainerMetrics{
+	return agent.ContainerMetrics{
 		MemoryUsage: stats.MemoryStats.Usage,
 		MemoryLimit: stats.MemoryStats.Stats["hierarchical_memory_limit"],
 		CPUTime:     stats.CpuStats.CpuUsage.TotalUsage,

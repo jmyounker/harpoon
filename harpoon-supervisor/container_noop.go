@@ -5,6 +5,8 @@ package main
 import (
 	"fmt"
 	"os"
+
+	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
 type container struct{}
@@ -17,12 +19,12 @@ func (*container) Start() error {
 	return fmt.Errorf("platform does not support containers")
 }
 
-func (*container) Wait() ContainerExitStatus {
-	return ContainerExitStatus{}
+func (*container) Wait() agent.ContainerExitStatus {
+	return agent.ContainerExitStatus{}
 }
 
 func (*container) Signal(os.Signal) {}
 
-func (*container) Metrics() ContainerMetrics {
-	return ContainerMetrics{}
+func (*container) Metrics() agent.ContainerMetrics {
+	return agent.ContainerMetrics{}
 }

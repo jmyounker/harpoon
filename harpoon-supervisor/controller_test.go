@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/bernerdschaefer/eventsource"
+
+	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
 func TestController(t *testing.T) {
@@ -35,14 +37,14 @@ func TestController(t *testing.T) {
 	)
 
 	notify := <-s.notifyc
-	notify <- ContainerProcessState{Up: true}
+	notify <- agent.ContainerProcessState{Up: true}
 
 	state, err := readStateEvent(conn)
 	if err != nil {
 		t.Fatal("error reading state event: ", err)
 	}
 
-	if state != (ContainerProcessState{Up: true}) {
+	if state != (agent.ContainerProcessState{Up: true}) {
 		t.Fatalf("unexpected state %#v", state)
 	}
 
@@ -55,14 +57,14 @@ func TestController(t *testing.T) {
 	}
 
 	// supervisor reports down state
-	notify <- ContainerProcessState{Up: false, Restarting: false}
+	notify <- agent.ContainerProcessState{Up: false, Restarting: false}
 
 	state, err = readStateEvent(conn)
 	if err != nil {
 		t.Fatal("error reading state event: ", err)
 	}
 
-	if state != (ContainerProcessState{Up: false, Restarting: false}) {
+	if state != (agent.ContainerProcessState{Up: false, Restarting: false}) {
 		t.Fatalf("unexpected state %#v", state)
 	}
 
@@ -83,22 +85,22 @@ func TestController(t *testing.T) {
 	<-done
 }
 
-func readStateEvent(r io.Reader) (ContainerProcessState, error) {
+func readStateEvent(r io.Reader) (agent.ContainerProcessState, error) {
 	var (
 		ev    eventsource.Event
-		state ContainerProcessState
+		state agent.ContainerProcessState
 	)
 
 	if err := eventsource.NewDecoder(r).Decode(&ev); err != nil {
-		return ContainerProcessState{}, err
+		return agent.ContainerProcessState{}, err
 	}
 
 	if ev.Type != "state" {
-		return ContainerProcessState{}, fmt.Errorf("unexpected event type %s", ev.Type)
+		return agent.ContainerProcessState{}, fmt.Errorf("unexpected event type %s", ev.Type)
 	}
 
 	if err := json.Unmarshal(ev.Data, &state); err != nil {
-		return ContainerProcessState{}, err
+		return agent.ContainerProcessState{}, err
 	}
 
 	return state, nil
