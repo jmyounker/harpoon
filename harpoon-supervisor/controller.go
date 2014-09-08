@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"io"
+	"log"
 	"net"
 	"syscall"
 	"time"
@@ -133,8 +135,12 @@ func (c *controllerConn) serve() {
 
 	for {
 		select {
-		case <-errc:
-			return // TODO: do something with error?
+		case err := <-errc:
+			if err != nil && err != io.EOF {
+				log.Println("unexpected error on control connection: ", err)
+			}
+
+			return
 
 		case <-exited:
 			return
