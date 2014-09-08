@@ -74,3 +74,11 @@ data: {"up": false, "restarting": false, "container_exit_status": {"signaled": t
 $ printf "event: exit\n\n" | socat UNIX-CONNECT:./control -
 
 ```
+
+## Testing
+
+In order to keep the tests as straightforward as possible, there are no
+timeouts enforced. Instead, is recommended to test harpoon-supervisor with an
+explicit timeout, for example, with `go test -timeout 10ms`. This will provide
+a panic stack trace in the case of a blocked test, which should help resolving
+the issue.
