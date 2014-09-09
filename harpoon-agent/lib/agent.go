@@ -340,7 +340,7 @@ type ContainerProcessState struct {
 	Err string `json:"err,omitempty"`
 
 	// ContainerExitStatus contains the last exit status of the container. It
-	// will only be present is Up is false.
+	// will only be present if Up is false.
 	ContainerExitStatus `json:"container_exit_status,omitempty"`
 
 	// Restarts is a counter of how often the container has been restarted
