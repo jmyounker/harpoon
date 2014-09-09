@@ -27,10 +27,10 @@ func newController(ln net.Listener, s Supervisor) *controller {
 
 // Run accepts and serves controller connections until the supervisor exits.
 func (c *controller) Run() {
-	exited := c.Supervisor.Exited()
+	exitedc := c.Supervisor.Exited()
 
 	go func() {
-		<-exited
+		<-exitedc
 
 		c.Listener.Close()
 	}()
@@ -40,7 +40,7 @@ func (c *controller) Run() {
 
 		if err != nil {
 			select {
-			case <-exited:
+			case <-exitedc:
 				return
 			case <-time.After(time.Second):
 				continue
@@ -115,10 +115,10 @@ func (c *controllerConn) writeLoop(closed chan struct{}) error {
 
 func (c *controllerConn) serve() {
 	var (
-		exited = c.s.Exited()
-		errc   = make(chan error, 2)
-		closed = make(chan struct{})
-		statec = make(chan agent.ContainerProcessState)
+		exitedc = c.s.Exited()
+		errc    = make(chan error, 2)
+		closed  = make(chan struct{})
+		statec  = make(chan agent.ContainerProcessState)
 
 		state  agent.ContainerProcessState // last state notification
 		writec chan agent.ContainerProcessState
@@ -142,7 +142,7 @@ func (c *controllerConn) serve() {
 
 			return
 
-		case <-exited:
+		case <-exitedc:
 			return
 
 		case state = <-statec:

@@ -19,12 +19,12 @@ func newSignalHandler(sigc chan os.Signal, s Supervisor) *signalHandler {
 
 func (h *signalHandler) Run() {
 	var (
-		exited = h.s.Exited()
-		statec = make(chan agent.ContainerProcessState, 1)
+		exitedc = h.s.Exited()
+		statec  = make(chan agent.ContainerProcessState, 1)
 	)
 
 	select {
-	case <-exited:
+	case <-exitedc:
 		return
 	case <-h.sigc:
 	}
@@ -36,7 +36,7 @@ func (h *signalHandler) Run() {
 
 	for {
 		select {
-		case <-exited:
+		case <-exitedc:
 			return
 
 		case <-h.sigc:
