@@ -14,29 +14,29 @@ import (
 )
 
 type controller struct {
-	ln net.Listener
-	s  Supervisor
+	net.Listener
+	Supervisor
 }
 
 func newController(ln net.Listener, s Supervisor) *controller {
 	return &controller{
-		ln: ln,
-		s:  s,
+		Listener:   ln,
+		Supervisor: s,
 	}
 }
 
 // Run accepts and serves controller connections until the supervisor exits.
 func (c *controller) Run() {
-	exited := c.s.Exited()
+	exited := c.Supervisor.Exited()
 
 	go func() {
 		<-exited
 
-		c.ln.Close()
+		c.Listener.Close()
 	}()
 
 	for {
-		conn, err := c.ln.Accept()
+		conn, err := c.Listener.Accept()
 
 		if err != nil {
 			select {
@@ -47,7 +47,7 @@ func (c *controller) Run() {
 			}
 		}
 
-		c := newControllerConn(conn, c.s)
+		c := newControllerConn(conn, c.Supervisor)
 		go c.serve()
 	}
 }
