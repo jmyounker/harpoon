@@ -131,14 +131,12 @@ func (c *container) Start() error {
 	return nil
 }
 
-func (c *container) Wait() agent.ContainerExitStatus {
-	var oomed bool
-
-wait:
+// wait blocks until the container process exits.
+func (c *container) wait() (oomed bool) {
 	for {
 		select {
 		case <-c.exitc:
-			break wait
+			return oomed
 
 		case _, ok := <-c.oomc:
 			if !ok {
@@ -148,8 +146,13 @@ wait:
 			oomed = true
 		}
 	}
+}
 
-	ws := c.cmd.ProcessState.Sys().(syscall.WaitStatus)
+func (c *container) Wait() agent.ContainerExitStatus {
+	var (
+		oomed = c.wait()
+		ws    = c.cmd.ProcessState.Sys().(syscall.WaitStatus)
+	)
 
 	switch {
 	case oomed && ws.Signaled() && ws.Signal() == syscall.SIGKILL:
