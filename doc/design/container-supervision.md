@@ -1,9 +1,9 @@
 # Container Supervision
 
-- **Status**: PROPOSAL
+- **Status**: IMPLEMENTED
 - **Author**: @bernerdschaefer
 
-Use named pipes and unix domain sockets to supervise spawned containers.
+Use unix domain socket to supervise spawned containers.
 
 ## Background
 
@@ -33,82 +33,77 @@ The first drawback is indeed the most critical. If no heartbeats are received
 by an agent for some time, the container must be declared to be in an undefined
 state.
 
-## Proposal
+---
 
-There will be two special files in a container's run directory:
+## Changelog
 
-  - `control`: a unix domain socket
-  - `state`: the container's last state
+The implementation of the supervision design reflected here differs from the
+[initial proposal][1137bd] in a few ways:
 
-`control` exposes a bidirectional message stream, where messages are encoded
-according to the Server-Sent Events spec.
+  - "harpoon-container" has been renamed "harpoon-supervisor"
+  - the state data type has been restructured
+  - the special `state` file has been dropped
 
-`state` is written by the container; its contents are a JSON-encoded
-[Heartbeat][].
+Removing the state file simplifies the implementation, and reduces the surface
+area for errors. The same guarantees the state file provided are accomplished
+by requiring an explicit 'exit' command to shut down the supervisor, which
+functions as an ack of the final state.
 
-[Heartbeat]: http://godoc.org/github.com/soundcloud/harpoon/harpoon-agent/lib#Heartbeat
+[1137bd]: https://github.com/soundcloud/harpoon/blob/1137bd97f40e56272689ca57a5a81133ee32195b/doc/design/container-supervision.md
 
-### `Heartbeat` type
+---
 
-* Rename to `ContainerState`.
+## harpoon-supervisor
 
-### `state`
+`harpoon-supervisor` creates a unix socket called `control` in the current
+directory. This socket can be used to collect state information about the
+container, as well as control it (e.g., shut down).
 
-The `state` file will be written by the container on startup (before listening
-on `control`) and shtudown (before closing `control`). Since the events
-broadcast by the container are not acked, this ensures that an agent can always
-collect the final state.
+### State
 
-For example, if the agent sends a `stop` event and is then restarted, it may
-not observe the container's last `state` event; when reconnecting, it would
-detect that the container is down and use `state` to get the final message.
+When a process connects to the `control` socket, it will receive a stream of
+state events. The events will be encoded as Server-Sent Events, with an event
+type of `state` and the data the JSON encoding of ContainerProcessState.
 
-### agent -> container events
+The current state will be sent immediately on connecting, and subsequent states
+will be sent 1) when metrics are collected, and 2) when the process state
+changes.
 
-* `stop` — initiate graceful shutdown; no event data supplied
-* `kill` — initiate forceful shutdown; no event data supplied
+### Commands
 
-### container -> agent events
+Commands can be also sent to the supervisor over the `control` socket. The
+commands must be encoded as Server-Sent Events.
 
-* `state` — the container and its process' state, sent on a regular interval.
-  The data section will be a JSON-encoded [Heartbeat][].
+Currently supported commands are:
 
-### Details
+  * `stop` — initiate graceful shutdown; no event data supplied
+  * `kill` — initiate forceful shutdown; no event data supplied
+  * `exit` — terminate supervisor; no event data supplied; noop if container
+    process is not already stopped or killed.
 
-- When an agent starts a container, it will wait for `net.Dial` on `control` to
-  not return `ENOENT`.
-- If an agent receives an `ECONNREFUSED` error, then the container is dead.
-- If an agent receives an `EOF` while reading or an `EPIPE` while writing, the
-  container is dead.
-- If an agent receives `ECONNREFUSED`, `EOF`, or `EPIPE`, the container's
-  state file can be read to get the last state. If the container cannot be
-  connected to but the state file says it is "UP", the container crashed in a
-  truly exceptional way.
-
-## Simulation
+### Simulation
 
 ```
-$ harpoon-container command &
+$ harpoon-supervisor command &
 
-$ socat UNIX-CONNECT:./control -
-2014/08/11 16:39:06 socat[12156] E connect(3, LEN=11 AF=1 "./control", 11): No such file or directory
-
-$ socat UNIX-CONNECT:control -
-event: state
-data: {"status": "UP", "container_process_state": {"up": true, "container_metrics": {...}}}
+$ socat UNIX-CONNECT:./control - &
 
 event: state
-data: {"status": "UP", "container_process_state": {"up": true, "container_metrics": {...}}}
-
-> event: stop
->
+data: {"up": true, "restarting": true, "restarts": 0, "ooms": 0, "container_metrics": {...}}
 
 event: state
-data: {"status": "DOWN", "container_process_state": {"up": false, "exited": true, "exit_status": 0}}
+data: {"up": true, "restarting": true, "restarts": 0, "ooms": 0, "container_metrics": {...}}
 
-$ cat state
-{"status": "DOWN", "container_process_state": {"up": false, "exited": true, "exit_status": 0}}
+$ printf "event: stop\n\n" | socat UNIX-CONNECT:./control -
 
-$ socat UNIX-CONNECT:./control -
-2014/08/11 16:00:06 socat[11884] E connect(3, LEN=11 AF=1 "./control", 11): Connection refused
+event: state
+data: {"up": true, "restarting": false, "restarts": 0, "ooms": 0, "container_metrics": {...}}
+
+$ printf "event: kill\n\n" | socat UNIX-CONNECT:./control -
+
+event: state
+data: {"up": false, "restarting": false, "container_exit_status": {"signaled": true, "signal": 9}, "restarts": 0, "ooms": 0, "container_metrics": {...}}
+
+$ printf "event: exit\n\n" | socat UNIX-CONNECT:./control -
+
 ```

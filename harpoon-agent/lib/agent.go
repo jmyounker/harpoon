@@ -324,3 +324,48 @@ func (d *JSONDuration) UnmarshalJSON(buf []byte) error {
 
 	return nil
 }
+
+// ContainerProcessState contains the state of a container.
+type ContainerProcessState struct {
+	// Up signals whether the container process is running.
+	Up bool `json:"up"`
+
+	// Restarting signals whether the container process will be restarted after
+	// exit. If both Up and Restarting are false, the container process is down
+	// and will not be restarted.
+	Restarting bool `json:"restarting"`
+
+	// Err records a non-recoverable error which prevented the container from
+	// starting. It will only be set if both Up and Restarting are false.
+	Err string `json:"err,omitempty"`
+
+	// ContainerExitStatus contains the last exit status of the container. It
+	// will only be present if Up is false.
+	ContainerExitStatus `json:"container_exit_status,omitempty"`
+
+	// Restarts is a counter of how often the container has been restarted
+	Restarts uint `json:"restarts"`
+
+	// OOMs is a counter of how often the container has been killed for exceeding
+	// its memory limit.
+	OOMs uint `json:"ooms"`
+
+	ContainerMetrics `json:"container_metrics"`
+}
+
+// ContainerExitStatus contains the exit status of a container.
+type ContainerExitStatus struct {
+	// Exited is true when the container exited on its own, or in response to
+	// handling a signal. ExitStatus will be >= 0 when Exited is true.
+	Exited     bool `json:"exited,omitempty"`
+	ExitStatus int  `json:"exit_status,omitempty"`
+
+	// Signaled is true when the container was killed with a signal. Signal
+	// will be > 0 when Signaled is true.
+	Signaled bool `json:"signaled,omitempty"`
+	Signal   int  `json:"signal,omitempty"`
+
+	// OOMed is true if the container was killed for exceeding its memory
+	// limit.
+	OOMed bool `json:"oomed,omitempty"`
+}
