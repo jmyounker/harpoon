@@ -3,10 +3,6 @@
 # pre-commit hook which verifies that changes are formatted w/ gofmt and pass
 # go vet.
 
-# find all changed go files
-gofiles=$(git diff --cached --name-only --diff-filter=ACM | grep '.go$')
-[ -z "$gofiles" ] && exit 0
-
 function checkfmt() {
   unformatted=$(gofmt -l $gofiles)
   [ -z "$unformatted" ] && return 0
@@ -33,8 +29,42 @@ function checkvet() {
   return 1
 }
 
-checkfmt || fail=yes
-checkvet || fail=yes
+# This check ensures that staged files must not have unstaged modifications.
+#
+# It addresses the following recurring issue:  The developer tries to commit.
+# The pre-commit hook fails with an error.  The developer fixes the errors, but
+# does not stage the new changes.  The developer now commits again.  The pre-commit
+# hook checks the modified files on the filesystem. These are good, so the
+# pre-commit hook succeeds.
+#
+# Git then commits the *staged* version of the files, and not the *modified* version
+# of the files which were actaully checked, resulting in the orignal defective files
+# being submitted.
+function unstaged() {
+  unstaged_modifications=$(git status --porcelain | awk '/^[AM]M/{print $2}')
+  [ -z "$unstaged_modifications" ] && return 0
+
+  echo >&2 "The following staged files have been modified and must be restaged:"
+  local file
+  for file in $unstaged_modifications; do
+     echo >&2 "  $file"
+  done
+
+  return 1
+}
+
+# If there are no modified files, then there is nothing to check.
+allfiles=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$allfiles" ] && exit 0
+
+# Find all changed go files
+gofiles=$(git diff --cached --name-only --diff-filter=ACM | grep '.go$')
+
+if [ -n "$gofiles" ]; then
+  checkfmt || fail=yes
+  checkvet || fail=yes
+fi
+unstaged || fail=yes
 
 [ -z "$fail" ] || exit 1
 
