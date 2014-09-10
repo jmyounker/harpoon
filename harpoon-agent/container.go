@@ -541,7 +541,7 @@ func extractArtifact(src io.Reader, dst string, compression string) (err error) 
 		}
 	}()
 
-	cmd := exec.Command("tar", "-C", dst, fmt.Sprintf("-x%s", compression))
+	cmd := exec.Command("tar", "-C", dst, "-x" + compression)
 	cmd.Stdin = src
 
 	if err := cmd.Run(); err != nil {
