@@ -64,7 +64,11 @@ func TestSignalHandlerSupervisorExit(t *testing.T) {
 	close(s.exited)
 
 	// handler completes
-	<-done
+	select {
+	case <-done:
+	case <-time.After(time.Millisecond):
+		panic("signal handler did not terminate after supervisor exit")
+	}
 }
 
 func TestSignalHandlerSIGTERM(t *testing.T) {
@@ -78,32 +82,56 @@ func TestSignalHandlerSIGTERM(t *testing.T) {
 	go func() { h.Run(); done <- struct{}{} }()
 
 	// user sends interrupt
-	sigc <- os.Interrupt
+	select {
+	case sigc <- os.Interrupt:
+	case <-time.After(time.Millisecond):
+		panic("signal handler did not receive signal")
+	}
 
-	// handler should call Subscribe
-	subscribe := <-s.subscribec
+	var subscribe chan<- agent.ContainerProcessState
 
-	if stop := <-s.stopc; stop != syscall.SIGTERM {
-		t.Fatalf("expected stop with SIGTERM, got %s", stop)
+	select {
+	case subscribe = <-s.subscribec:
+	case <-time.After(time.Millisecond):
+		panic("signal handler did not subscribe to supervisor")
+	}
+
+	select {
+	case stop := <-s.stopc:
+		if stop != syscall.SIGTERM {
+			t.Fatal("expected SIGTERM, got ", stop)
+		}
+	case <-time.After(time.Millisecond):
+		panic("signal handler did not supervisor.Stop")
 	}
 
 	// supervisor reports down state
-	subscribe <- (agent.ContainerProcessState{Up: false, Restarting: false})
+	select {
+	case subscribe <- (agent.ContainerProcessState{Up: false, Restarting: false}):
+	case <-time.After(time.Millisecond):
+		panic("unable to send state update to signal handler")
+	}
 
-	// handler should call Exit
-	<-s.exitc
+	select {
+	case <-s.exitc:
+	case <-time.After(time.Millisecond):
+		panic("handler did not call exit on supervisor")
+	}
 
 	// supervisor exits
 	close(s.exited)
 
-	// handler should complete
-	<-done
+	select {
+	case <-done:
+	case <-time.After(time.Millisecond):
+		panic("signal handler did not terminate after supervisor exit")
+	}
 }
 
 func TestSignalHandlerSIGKILL(t *testing.T) {
 	var (
 		done = make(chan struct{})
-		sigc = make(chan os.Signal, 1)
+		sigc = make(chan os.Signal)
 		s    = newTestSupervisor()
 		h    = newSignalHandler(sigc, s)
 	)
@@ -111,36 +139,76 @@ func TestSignalHandlerSIGKILL(t *testing.T) {
 	go func() { h.Run(); done <- struct{}{} }()
 
 	// user sends signal
-	sigc <- os.Interrupt
+	select {
+	case sigc <- os.Interrupt:
+	case <-time.After(time.Millisecond):
+		panic("signal handler did not receive signal")
+	}
 
-	// handler should call Subscribe
-	subscribe := <-s.subscribec
+	var subscribe chan<- agent.ContainerProcessState
 
-	// handler should call Stop(syscall.SIGTERM)
-	if stop := <-s.stopc; stop != syscall.SIGTERM {
-		t.Fatalf("expected stop with SIGTERM, got %s", stop)
+	select {
+	case subscribe = <-s.subscribec:
+	case <-time.After(time.Millisecond):
+		panic("signal handler did not subscribe to supervisor")
+	}
+
+	select {
+	case stop := <-s.stopc:
+		if stop != syscall.SIGTERM {
+			t.Fatal("expected SIGTERM, got ", stop)
+		}
+	case <-time.After(time.Millisecond):
+		panic("signal handler did not supervisor.Stop")
 	}
 
 	// ignore SIGTERM request
-	subscribe <- (agent.ContainerProcessState{Up: true, Restarting: true})
-
-	// user sends another signal
-	sigc <- os.Interrupt
-
-	// handler should call Stop(syscall.SIGKILL)
-	if stop := <-s.stopc; stop != syscall.SIGKILL {
-		t.Fatalf("expected stop with SIGKILL, got %s", stop)
+	select {
+	case subscribe <- (agent.ContainerProcessState{Up: true, Restarting: true}):
+	case <-time.After(time.Millisecond):
+		panic("unable to send state update to signal handler")
 	}
 
-	// subscribe supervisor is down
-	subscribe <- (agent.ContainerProcessState{Up: false, Restarting: false})
+	// user sends another signal
+	select {
+	case sigc <- os.Interrupt:
+	case <-time.After(time.Millisecond):
+		panic("signal handler did not receive signal")
+	}
 
-	// handler should call Exit()
-	<-s.exitc
+	select {
+	case stop := <-s.stopc:
+		if stop != syscall.SIGKILL {
+			t.Fatal("expected SIGKILL, got ", stop)
+		}
+	case <-time.After(time.Millisecond):
+		panic("signal handler did not supervisor.Stop")
+	}
+
+	select {
+	case subscribe <- (agent.ContainerProcessState{Up: false, Restarting: false}):
+	case <-time.After(time.Millisecond):
+		panic("unable to send state update to signal handler")
+	}
+
+	select {
+	case <-s.exitc:
+	case <-time.After(time.Millisecond):
+		panic("handler did not call exit on supervisor")
+	}
 
 	// exit supervisor
 	close(s.exited)
 
-	// wait for handler to finish
-	<-done
+	select {
+	case <-s.unsubscribec:
+	case <-time.After(time.Millisecond):
+		panic("handler did not unsubscribe after supervisor exit")
+	}
+
+	select {
+	case <-done:
+	case <-time.After(time.Millisecond):
+		panic("signal handler did not terminate after supervisor exit")
+	}
 }
