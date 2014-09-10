@@ -225,7 +225,7 @@ func (c *realContainer) buildContainerConfig() {
 		}
 
 		mounts = append(mounts, &mount.Mount{
-			Type: "bind", Source: source, Destination: dest, Private: true,
+			Type: "bind", Source: source, Destination: dest, Writable: true, Private: true,
 		})
 	}
 
@@ -235,7 +235,7 @@ func (c *realContainer) buildContainerConfig() {
 		}
 
 		mounts = append(mounts, &mount.Mount{
-			Type: "tmpfs", Destination: dest, Private: true,
+			Type: "tmpfs", Destination: dest, Writable: true, Private: true,
 		})
 	}
 
