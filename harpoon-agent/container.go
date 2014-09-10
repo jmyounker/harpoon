@@ -46,7 +46,6 @@ const (
 type realContainer struct {
 	agent.ContainerInstance
 
-	config       *libcontainer.Config
 	desired      string
 	downDeadline time.Time
 	logs         *containerLog
@@ -79,8 +78,6 @@ func newContainer(id string, config agent.ContainerConfig) *realContainer {
 		subc:       make(chan chan<- agent.ContainerInstance),
 		unsubc:     make(chan chan<- agent.ContainerInstance),
 	}
-
-	c.buildContainerConfig()
 
 	go c.loop()
 
@@ -200,79 +197,34 @@ func (c *realContainer) loop() {
 	}
 }
 
-func (c *realContainer) buildContainerConfig() {
-	var (
-		env    = []string{}
-		mounts = []*mount.Mount{
-			{Type: "bind", Source: "/etc/resolv.conf", Destination: "/etc/resolv.conf", Private: true},
-		}
-	)
-
-	if c.ContainerConfig.Env == nil {
-		c.ContainerConfig.Env = map[string]string{}
-	}
-
-	for k, v := range c.ContainerConfig.Env {
-		env = append(env, fmt.Sprintf("%s=%s", k, v))
-	}
-
-	for dest, source := range c.ContainerConfig.Storage.Volumes {
-		if _, ok := configuredVolumes[source]; !ok {
-			// TODO: this needs to happen as a part of a validation step, so the
-			// container is rejected.
-			log.Printf("volume %s not configured", source)
-			continue
-		}
-
-		mounts = append(mounts, &mount.Mount{
-			Type: "bind", Source: source, Destination: dest, Writable: true, Private: true,
-		})
-	}
-
-	for dest, size := range c.ContainerConfig.Storage.Temp {
-		if size != -1 {
-			log.Printf("sized tmpfs storage not supported; defaulting %s to unlimited", dest)
-		}
-
-		mounts = append(mounts, &mount.Mount{
-			Type: "tmpfs", Destination: dest, Writable: true, Private: true,
-		})
-	}
-
-	c.config = &libcontainer.Config{
-		Hostname: hostname,
-		// daemon user and group; must be numeric as we make no assumptions about
-		// the presence or contents of "/etc/passwd" in the container.
-		User:       "1:1",
-		WorkingDir: c.ContainerConfig.Command.WorkingDir,
-		Env:        env,
-		Namespaces: map[string]bool{
-			"NEWNS":  true, // mounts
-			"NEWUTS": true, // hostname
-			"NEWIPC": true, // uh...
-			"NEWPID": true, // pid
-		},
-		Cgroups: &cgroups.Cgroup{
-			Name:   c.ID,
-			Parent: "harpoon",
-
-			Memory: int64(c.ContainerConfig.Resources.Memory * 1024 * 1024),
-
-			AllowedDevices: devices.DefaultAllowedDevices,
-		},
-		MountConfig: &libcontainer.MountConfig{
-			DeviceNodes: devices.DefaultAllowedDevices,
-			Mounts:      mounts,
-			ReadonlyFs:  true,
-		},
-	}
-}
-
 func (c *realContainer) create() error {
 	var (
 		rundir = filepath.Join("/run/harpoon", c.ID)
 		logdir = filepath.Join("/srv/harpoon/log/", c.ID)
+
+		containerJSONPath = filepath.Join(rundir, "container.json")
+		rootfsSymlinkPath = filepath.Join(rundir, "rootfs")
+		logSymlinkPath    = filepath.Join(rundir, "log")
 	)
+
+	if err := c.validateConfig(); err != nil {
+		return err
+	}
+
+	c.assignPorts()
+
+	// expand variables in command
+	command := c.ContainerConfig.Command.Exec
+	for i, arg := range command {
+		command[i] = os.Expand(arg, func(k string) string {
+			return c.ContainerConfig.Env[k]
+		})
+	}
+
+	config, err := json.Marshal(c.libcontainerConfig())
+	if err != nil {
+		return err
+	}
 
 	if err := os.MkdirAll(rundir, os.ModePerm); err != nil {
 		return fmt.Errorf("mkdir all %s: %s", rundir, err)
@@ -282,20 +234,50 @@ func (c *realContainer) create() error {
 		return fmt.Errorf("mkdir all %s: %s", logdir, err)
 	}
 
+	if err := ioutil.WriteFile(containerJSONPath, config, os.ModePerm); err != nil {
+		return err
+	}
+
 	// TODO(pb): it's a problem that this is blocking
 	rootfs, err := c.fetchArtifact()
 	if err != nil {
 		return fmt.Errorf("fetch: %s", err)
 	}
 
-	if err := os.Symlink(rootfs, filepath.Join(rundir, "rootfs")); err != nil && !os.IsExist(err) {
+	if err := os.Symlink(rootfs, rootfsSymlinkPath); err != nil && !os.IsExist(err) {
 		return fmt.Errorf("symlink rootfs: %s", err)
 	}
 
-	if err := os.Symlink(logdir, filepath.Join(rundir, "log")); err != nil && !os.IsExist(err) {
+	if err := os.Symlink(logdir, logSymlinkPath); err != nil && !os.IsExist(err) {
 		return fmt.Errorf("symlink log: %s", err)
 	}
 
+	return nil
+}
+
+func (c *realContainer) validateConfig() error {
+	if c.ContainerConfig.Env == nil {
+		c.ContainerConfig.Env = map[string]string{}
+	}
+
+	for _, source := range c.ContainerConfig.Storage.Volumes {
+		if _, ok := configuredVolumes[source]; !ok {
+			return fmt.Errorf("container depends on missing volume %q")
+		}
+	}
+
+	for dest, size := range c.ContainerConfig.Storage.Temp {
+		if size != -1 {
+			return fmt.Errorf("cannot make tmpfs %q %dMB: sized tmpfs storage not yet supported", dest, size)
+		}
+	}
+
+	return nil
+}
+
+// assignPorts assigns any automatic ports, updating the config's port and
+// environment maps.
+func (c *realContainer) assignPorts() {
 	for name, port := range c.ContainerConfig.Ports {
 		if port == 0 {
 			port = uint16(nextPort())
@@ -306,16 +288,59 @@ func (c *realContainer) create() error {
 		c.ContainerConfig.Ports[name] = port
 		c.ContainerConfig.Env[portName] = strconv.Itoa(int(port))
 	}
+}
 
-	// expand variable in command
-	command := c.ContainerConfig.Command.Exec
-	for i, arg := range command {
-		command[i] = os.Expand(arg, func(k string) string {
-			return c.ContainerConfig.Env[k]
+// libcontainerConfig builds a complete libcontainer.Config from an
+// agent.ContainerConfig.
+func (c *realContainer) libcontainerConfig() *libcontainer.Config {
+	var (
+		config = &libcontainer.Config{
+			Hostname: hostname,
+			// daemon user and group; must be numeric as we make no assumptions about
+			// the presence or contents of "/etc/passwd" in the container.
+			User:       "1:1",
+			WorkingDir: c.ContainerConfig.Command.WorkingDir,
+			Namespaces: map[string]bool{
+				"NEWNS":  true, // mounts
+				"NEWUTS": true, // hostname
+				"NEWIPC": true, // system V ipc
+				"NEWPID": true, // pid
+			},
+			Cgroups: &cgroups.Cgroup{
+				Name:   c.ID,
+				Parent: "harpoon",
+
+				Memory: int64(c.ContainerConfig.Resources.Memory * 1024 * 1024),
+
+				AllowedDevices: devices.DefaultAllowedDevices,
+			},
+			MountConfig: &libcontainer.MountConfig{
+				DeviceNodes: devices.DefaultAllowedDevices,
+				Mounts: []*mount.Mount{
+					{Type: "bind", Source: "/etc/resolv.conf", Destination: "/etc/resolv.conf", Private: true},
+				},
+				ReadonlyFs: true,
+			},
+		}
+	)
+
+	for k, v := range c.ContainerConfig.Env {
+		config.Env = append(config.Env, fmt.Sprintf("%s=%s", k, v))
+	}
+
+	for dest, source := range c.ContainerConfig.Storage.Volumes {
+		config.MountConfig.Mounts = append(config.MountConfig.Mounts, &mount.Mount{
+			Type: "bind", Source: source, Destination: dest, Writable: true, Private: true,
 		})
 	}
 
-	return c.writeContainerJSON(filepath.Join(rundir, "container.json"))
+	for dest := range c.ContainerConfig.Storage.Temp {
+		config.MountConfig.Mounts = append(config.MountConfig.Mounts, &mount.Mount{
+			Type: "tmpfs", Destination: dest, Writable: true, Private: true,
+		})
+	}
+
+	return config
 }
 
 func (c *realContainer) destroy() error {
@@ -504,15 +529,6 @@ func (c *realContainer) updateStatus(status agent.ContainerStatus) {
 	for subc := range c.subscribers {
 		subc <- c.ContainerInstance
 	}
-}
-
-func (c *realContainer) writeContainerJSON(dst string) error {
-	data, err := json.Marshal(c.config)
-	if err != nil {
-		return err
-	}
-
-	return ioutil.WriteFile(dst, data, os.ModePerm)
 }
 
 type containerAction string
