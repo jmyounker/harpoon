@@ -347,9 +347,13 @@ func (c *realContainer) destroy() error {
 
 func (c *realContainer) fetchArtifact() (string, error) {
 	var (
-		artifactURL                       = c.ContainerConfig.ArtifactURL
-		artifactPath, artifactCompression = getArtifactDetails(artifactURL)
+		artifactURL                            = c.ContainerConfig.ArtifactURL
+		artifactPath, artifactCompression, err = getArtifactDetails(artifactURL)
 	)
+
+	if err != nil {
+		return "", err
+	}
 
 	log.Printf("fetching url %s to %s", artifactURL, artifactPath)
 
@@ -547,10 +551,10 @@ func extractArtifact(src io.Reader, dst string, compression string) (err error) 
 	return nil
 }
 
-func getArtifactDetails(artifactURL string) (string, string) {
+func getArtifactDetails(artifactURL string) (string, string, error) {
 	parsed, err := url.Parse(artifactURL)
 	if err != nil {
-		panic(fmt.Sprintf("unable to parse url: %s", err))
+		return "", "", fmt.Errorf("unable to parse url: %s", err)
 	}
 
 	path := func(suffix string) string {
@@ -563,15 +567,15 @@ func getArtifactDetails(artifactURL string) (string, string) {
 
 	switch true {
 	case strings.HasSuffix(parsed.Path, ".tar"):
-		return path(".tar"), ""
+		return path(".tar"), "", nil
 	case strings.HasSuffix(parsed.Path, ".tar.gz"):
-		return path(".tar.gz"), "z"
+		return path(".tar.gz"), "z", nil
 	case strings.HasSuffix(parsed.Path, ".tgz"):
-		return path(".tgz"), "z"
+		return path(".tgz"), "z", nil
 	case strings.HasSuffix(parsed.Path, ".tar.bz2"):
-		return path(".tar.bz2"), "j"
+		return path(".tar.bz2"), "j", nil
 	default:
-		panic(fmt.Errorf("unknown suffix for artifact url: %s", artifactURL))
+		return "", "", fmt.Errorf("unknown suffix for artifact url: %s", artifactURL)
 	}
 }
 

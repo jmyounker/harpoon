@@ -4,40 +4,63 @@ import (
 	"testing"
 )
 
-func TestArtifactDetailsValid(t *testing.T) {
-	ExpectArtifactDetails(t, "http://foo/bar.tar", "/srv/harpoon/artifacts/foo/bar", "")
-	ExpectArtifactDetails(t, "http://foo/bar.tgz", "/srv/harpoon/artifacts/foo/bar", "z")
-	ExpectArtifactDetails(t, "http://foo/bar.tar.gz", "/srv/harpoon/artifacts/foo/bar", "z")
-	ExpectArtifactDetails(t, "http://foo/bar.tar.bz2", "/srv/harpoon/artifacts/foo/bar", "j")
+type artifactDetailsTest struct {
+	url                 string
+	expectedPath        string
+	expectedCompression string
 }
 
-func ExpectArtifactDetails(
-	t *testing.T,
-	artifactURL string,
-	expectedPath string,
-	expectedCompression string) {
-	path, compression := getArtifactDetails(artifactURL)
-	if path != expectedPath {
-		t.Errorf("path %q does not equal expected path %q", path, expectedPath)
+func TestValidArtifactURLs(t *testing.T) {
+	tests := []artifactDetailsTest{
+		artifactDetailsTest{
+			url:                 "http://foo/bar.tar",
+			expectedPath:        "/srv/harpoon/artifacts/foo/bar",
+			expectedCompression: "",
+		},
+		artifactDetailsTest{
+			url:                 "http://foo/bar.tgz",
+			expectedPath:        "/srv/harpoon/artifacts/foo/bar",
+			expectedCompression: "z",
+		},
+		artifactDetailsTest{
+			url:                 "http://foo/bar.tar.gz",
+			expectedPath:        "/srv/harpoon/artifacts/foo/bar",
+			expectedCompression: "z",
+		},
+		artifactDetailsTest{
+			url:                 "http://foo/bar.tar.bz2",
+			expectedPath:        "/srv/harpoon/artifacts/foo/bar",
+			expectedCompression: "j",
+		},
 	}
-	if compression != expectedCompression {
-		t.Errorf("path %q does not equal expected compression %q", compression, expectedCompression)
+
+	for _, test := range tests {
+		path, compression, err := getArtifactDetails(test.url)
+		if path != test.expectedPath {
+			t.Errorf("artifact url %q: path %q does not equal expected path %q", test.url, path, test.expectedPath)
+		}
+		if compression != test.expectedCompression {
+			t.Errorf("artifact url %q: path %q does not equal expected compression %q", test.url, compression, test.expectedCompression)
+		}
+		if err != nil {
+			t.Errorf("artifact url %q: did not expect error: %s", test.url, err)
+		}
 	}
 }
 
-func TestInvalidArtifactURLPanics(t *testing.T) {
-	defer ExpectPanic(t)
-	getArtifactDetails("692734hjlk,mnasdf7o689734")
-}
+func TestInvalidArtifactURLs(t *testing.T) {
+	invalidArtifactURLs := []string{"692734hjlk,mnasdf7o689734", "http://foo/bar.unknowncompresson"}
 
-func TestArtifactURLWithUnknownCompressionPanics(t *testing.T) {
-	defer ExpectPanic(t)
-	getArtifactDetails("http://foo/bar.unknowncompresson")
-}
-
-func ExpectPanic(t *testing.T) {
-	r := recover()
-	if r == nil {
-		t.Errorf("Test should have paniced")
+	for _, artifactURL := range invalidArtifactURLs {
+		path, compression, err := getArtifactDetails(artifactURL)
+		if path != "" {
+			t.Errorf("artifact url %q: expected no path, but got %q", artifactURL, path)
+		}
+		if compression != "" {
+			t.Errorf("artifact url %q: expected no compression, but got %q", artifactURL, compression)
+		}
+		if err == nil {
+			t.Errorf("artifact url %q: expected error, but got nothing", artifactURL)
+		}
 	}
 }
