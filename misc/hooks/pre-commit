@@ -40,6 +40,8 @@ function checkvet() {
 # Git then commits the *staged* version of the files, and not the *modified* version
 # of the files which were actaully checked, resulting in the orignal defective files
 # being submitted.
+#
+# Turn on this check by setting the environment variable GIT_PRECOMMIT_CHECK_UNSTAGED.
 function unstaged() {
   unstaged_modifications=$(git status --porcelain | awk '/^[AM]M/{print $2}')
   [ -z "$unstaged_modifications" ] && return 0
@@ -64,7 +66,10 @@ if [ -n "$gofiles" ]; then
   checkfmt || fail=yes
   checkvet || fail=yes
 fi
-unstaged || fail=yes
+
+if [ -n "$GIT_PRECOMMIT_CHECK_UNSTAGED" ]; then
+  unstaged || fail=yes
+fi
 
 [ -z "$fail" ] || exit 1
 
