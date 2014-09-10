@@ -20,7 +20,7 @@ const (
 func main() {
 	ln, err := net.Listen("unix", controlFileName)
 	if err != nil {
-		log.Fatal("unable to listen on %q: ", controlFileName, err)
+		log.Fatalf("unable to listen on %q: %s", controlFileName, err)
 	}
 	defer ln.Close()
 
