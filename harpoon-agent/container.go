@@ -262,7 +262,7 @@ func (c *realContainer) validateConfig() error {
 
 	for _, source := range c.ContainerConfig.Storage.Volumes {
 		if _, ok := configuredVolumes[source]; !ok {
-			return fmt.Errorf("container depends on missing volume %q")
+			return fmt.Errorf("container depends on missing volume %q", source)
 		}
 	}
 
