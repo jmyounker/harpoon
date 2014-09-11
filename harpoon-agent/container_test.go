@@ -9,23 +9,23 @@ func TestValidArtifactURLs(t *testing.T) {
 		url                 string
 		expectedPath        string
 		expectedCompression string
-	} {{
-			"http://foo/bar.tar",
-			"/srv/harpoon/artifacts/foo/bar",
-			"",
-		}, {
-			"http://foo/bar.tgz",
-			"/srv/harpoon/artifacts/foo/bar",
-			"z",
-		}, {
-			"http://foo/bar.tar.gz",
-			"/srv/harpoon/artifacts/foo/bar",
-			"z",
-		}, {
-			"http://foo/bar.tar.bz2",
-			"/srv/harpoon/artifacts/foo/bar",
-			"j",
-		},
+	}{{
+		"http://foo/bar.tar",
+		"/srv/harpoon/artifacts/foo/bar",
+		"",
+	}, {
+		"http://foo/bar.tgz",
+		"/srv/harpoon/artifacts/foo/bar",
+		"z",
+	}, {
+		"http://foo/bar.tar.gz",
+		"/srv/harpoon/artifacts/foo/bar",
+		"z",
+	}, {
+		"http://foo/bar.tar.bz2",
+		"/srv/harpoon/artifacts/foo/bar",
+		"j",
+	},
 	}
 
 	for _, test := range validArtifactTestCases {
