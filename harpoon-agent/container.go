@@ -372,15 +372,15 @@ func (c *realContainer) destroy() error {
 
 func (c *realContainer) fetchArtifact() (string, error) {
 	var (
-		artifactURL  = c.ContainerConfig.ArtifactURL
-		artifactPath = getArtifactPath(artifactURL)
+		artifactURL                            = c.ContainerConfig.ArtifactURL
+		artifactPath, artifactCompression, err = getArtifactDetails(artifactURL)
 	)
 
-	log.Printf("fetching url %s to %s", artifactURL, artifactPath)
-
-	if !strings.HasSuffix(artifactURL, ".tar.gz") {
-		return "", fmt.Errorf("artifact must be .tar.gz")
+	if err != nil {
+		return "", err
 	}
+
+	log.Printf("fetching url %s to %s", artifactURL, artifactPath)
 
 	if _, err := os.Stat(artifactPath); err == nil {
 		return artifactPath, nil
@@ -396,7 +396,7 @@ func (c *realContainer) fetchArtifact() (string, error) {
 	}
 	defer resp.Body.Close()
 
-	if err := extractArtifact(resp.Body, artifactPath); err != nil {
+	if err := extractArtifact(resp.Body, artifactPath, artifactCompression); err != nil {
 		return "", err
 	}
 
@@ -550,14 +550,14 @@ type heartbeatRequest struct {
 	res       chan string
 }
 
-func extractArtifact(src io.Reader, dst string) (err error) {
+func extractArtifact(src io.Reader, dst string, compression string) (err error) {
 	defer func() {
 		if err != nil {
 			os.RemoveAll(dst)
 		}
 	}()
 
-	cmd := exec.Command("tar", "-C", dst, "-zx")
+	cmd := exec.Command("tar", "-C", dst, "-x"+compression)
 	cmd.Stdin = src
 
 	if err := cmd.Run(); err != nil {
@@ -567,17 +567,32 @@ func extractArtifact(src io.Reader, dst string) (err error) {
 	return nil
 }
 
-func getArtifactPath(artifactURL string) string {
+func getArtifactDetails(artifactURL string) (string, string, error) {
 	parsed, err := url.Parse(artifactURL)
 	if err != nil {
-		panic(fmt.Sprintf("unable to parse url: %s", err))
+		return "", "", fmt.Errorf("unable to parse url: %s", err)
 	}
 
-	return filepath.Join(
-		"/srv/harpoon/artifacts",
-		parsed.Host,
-		strings.TrimSuffix(parsed.Path, ".tar.gz"),
-	)
+	path := func(suffix string) string {
+		return filepath.Join(
+			"/srv/harpoon/artifacts",
+			parsed.Host,
+			strings.TrimSuffix(parsed.Path, suffix),
+		)
+	}
+
+	switch true {
+	case strings.HasSuffix(parsed.Path, ".tar"):
+		return path(".tar"), "", nil
+	case strings.HasSuffix(parsed.Path, ".tar.gz"):
+		return path(".tar.gz"), "z", nil
+	case strings.HasSuffix(parsed.Path, ".tgz"):
+		return path(".tgz"), "z", nil
+	case strings.HasSuffix(parsed.Path, ".tar.bz2"):
+		return path(".tar.bz2"), "j", nil
+	default:
+		return "", "", fmt.Errorf("unknown suffix for artifact url: %s", artifactURL)
+	}
 }
 
 // HACK
