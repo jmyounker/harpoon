@@ -35,7 +35,6 @@ func newAPI(r *registry) *api {
 	mux.Put("/api/v0/containers/:id", http.HandlerFunc(api.handleCreate))
 	mux.Get("/api/v0/containers/:id", http.HandlerFunc(api.handleGet))
 	mux.Del("/api/v0/containers/:id", http.HandlerFunc(api.handleDestroy))
-	mux.Post("/api/v0/containers/:id/heartbeat", http.HandlerFunc(api.handleHeartbeat))
 	mux.Post("/api/v0/containers/:id/start", http.HandlerFunc(api.handleStart))
 	mux.Post("/api/v0/containers/:id/stop", http.HandlerFunc(api.handleStop))
 	mux.Get("/api/v0/containers/:id/log", http.HandlerFunc(api.handleLog))
@@ -177,26 +176,6 @@ func (a *api) handleDestroy(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("destroy OK"))
-}
-
-func (a *api) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
-	var heartbeat agent.Heartbeat
-	if err := json.NewDecoder(r.Body).Decode(&heartbeat); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	container, ok := a.registry.get(r.URL.Query().Get(":id"))
-	if !ok {
-		// Received heartbeat from a container we don't know about. That's
-		// relatively bad news: issue a stern rebuke.
-		json.NewEncoder(w).Encode(&agent.HeartbeatReply{Want: "FORCEDOWN"})
-		return
-	}
-
-	want := container.Heartbeat(heartbeat)
-
-	json.NewEncoder(w).Encode(&agent.HeartbeatReply{Want: want})
 }
 
 func (a *api) handleContainerStream(_ string, enc *eventsource.Encoder, stop <-chan bool) {

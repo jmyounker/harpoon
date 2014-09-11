@@ -9,8 +9,6 @@ import (
 	dto "github.com/prometheus/client_model/go"
 
 	"github.com/prometheus/client_golang/prometheus"
-
-	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
 func TestReceiveLogInstrumentation(t *testing.T) {
@@ -108,44 +106,6 @@ func TestLogInstrumentationNotifyWithBlockedWatcher(t *testing.T) {
 	ExpectCounterEqual(t, "log_unroutable_lines", 0)
 	ExpectCounterEqual(t, "log_deliverable_lines", 1)
 	ExpectCounterEqual(t, "log_undelivered_lines", 1)
-}
-
-func TestHeartbeatInstrumentation(t *testing.T) {
-	clearCounters()
-	c, hb := createHeartbeatFixture("DOWN", "UP", time.Now().Add(-time.Hour))
-	c.Heartbeat(hb)
-	ExpectCounterEqual(t, "container_status_kill", 1)
-	ExpectCounterEqual(t, "container_status_down_successful", 0)
-	ExpectCounterEqual(t, "container_status_force_down_successful", 0)
-
-	clearCounters()
-	c, hb = createHeartbeatFixture("DOWN", "UP", time.Now().Add(time.Hour))
-	c.Heartbeat(hb)
-	ExpectCounterEqual(t, "container_status_kill", 0)
-	ExpectCounterEqual(t, "container_status_down_successful", 0)
-	ExpectCounterEqual(t, "container_status_force_down_successful", 0)
-
-	clearCounters()
-	c, hb = createHeartbeatFixture("DOWN", "DOWN", time.Now().Add(time.Hour))
-	c.Heartbeat(hb)
-	ExpectCounterEqual(t, "container_status_kill", 0)
-	ExpectCounterEqual(t, "container_status_down_successful", 1)
-	ExpectCounterEqual(t, "container_status_force_down_successful", 0)
-
-	clearCounters()
-	c, hb = createHeartbeatFixture("FORCEDOWN", "DOWN", time.Now().Add(time.Hour))
-	c.Heartbeat(hb)
-	ExpectCounterEqual(t, "container_status_kill", 0)
-	ExpectCounterEqual(t, "container_status_down_successful", 0)
-	ExpectCounterEqual(t, "container_status_force_down_successful", 1)
-}
-
-func createHeartbeatFixture(desired string, have string, downDeadline time.Time) (*realContainer, agent.Heartbeat) {
-	cc := agent.ContainerConfig{}
-	c := newContainer("123", cc)
-	c.desired = desired
-	c.downDeadline = downDeadline
-	return c, agent.Heartbeat{Status: have}
 }
 
 func createReceiveLogsFixture(t *testing.T, r *registry) {

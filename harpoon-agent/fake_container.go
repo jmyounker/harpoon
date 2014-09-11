@@ -10,7 +10,6 @@ type fakeContainer struct {
 	subscribers map[chan<- agent.ContainerInstance]struct{}
 
 	actionRequestc chan actionRequest
-	hbRequestc     chan heartbeatRequest
 	subc           chan chan<- agent.ContainerInstance
 	unsubc         chan chan<- agent.ContainerInstance
 	quitc          chan chan struct{}
@@ -28,7 +27,6 @@ func newFakeContainer(id string) *fakeContainer {
 		logs:           newContainerLog(containerLogRingBufferSize),
 		subscribers:    map[chan<- agent.ContainerInstance]struct{}{},
 		actionRequestc: make(chan actionRequest),
-		hbRequestc:     make(chan heartbeatRequest),
 		subc:           make(chan chan<- agent.ContainerInstance),
 		unsubc:         make(chan chan<- agent.ContainerInstance),
 		quitc:          make(chan chan struct{}),
@@ -59,15 +57,6 @@ func (c *fakeContainer) Destroy() error {
 
 func (c *fakeContainer) Logs() *containerLog {
 	return c.logs
-}
-
-func (c *fakeContainer) Heartbeat(hb agent.Heartbeat) string {
-	req := heartbeatRequest{
-		heartbeat: hb,
-		res:       make(chan string),
-	}
-	c.hbRequestc <- req
-	return <-req.res
 }
 
 func (c *fakeContainer) Instance() agent.ContainerInstance {
@@ -116,8 +105,6 @@ func (c *fakeContainer) loop() {
 			default:
 				panic("unknown action")
 			}
-		case req := <-c.hbRequestc:
-			req.res <- c.heartbeat(req.heartbeat)
 		case ch := <-c.subc:
 			c.subscribers[ch] = struct{}{}
 		case ch := <-c.unsubc:
@@ -148,10 +135,6 @@ func (c *fakeContainer) destroy() error {
 	<-q
 
 	return nil
-}
-
-func (c *fakeContainer) heartbeat(hb agent.Heartbeat) string {
-	return "UP"
 }
 
 func (c *fakeContainer) start() error {
