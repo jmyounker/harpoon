@@ -7,6 +7,7 @@ import (
 	"net"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/bernerdschaefer/eventsource"
 
@@ -36,8 +37,18 @@ func TestController(t *testing.T) {
 		enc = eventsource.NewEncoder(conn)
 	)
 
-	subscribe := <-s.subscribec
-	subscribe <- agent.ContainerProcessState{Up: true}
+	var subscribe chan<- agent.ContainerProcessState
+	select {
+	case subscribe = <-s.subscribec:
+	case <-time.After(time.Millisecond):
+		panic("client connection did not subscribe to supervisor")
+	}
+
+	select {
+	case subscribe <- agent.ContainerProcessState{Up: true}:
+	case <-time.After(time.Millisecond):
+		panic("unable to send state to subscriber")
+	}
 
 	state, err := readStateEvent(conn)
 	if err != nil {
@@ -52,12 +63,21 @@ func TestController(t *testing.T) {
 		t.Fatal("error sending stop command: ", err)
 	}
 
-	if stop := <-s.stopc; stop != syscall.SIGTERM {
-		t.Fatal("expected SIGTERM, got ", stop)
+	select {
+	case stop := <-s.stopc:
+		if stop != syscall.SIGTERM {
+			t.Fatal("expected SIGTERM, got ", stop)
+		}
+	case <-time.After(time.Millisecond):
+		panic("client connection did call stop on supervisor")
 	}
 
 	// supervisor reports down state
-	subscribe <- agent.ContainerProcessState{Up: false, Restarting: false}
+	select {
+	case subscribe <- agent.ContainerProcessState{Up: false, Restarting: false}:
+	case <-time.After(time.Millisecond):
+		panic("unable to send state to subscriber")
+	}
 
 	state, err = readStateEvent(conn)
 	if err != nil {
@@ -73,16 +93,28 @@ func TestController(t *testing.T) {
 	}
 
 	// controller should call Exit
-	<-s.exitc
+	select {
+	case <-s.exitc:
+	case <-time.After(time.Millisecond):
+		panic("controller connection did not call exit on supervisor")
+	}
 
 	// supervisor exits
 	close(s.exited)
 
 	// user connection is removed
-	<-s.unsubscribec
+	select {
+	case <-s.unsubscribec:
+	case <-time.After(time.Millisecond):
+		panic("controller connection did not unsubscribe after supervisor exit")
+	}
 
 	// controller terminates
-	<-done
+	select {
+	case <-done:
+	case <-time.After(time.Millisecond):
+		panic("controller did not terminate after supervisor exit")
+	}
 }
 
 func readStateEvent(r io.Reader) (agent.ContainerProcessState, error) {

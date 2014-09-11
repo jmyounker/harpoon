@@ -58,65 +58,103 @@ func TestSupervisor(t *testing.T) {
 		done <- struct{}{}
 	}()
 
-	// signal that container started successfully
-	container.startc <- nil
+	select {
+	case container.startc <- nil:
+	case <-time.After(time.Millisecond):
+		panic("supervisor did not attempt to start container")
+	}
 
 	supervisor.Subscribe(statec)
 	defer supervisor.Unsubscribe(statec)
 
-	// check notification of initial state
-	<-statec
+	select {
+	case <-statec:
+	case <-time.After(time.Millisecond):
+		panic("supervisor did not send a state update")
+	}
 
 	// container process OOMs
-	container.waitc <- agent.ContainerExitStatus{OOMed: true}
-
-	{
-		state := <-statec
-		if state.ContainerExitStatus.OOMed != true {
-			t.Fatal("status reported did not include OOM")
-		}
-
-		if state.OOMs != 1 {
-			t.Fatal("expected 1 oom")
-		}
+	select {
+	case container.waitc <- agent.ContainerExitStatus{OOMed: true}:
+	case <-time.After(time.Millisecond):
+		panic("supervisor did not consume exit status")
 	}
 
-	// signal restart
-	restartTimer <- time.Now()
+	var state agent.ContainerProcessState
 
-	// container started without error
-	container.startc <- nil
-
-	// wait for notification that it was restarted
-	{
-		state := <-statec
-		if state.Up != true {
-			t.Fatal("container was not restarted")
-		}
+	select {
+	case state = <-statec:
+	case <-time.After(time.Millisecond):
+		panic("supervisor did not sent state update after OOM")
 	}
 
-	// tick
-	metricsTick <- time.Now()
+	if state.ContainerExitStatus.OOMed != true {
+		t.Fatal("status reported did not include OOM")
+	}
 
-	// wait for periodic notification
-	<-statec
+	if state.OOMs != 1 {
+		t.Fatal("expected 1 oom")
+	}
 
-	// container process exits
-	container.waitc <- agent.ContainerExitStatus{Exited: true, ExitStatus: 0}
+	select {
+	case restartTimer <- time.Now():
+	case <-time.After(time.Millisecond):
+		panic("supervisor did not consume restart message")
+	}
 
-	// wait for notification
-	{
-		state := <-statec
-		if state.Up || state.Restarting {
-			t.Fatal("expected container exiting 0 not to be restarted")
-		}
+	select {
+	case container.startc <- nil:
+	case <-time.After(time.Millisecond):
+		panic("supervisor did not attempt to start container")
+	}
+
+	select {
+	case state = <-statec:
+	case <-time.After(time.Millisecond):
+		panic("supervisor did not sent state update after restart")
+	}
+
+	if state.Up != true {
+		t.Fatal("container was not restarted")
+	}
+
+	select {
+	case metricsTick <- time.Now():
+	case <-time.After(time.Millisecond):
+		panic("supervisor did not consume metrics tick")
+	}
+
+	select {
+	case <-statec:
+	case <-time.After(time.Millisecond):
+		panic("supervisor did not send state update after metrics tick")
+	}
+
+	select {
+	case container.waitc <- agent.ContainerExitStatus{Exited: true, ExitStatus: 0}:
+	case <-time.After(time.Millisecond):
+		panic("supervisor did not consume container exit status")
+	}
+
+	select {
+	case state = <-statec:
+	case <-time.After(time.Millisecond):
+		panic("supervisor did not sent state update after exit")
+	}
+
+	if state.Up || state.Restarting {
+		t.Fatal("expected container exiting 0 not to be restarted")
 	}
 
 	if err := supervisor.Exit(); err != nil {
 		t.Fatalf("expected supervisor to exit, got %v", err)
 	}
 
-	<-done
+	select {
+	case <-done:
+	case <-time.After(time.Millisecond):
+		panic("supervisor did not terminate after exit")
+	}
 }
 
 func TestSupervisorStop(t *testing.T) {
@@ -130,14 +168,20 @@ func TestSupervisorStop(t *testing.T) {
 
 	go func() { supervisor.Run(nil, nil); done <- struct{}{} }()
 
-	// signal that container started successfully
-	container.startc <- nil
+	select {
+	case container.startc <- nil:
+	case <-time.After(time.Millisecond):
+		panic("supervisor did not attempt to start container")
+	}
 
 	supervisor.Subscribe(statec)
 	defer supervisor.Unsubscribe(statec)
 
-	// check notification of initial state
-	<-statec
+	select {
+	case <-statec:
+	case <-time.After(time.Millisecond):
+		panic("supervisor did not send a state update")
+	}
 
 	if err := supervisor.Exit(); err == nil {
 		t.Fatal("expected supervisor to reject call to exit while running")
@@ -145,19 +189,34 @@ func TestSupervisorStop(t *testing.T) {
 
 	supervisor.Stop(syscall.SIGTERM)
 
-	if sig := <-container.signalc; sig != syscall.SIGTERM {
-		t.Fatalf("expected SIGTERM signal, got %s", sig)
+	select {
+	case sig := <-container.signalc:
+		if sig != syscall.SIGTERM {
+			t.Fatal("expected SIGTERM, got ", sig)
+		}
+	case <-time.After(time.Millisecond):
+		panic("supervisor did not send SIGTERM signal to container")
 	}
 
-	// container process exits
-	container.waitc <- agent.ContainerExitStatus{}
+	select {
+	case container.waitc <- agent.ContainerExitStatus{}:
+	case <-time.After(time.Millisecond):
+		panic("unable to send exit status")
+	}
 
-	// wait for notification
-	<-statec
+	select {
+	case <-statec:
+	case <-time.After(time.Millisecond):
+		panic("supervisor did not send a state update")
+	}
 
 	if err := supervisor.Exit(); err != nil {
 		t.Fatalf("expected supervisor to exit, got %v", err)
 	}
 
-	<-done
+	select {
+	case <-done:
+	case <-time.After(time.Millisecond):
+		panic("supervisor did not terminate after exit")
+	}
 }
