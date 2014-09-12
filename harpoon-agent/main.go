@@ -81,6 +81,3 @@ type volumes map[string]struct{}
 
 func (*volumes) String() string           { return "" }
 func (v *volumes) Set(value string) error { (*v)[value] = struct{}{}; return nil }
-
-// not implemented yet
-func recoverContainers(r *registry) {}
