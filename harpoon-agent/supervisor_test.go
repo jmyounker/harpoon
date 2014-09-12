@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
+	"syscall"
 	"testing"
 	"time"
 
@@ -74,6 +75,111 @@ func TestSupervisorConnectRetry(t *testing.T) {
 		t.Fatal("supervisor did not connect after control socket was created")
 	case rwc := <-connc:
 		rwc.Close()
+	}
+}
+
+func TestSupervisorConnectRetryListenRace(t *testing.T) {
+	var (
+		s     = &supervisor{}
+		errc  = make(chan error)
+		connc = make(chan io.ReadWriteCloser)
+	)
+
+	tmpdir, err := ioutil.TempDir("", "harpoon-agent-")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer os.RemoveAll(tmpdir)
+	controlPath := tmpdir + "/control"
+
+	fd, err := syscall.Socket(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
+	if err != nil {
+		t.Fatal("unable to create socket: ", err)
+	}
+	defer syscall.Close(fd)
+
+	if err := syscall.Bind(fd, &syscall.SockaddrUnix{Name: controlPath}); err != nil {
+		t.Fatal("unable to bind control socket: ", err)
+	}
+
+	go func() {
+		rwc, err := s.connect(controlPath, nil)
+
+		if err != nil {
+			errc <- err
+			return
+		}
+
+		connc <- rwc
+	}()
+
+	select {
+	case err := <-errc:
+		t.Fatalf("expected no error, got %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	if err := syscall.Listen(fd, 1); err != nil {
+		t.Fatal("unable to listen on control socket: ", err)
+	}
+
+	select {
+	case err := <-errc:
+		t.Fatalf("expected no error, got %v", err)
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("supervisor did not connect after control socket was created")
+	case rwc := <-connc:
+		rwc.Close()
+	}
+}
+
+func TestSupervisorConnectDeadSupervisor(t *testing.T) {
+	var (
+		s     = &supervisor{}
+		errc  = make(chan error)
+		connc = make(chan io.ReadWriteCloser)
+	)
+
+	tmpdir, err := ioutil.TempDir("", "harpoon-agent-")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer os.RemoveAll(tmpdir)
+	controlPath := tmpdir + "/control"
+
+	fd, err := syscall.Socket(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
+	if err != nil {
+		t.Fatal("unable to create socket: ", err)
+	}
+	defer syscall.Close(fd)
+
+	if err := syscall.Bind(fd, &syscall.SockaddrUnix{Name: controlPath}); err != nil {
+		t.Fatal("unable to bind control socket: ", err)
+	}
+
+	go func() {
+		rwc, err := s.connect(controlPath, nil)
+
+		if err != nil {
+			errc <- err
+			return
+		}
+
+		connc <- rwc
+	}()
+
+	select {
+	case err := <-errc:
+		t.Fatalf("expected no error, got %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	select {
+	case <-errc:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("supervisor did not time out connecting to dead control socket")
 	}
 }
 

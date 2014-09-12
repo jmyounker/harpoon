@@ -72,6 +72,8 @@ func (s *supervisor) Start(config agent.ContainerConfig, stdout, stderr io.Write
 // connect waits for controlPath to exist and be connectable, or an error to be
 // sent on exitedc.
 func (s *supervisor) connect(controlPath string, exitedc chan error) (io.ReadWriteCloser, error) {
+	econnRetries := 3 // see docs on ECONNREFUSED below
+
 	for {
 		conn, err := net.Dial("unix", controlPath)
 
@@ -91,8 +93,31 @@ func (s *supervisor) connect(controlPath string, exitedc chan error) (io.ReadWri
 			return nil, err
 		}
 
-		if ne.Err != syscall.ENOENT {
+		switch ne.Err {
+		default:
 			return nil, err
+
+		case syscall.ENOENT:
+			// control path doesn't exist, wait and try again
+
+		case syscall.ECONNREFUSED:
+			// ECONNREFUSED means:
+			//		1) the supervisor process is dead
+			//		2) the listen backlog is full
+			//		3) the supervisor process has created the socket but not yet listened
+			//
+			// A small number of retries should be sufficient to cover #3, and have
+			// no impact on #1.
+			//
+			// #2 should not be a problem, since go uses the system's max backlog
+			// size, which is well above the number of things which should be
+			// connecting to a supervisor's control socket.
+
+			if econnRetries == 0 {
+				return nil, err
+			}
+
+			econnRetries--
 		}
 
 		select {
