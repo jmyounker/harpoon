@@ -1,6 +1,0 @@
-- set OOMed to true when container exits after OOM
-- kill container if we receive an OOM but it doesn't exit quickly
-- refactor Container.start()
-- document
-- test
-- define types for states in heartbeat protocol
