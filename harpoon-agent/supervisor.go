@@ -176,6 +176,15 @@ func (s *supervisor) loop(rwc io.ReadWriteCloser) {
 	defer close(s.exited)
 	defer rwc.Close()
 
+	defer func() {
+		if killTimer != nil {
+			incContainerStatusForceDownSuccessful(1)
+			return
+		}
+
+		incContainerStatusDownSuccessful(1)
+	}()
+
 	go func() { errc <- s.readLoop(rwc) }()
 
 	for {
@@ -229,6 +238,8 @@ func (s *supervisor) loop(rwc io.ReadWriteCloser) {
 			killTimer = time.After(grace)
 
 		case <-killTimer:
+			incContainerStatusKilled(1)
+
 			eventsource.NewEncoder(rwc).Encode(eventsource.Event{
 				Type: "kill",
 			})
