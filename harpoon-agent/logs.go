@@ -192,7 +192,6 @@ func receiveLogs(r *registry) {
 		}
 
 		container.Logs().addLogLine(line)
-		log.Printf("logs: %s: %s", addr, line)
 	}
 }
 
