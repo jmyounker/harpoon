@@ -80,8 +80,17 @@ func transform(wantJobs map[string]configstore.JobConfig, haveInstances map[stri
 		todo        = []func() error{}
 		wantTasks   = map[string]agent.ContainerConfig{}
 		haveTasks   = map[string]agent.ContainerConfig{}
+		toSchedule  = map[string]agent.ContainerConfig{}
 		id2endpoint = map[string]string{}
 	)
+
+	// TODO(pb): do this properly
+	agentStates := map[string]agentState{}
+	for endpoint, instances := range haveInstances {
+		state := agentStates[endpoint]
+		state.instances = instances
+		agentStates[endpoint] = state
+	}
 
 	for _, cfg := range wantJobs {
 		for i := 0; i < cfg.Scale; i++ {
@@ -105,13 +114,19 @@ func transform(wantJobs map[string]configstore.JobConfig, haveInstances map[stri
 			continue
 		}
 
-		endpoint, err := algo(cfg, haveInstances)
-		if err != nil {
-			log.Printf("transformer: error scheduling %s: %s", id, err)
-			continue
-		}
+		toSchedule[id] = cfg
+	}
 
-		todo = append(todo, func() error { return target.schedule(endpoint, id, cfg) })
+	mapping, err := algo(toSchedule, agentStates)
+	if err != nil {
+		log.Printf("transformer: error scheduling: %s", err)
+		return // TODO(pb): do something else?
+	}
+
+	for endpoint, cfgs := range mapping {
+		for id, cfg := range cfgs {
+			todo = append(todo, func() error { return target.schedule(endpoint, id, cfg) })
+		}
 	}
 
 	// Anything we have but don't want should be stopped.
