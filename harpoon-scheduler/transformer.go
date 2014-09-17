@@ -8,7 +8,7 @@ import (
 	"github.com/soundcloud/harpoon/harpoon-configstore/lib"
 )
 
-var algo = randomChoice
+var algo = randomFit
 
 type transformer struct {
 	quitc chan chan struct{}
@@ -117,10 +117,10 @@ func transform(wantJobs map[string]configstore.JobConfig, haveInstances map[stri
 		toSchedule[id] = cfg
 	}
 
-	mapping, err := algo(toSchedule, agentStates)
-	if err != nil {
-		log.Printf("transformer: error scheduling: %s", err)
-		return // TODO(pb): do something else?
+	mapping, unscheduled := algo(toSchedule, agentStates)
+	if len(unscheduled) > 0 {
+		log.Printf("transformer: error unscheduled tasks: %v", unscheduled)
+		// TODO(pb): do something else?
 	}
 
 	for endpoint, cfgs := range mapping {
