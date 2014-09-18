@@ -180,13 +180,14 @@ func (c *realContainer) loop() {
 		case state := <-c.containerStatec:
 			if state.Up {
 				c.updateStatus(agent.ContainerStatusRunning)
+			}
+
+			if state.Up || state.Restarting {
 				continue
 			}
 
-			if state.Restarting {
-				continue
-			}
-
+			// The container is down and will not be restarted; begin teardown and
+			// update state.
 			c.supervisor.Unsubscribe(c.containerStatec)
 
 			if state.Err != "" {
