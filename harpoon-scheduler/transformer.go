@@ -125,6 +125,7 @@ func transform(wantJobs map[string]configstore.JobConfig, haveInstances map[stri
 
 	for endpoint, cfgs := range mapping {
 		for id, cfg := range cfgs {
+			var endpoint, id, cfg = endpoint, id, cfg
 			todo = append(todo, func() error { return target.schedule(endpoint, id, cfg) })
 		}
 	}
@@ -136,7 +137,7 @@ func transform(wantJobs map[string]configstore.JobConfig, haveInstances map[stri
 		if !ok {
 			panic("invalid state in transform")
 		}
-
+		var id = id
 		todo = append(todo, func() error { return target.unschedule(endpoint, id) })
 	}
 

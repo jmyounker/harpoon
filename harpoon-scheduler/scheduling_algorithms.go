@@ -90,7 +90,6 @@ func randomFit(cfgs map[string]agent.ContainerConfig, states map[string]agentSta
 			unscheduled[id] = cfg
 			continue
 		}
-
 		endpoint := validEndpoints[rand.Intn(len(validEndpoints))]
 
 		placed, ok := mapping[endpoint]
@@ -104,6 +103,7 @@ func randomFit(cfgs map[string]agent.ContainerConfig, states map[string]agentSta
 
 		endpointResources := resources[endpoint]
 		endpointResources.cpus -= cfg.CPUs
+
 		endpointResources.memory -= float64(cfg.Memory)
 		resources[endpoint] = endpointResources
 	}
