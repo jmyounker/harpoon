@@ -93,6 +93,7 @@ func TestSupervisorConnectRetryListenRace(t *testing.T) {
 	defer os.RemoveAll(tmpdir)
 	controlPath := tmpdir + "/control"
 
+	// set up control socket, but don't listen
 	fd, err := syscall.Socket(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
 	if err != nil {
 		t.Fatal("unable to create socket: ", err)
@@ -114,6 +115,7 @@ func TestSupervisorConnectRetryListenRace(t *testing.T) {
 		connc <- rwc
 	}()
 
+	// let the agent attempt to connect a few times
 	select {
 	case err := <-errc:
 		t.Fatalf("expected no error, got %v", err)
@@ -195,12 +197,15 @@ func TestSupervisor(t *testing.T) {
 
 	var (
 		s        = newSupervisor(tmpdir)
-		ts       = newTestSupervisor(controlPath)
 		done     = make(chan struct{})
 		exitErrc = make(chan error)
 	)
 
-	go ts.run()
+	ln, err := net.Listen("unix", controlPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
 
 	go func() {
 		rwc, err := s.connect(controlPath, nil)
@@ -212,6 +217,15 @@ func TestSupervisor(t *testing.T) {
 
 		done <- struct{}{}
 	}()
+
+	// give the supervisor up to 100ms to connect
+	ln.(*net.UnixListener).SetDeadline(time.Now().Add(100 * time.Millisecond))
+
+	conn, err := ln.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
 
 	var statec = make(chan agent.ContainerProcessState)
 	s.Subscribe(statec)
@@ -228,7 +242,7 @@ func TestSupervisor(t *testing.T) {
 	}
 
 	// supervisor process reports container is running
-	ts.statec <- agent.ContainerProcessState{Up: true}
+	sendControlState(t, conn, agent.ContainerProcessState{Up: true}, time.Millisecond)
 
 	select {
 	case state := <-statec:
@@ -255,10 +269,8 @@ func TestSupervisor(t *testing.T) {
 
 	s.Stop(time.Second)
 
-	select {
-	case <-ts.stopc:
-	case <-time.After(time.Millisecond):
-		panic("supervisor did not receive stop command")
+	if ev := receiveControlEvent(t, conn, time.Millisecond); ev != "stop" {
+		t.Fatalf("expected stop event, got %q", ev)
 	}
 
 	go func() { exitErrc <- s.Exit() }()
@@ -273,7 +285,12 @@ func TestSupervisor(t *testing.T) {
 	}
 
 	// supervisor reports container is stopped
-	ts.statec <- agent.ContainerProcessState{Up: false, Restarting: false}
+	sendControlState(
+		t,
+		conn,
+		agent.ContainerProcessState{Up: false, Restarting: false},
+		time.Millisecond,
+	)
 
 	select {
 	case state := <-statec:
@@ -286,11 +303,12 @@ func TestSupervisor(t *testing.T) {
 
 	go func() { exitErrc <- s.Exit() }()
 
-	select {
-	case <-ts.exitc:
-	case <-time.After(time.Millisecond):
-		panic("supervisor did not receive exit command")
+	if ev := receiveControlEvent(t, conn, 15*time.Millisecond); ev != "exit" {
+		t.Fatalf("expected exit event, got %q", ev)
 	}
+
+	conn.Close()
+	ln.Close()
 
 	select {
 	case err := <-exitErrc:
@@ -329,12 +347,15 @@ func TestSupervisorKillAfterGrace(t *testing.T) {
 
 	var (
 		s        = newSupervisor(tmpdir)
-		ts       = newTestSupervisor(controlPath)
 		done     = make(chan struct{})
 		exitErrc = make(chan error)
 	)
 
-	go ts.run()
+	ln, err := net.Listen("unix", controlPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
 
 	go func() {
 		rwc, err := s.connect(controlPath, nil)
@@ -347,11 +368,20 @@ func TestSupervisorKillAfterGrace(t *testing.T) {
 		done <- struct{}{}
 	}()
 
+	// give the supervisor up to 100ms to connect
+	ln.(*net.UnixListener).SetDeadline(time.Now().Add(100 * time.Millisecond))
+
+	conn, err := ln.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
 	var statec = make(chan agent.ContainerProcessState)
 	s.Subscribe(statec)
 
 	// supervisor process reports container is running
-	ts.statec <- agent.ContainerProcessState{Up: true}
+	sendControlState(t, conn, agent.ContainerProcessState{Up: true}, time.Millisecond)
 
 	select {
 	case state := <-statec:
@@ -362,22 +392,24 @@ func TestSupervisorKillAfterGrace(t *testing.T) {
 		panic("no state sent")
 	}
 
+	// stop w/ 10ms grace
 	s.Stop(10 * time.Millisecond)
 
-	select {
-	case <-ts.stopc:
-	case <-time.After(time.Millisecond):
-		panic("supervisor did not receive stop command")
+	if ev := receiveControlEvent(t, conn, time.Millisecond); ev != "stop" {
+		t.Fatalf("expected stop event, got %q", ev)
 	}
 
-	select {
-	case <-ts.killc:
-	case <-time.After(15 * time.Millisecond):
-		panic("supervisor did not receive kill command")
+	if ev := receiveControlEvent(t, conn, 15*time.Millisecond); ev != "kill" {
+		t.Fatalf("expected kill event, got %q", ev)
 	}
 
-	// supervisor reports container is stopped
-	ts.statec <- agent.ContainerProcessState{Up: false, Restarting: false}
+	// send terminal state update
+	sendControlState(
+		t,
+		conn,
+		agent.ContainerProcessState{Up: false, Restarting: false},
+		time.Millisecond,
+	)
 
 	select {
 	case state := <-statec:
@@ -390,11 +422,12 @@ func TestSupervisorKillAfterGrace(t *testing.T) {
 
 	go func() { exitErrc <- s.Exit() }()
 
-	select {
-	case <-ts.exitc:
-	case <-time.After(time.Millisecond):
-		panic("supervisor did not receive exit command")
+	if ev := receiveControlEvent(t, conn, 15*time.Millisecond); ev != "exit" {
+		t.Fatalf("expected exit event, got %q", ev)
 	}
+
+	conn.Close()
+	ln.Close()
 
 	select {
 	case err := <-exitErrc:
@@ -412,82 +445,40 @@ func TestSupervisorKillAfterGrace(t *testing.T) {
 	}
 }
 
-// testSupervisor simulates the interface to harpoon-supervisor's control
-// socket.
-type testSupervisor struct {
-	controlPath string
+func sendControlState(t *testing.T, conn net.Conn, state agent.ContainerProcessState, d time.Duration) {
+	data, err := json.Marshal(state)
+	if err != nil {
+		t.Fatal("unable to marshal state: ", err)
+	}
 
-	statec chan agent.ContainerProcessState
-	stopc  chan struct{}
-	killc  chan struct{}
-	exitc  chan struct{}
+	conn.SetDeadline(time.Now().Add(d))
+
+	err = eventsource.NewEncoder(conn).Encode(eventsource.Event{
+		Type: "state",
+		Data: data,
+	})
+
+	if ne, ok := err.(net.Error); ok && ne.Timeout() {
+		t.Fatalf("timeout sending state after %s", d)
+	}
+
+	if err != nil {
+		t.Fatal("unable to send state: ", err)
+	}
 }
 
-func newTestSupervisor(controlPath string) *testSupervisor {
-	return &testSupervisor{
-		controlPath: controlPath,
+func receiveControlEvent(t *testing.T, conn net.Conn, d time.Duration) string {
+	var event eventsource.Event
 
-		statec: make(chan agent.ContainerProcessState),
-		stopc:  make(chan struct{}),
-		killc:  make(chan struct{}),
-		exitc:  make(chan struct{}),
-	}
-}
+	conn.SetDeadline(time.Now().Add(d))
 
-// run accepts and processes a single connection
-func (ts *testSupervisor) run() {
-	ln, err := net.Listen("unix", ts.controlPath)
-	if err != nil {
-		panic(err)
-	}
-	defer ln.Close()
-
-	conn, err := ln.Accept()
-	if err != nil {
-		panic(err)
-	}
-
-	defer conn.Close()
-	defer close(ts.exitc)
-
-	exit := make(chan struct{})
-
-	go func() {
-		dec := eventsource.NewDecoder(conn)
-
-		for {
-			var event eventsource.Event
-
-			if err := dec.Decode(&event); err != nil {
-				panic(err)
-			}
-
-			switch event.Type {
-			case "stop":
-				ts.stopc <- struct{}{}
-			case "kill":
-				ts.killc <- struct{}{}
-			case "exit":
-				close(exit)
-				return
-			}
+	if err := eventsource.NewDecoder(conn).Decode(&event); err != nil {
+		if ne, ok := err.(net.Error); ok && ne.Timeout() {
+			t.Fatalf("timeout receiving event after %s", d)
 		}
-	}()
 
-	enc := eventsource.NewEncoder(conn)
-
-	for {
-		select {
-		case state := <-ts.statec:
-			data, _ := json.Marshal(state)
-
-			enc.Encode(eventsource.Event{
-				Type: "state",
-				Data: data,
-			})
-
-		case <-exit:
-			return
-		}
+		t.Fatal("unable to receive event: ", err)
 	}
+
+	return event.Type
 }
