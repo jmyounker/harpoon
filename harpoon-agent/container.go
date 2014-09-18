@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/docker/libcontainer"
 	"github.com/docker/libcontainer/cgroups"
@@ -30,7 +29,6 @@ type container interface {
 	Create() error
 	Instance() agent.ContainerInstance
 	Destroy() error
-	Heartbeat(hb agent.Heartbeat) string
 	Start() error
 	Stop() error
 	Subscribe(ch chan<- agent.ContainerInstance)
@@ -46,16 +44,16 @@ const (
 type realContainer struct {
 	agent.ContainerInstance
 
-	desired      string
-	downDeadline time.Time
-	logs         *containerLog
+	logs *containerLog
+
+	supervisor      *supervisor
+	containerStatec chan agent.ContainerProcessState
 
 	subscribers map[chan<- agent.ContainerInstance]struct{}
 
-	actionc    chan actionRequest
-	heartbeatc chan heartbeatRequest
-	subc       chan chan<- agent.ContainerInstance
-	unsubc     chan chan<- agent.ContainerInstance
+	actionc chan actionRequest
+	subc    chan chan<- agent.ContainerInstance
+	unsubc  chan chan<- agent.ContainerInstance
 }
 
 // Satisfaction guaranteed.
@@ -73,10 +71,10 @@ func newContainer(id string, config agent.ContainerConfig) *realContainer {
 
 		subscribers: map[chan<- agent.ContainerInstance]struct{}{},
 
-		actionc:    make(chan actionRequest),
-		heartbeatc: make(chan heartbeatRequest),
-		subc:       make(chan chan<- agent.ContainerInstance),
-		unsubc:     make(chan chan<- agent.ContainerInstance),
+		actionc:         make(chan actionRequest),
+		subc:            make(chan chan<- agent.ContainerInstance),
+		unsubc:          make(chan chan<- agent.ContainerInstance),
+		containerStatec: make(chan agent.ContainerProcessState),
 	}
 
 	go c.loop()
@@ -104,15 +102,6 @@ func (c *realContainer) Destroy() error {
 
 func (c *realContainer) Logs() *containerLog {
 	return c.logs
-}
-
-func (c *realContainer) Heartbeat(hb agent.Heartbeat) string {
-	req := heartbeatRequest{
-		heartbeat: hb,
-		res:       make(chan string),
-	}
-	c.heartbeatc <- req
-	return <-req.res
 }
 
 func (c *realContainer) Instance() agent.ContainerInstance {
@@ -185,11 +174,30 @@ func (c *realContainer) loop() {
 				panic(fmt.Sprintf("unknown action %q", req.action))
 			}
 
-		case req := <-c.heartbeatc:
-			req.res <- c.heartbeat(req.heartbeat)
-
 		case ch := <-c.subc:
 			c.subscribers[ch] = struct{}{}
+
+		case state := <-c.containerStatec:
+			if state.Up {
+				c.updateStatus(agent.ContainerStatusRunning)
+			}
+
+			if state.Up || state.Restarting {
+				continue
+			}
+
+			// The container is down and will not be restarted; begin teardown and
+			// update state.
+			c.supervisor.Unsubscribe(c.containerStatec)
+
+			if state.Err != "" {
+				c.updateStatus(agent.ContainerStatusFailed)
+				continue
+			}
+
+			c.updateStatus(agent.ContainerStatusFinished)
+
+			c.supervisor.Exit()
 
 		case ch := <-c.unsubc:
 			delete(c.subscribers, ch)
@@ -403,51 +411,6 @@ func (c *realContainer) fetchArtifact() (string, error) {
 	return artifactPath, nil
 }
 
-// heartbeat takes the Heartbeat from the container process (the actual
-// state), compares with our desired state, and returns a string that'll be
-// packaged and sent in the HeartbeatReply, to tell the container process what
-// to do next.
-//
-// This also potentially updates the status, but it can only possibly move to
-// ContainerStatusFinished.
-func (c *realContainer) heartbeat(hb agent.Heartbeat) string {
-	switch want, have := c.desired, hb.Status; true {
-	case want == "UP" && have == "UP":
-		// Normal state, running
-		return "UP"
-
-	case want == "UP" && have == "DOWN":
-		// Container stopped, for whatever reason
-		c.updateStatus(agent.ContainerStatusFinished)
-		return "DOWN" // TODO(pb): should it be a third state?
-
-	case want == "DOWN" && have == "UP":
-		// Waiting for the container to shutdown normally
-		if time.Now().After(c.downDeadline) {
-			incContainerStatusKilled(1)
-			return "FORCEDOWN" // too long: kill -9
-		}
-		return "DOWN" // keep waiting
-
-	case want == "DOWN" && have == "DOWN":
-		// Normal shutdown successful; won't receive more updates
-		incContainerStatusDownSuccessful(1)
-		c.updateStatus(agent.ContainerStatusFinished)
-		return "DOWN" // TODO(pb): this was FORCEDOWN, but DOWN makes more sense to me?
-
-	case want == "FORCEDOWN" && have == "UP":
-		// Waiting for the container to shutdown aggressively
-		return "FORCEDOWN"
-
-	case want == "FORCEDOWN" && have == "DOWN":
-		// Aggressive shutdown successful
-		incContainerStatusForceDownSuccessful(1)
-		c.updateStatus(agent.ContainerStatusFinished)
-		return "FORCEDOWN"
-	}
-	return "UNKNOWN"
-}
-
 func (c *realContainer) start() error {
 	switch c.ContainerInstance.ContainerStatus {
 	default:
@@ -460,13 +423,13 @@ func (c *realContainer) start() error {
 		logdir = filepath.Join("/srv/harpoon/log/", c.ID)
 	)
 
-	containerLog, err := os.Create(path.Join(rundir, "container.log"))
+	supervisorLog, err := os.Create(path.Join(rundir, "supervisor.log"))
 	if err != nil {
-		return fmt.Errorf("unable to create log file for container: %s", err)
+		return fmt.Errorf("unable to create log file for supervisor: %s", err)
 	}
 
 	// don't hold on to this log file after exec or error
-	defer containerLog.Close()
+	defer supervisorLog.Close()
 
 	logPipe, err := startLogger(c.ID, logdir)
 	if err != nil {
@@ -476,36 +439,14 @@ func (c *realContainer) start() error {
 	// ensure we don't hold on to the logger
 	defer logPipe.Close()
 
-	cmd := exec.Command(
-		"harpoon-container",
-		c.ContainerConfig.Command.Exec...,
-	)
+	s := newSupervisor(rundir)
 
-	cmd.Env = os.Environ()
-	cmd.Env = append(cmd.Env, fmt.Sprintf(
-		"heartbeat_url=http://%s/api/v0/containers/%s/heartbeat",
-		*addr,
-		c.ID,
-	))
-
-	cmd.Stdout = logPipe
-	cmd.Stderr = containerLog
-	cmd.Dir = rundir
-
-	c.desired = "UP"
-
-	if err := cmd.Start(); err != nil {
-		// update state
+	if err := s.Start(c.ContainerConfig, logPipe, supervisorLog); err != nil {
 		return err
 	}
 
-	// no zombies
-	go cmd.Wait()
-
-	// reflect state
-	c.updateStatus(agent.ContainerStatusRunning) // TODO(pb): intermediate Starting state?
-
-	// TODO(pb): utilize Startup grace period somehow?
+	s.Subscribe(c.containerStatec)
+	c.supervisor = s
 
 	return nil
 }
@@ -517,8 +458,7 @@ func (c *realContainer) stop() error {
 	case agent.ContainerStatusRunning:
 	}
 
-	c.desired = "DOWN"
-	c.downDeadline = time.Now().Add(c.ContainerConfig.Grace.Shutdown.Duration).Add(heartbeatInterval)
+	c.supervisor.Stop(c.ContainerConfig.Grace.Shutdown.Duration)
 
 	return nil
 }
@@ -543,11 +483,6 @@ const (
 type actionRequest struct {
 	action containerAction
 	res    chan error
-}
-
-type heartbeatRequest struct {
-	heartbeat agent.Heartbeat
-	res       chan string
 }
 
 func extractArtifact(src io.Reader, dst string, compression string) (err error) {
