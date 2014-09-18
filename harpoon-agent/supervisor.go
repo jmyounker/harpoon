@@ -212,6 +212,8 @@ func (s *supervisor) loop(rwc io.ReadWriteCloser) {
 
 	go func() { errc <- s.readLoop(rwc) }()
 
+	enc := eventsource.NewEncoder(rwc)
+
 	for {
 		select {
 		case err := <-errc:
@@ -232,7 +234,7 @@ func (s *supervisor) loop(rwc io.ReadWriteCloser) {
 				continue
 			}
 
-			err := eventsource.NewEncoder(rwc).Encode(eventsource.Event{
+			err := enc.Encode(eventsource.Event{
 				Type: "exit",
 			})
 
@@ -256,7 +258,7 @@ func (s *supervisor) loop(rwc io.ReadWriteCloser) {
 			delete(subscribers, c)
 
 		case grace := <-s.stopc:
-			eventsource.NewEncoder(rwc).Encode(eventsource.Event{
+			enc.Encode(eventsource.Event{
 				Type: "stop",
 			})
 
@@ -265,7 +267,7 @@ func (s *supervisor) loop(rwc io.ReadWriteCloser) {
 		case <-killTimer:
 			incContainerStatusKilled(1)
 
-			eventsource.NewEncoder(rwc).Encode(eventsource.Event{
+			enc.Encode(eventsource.Event{
 				Type: "kill",
 			})
 		}
