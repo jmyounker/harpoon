@@ -11,16 +11,24 @@ import (
 	"syscall"
 
 	"github.com/docker/libcontainer"
+	"github.com/docker/libcontainer/cgroups"
 	"github.com/docker/libcontainer/cgroups/fs"
+	"github.com/docker/libcontainer/devices"
+	"github.com/docker/libcontainer/mount"
 	"github.com/docker/libcontainer/namespaces"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
 type container struct {
-	config string
-	rootfs string
-	args   []string
+	hostname string
+	id       string
+
+	agentConfigPath     string
+	agentConfig         agent.ContainerConfig
+	containerConfigPath string
+	rootfs              string
+	args                []string
 
 	err             error
 	containerConfig *libcontainer.Config
@@ -30,12 +38,15 @@ type container struct {
 	exitc chan error
 }
 
-func newContainer(config, rootfs string, args []string) Container {
+func newContainer(hostname string, id string, agentConfig, containerConfig, rootfs string, args []string) Container {
 	container := &container{
-		config: config,
-		rootfs: rootfs,
-		args:   args,
-		exitc:  make(chan error, 1),
+		hostname:            hostname,
+		id:                  id,
+		agentConfigPath:     agentConfig,
+		containerConfigPath: containerConfig,
+		rootfs:              rootfs,
+		args:                args,
+		exitc:               make(chan error, 1),
 	}
 
 	container.err = container.configure()
@@ -48,6 +59,18 @@ func (c *container) configure() error {
 		return fmt.Errorf("no command given for container")
 	}
 
+	// Load and parse Harpoon agent Config
+	agentConfigFile, err := os.Open(c.agentConfigPath)
+	if err != nil {
+		return err
+	}
+	defer agentConfigFile.Close()
+
+	if err := json.NewDecoder(agentConfigFile).Decode(&c.agentConfig); err != nil {
+		return err
+	}
+
+	// Check if the rootfs exists
 	fi, err := os.Stat(c.rootfs)
 	if err != nil {
 		return fmt.Errorf("unable to stat rootfs %q: %s", c.rootfs, err)
@@ -57,19 +80,18 @@ func (c *container) configure() error {
 		return fmt.Errorf("rootfs %q invalid: not a directory", c.rootfs)
 	}
 
-	f, err := os.Open(c.config)
+	// Extract libcontainer config from harpoon config, and write it out to the filesystem.
+	c.containerConfig = c.libcontainerConfig()
+	containerConfigFile, err := os.OpenFile(c.containerConfigPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
-		return fmt.Errorf("unable to open %s: %s", c.config, err)
+		return err
 	}
-	defer f.Close()
+	defer containerConfigFile.Close()
 
-	var containerConfig libcontainer.Config
-
-	if err := json.NewDecoder(f).Decode(&containerConfig); err != nil {
-		return fmt.Errorf("unable to decode %s: %s", c.config, err)
+	if err := json.NewEncoder(containerConfigFile).Encode(c.containerConfig); err != nil {
+		return fmt.Errorf("Could not write container config: %s", err)
 	}
 
-	c.containerConfig = &containerConfig
 	return nil
 }
 
@@ -196,4 +218,57 @@ func (c *container) Metrics() agent.ContainerMetrics {
 		MemoryLimit: stats.MemoryStats.Stats["hierarchical_memory_limit"],
 		CPUTime:     stats.CpuStats.CpuUsage.TotalUsage,
 	}
+}
+
+// libcontainerConfig builds a complete libcontainer.Config from an
+// agent.ContainerConfig.
+func (c *container) libcontainerConfig() *libcontainer.Config {
+	var (
+		config = &libcontainer.Config{
+			Hostname: c.hostname,
+			// daemon user and group; must be numeric as we make no assumptions about
+			// the presence or contents of "/etc/passwd" in the container.
+			User:       "1:1",
+			WorkingDir: c.agentConfig.Command.WorkingDir,
+			Namespaces: map[string]bool{
+				"NEWNS":  true, // mounts
+				"NEWUTS": true, // hostname
+				"NEWIPC": true, // system V ipc
+				"NEWPID": true, // pid
+			},
+			Cgroups: &cgroups.Cgroup{
+				Name:   c.id,
+				Parent: "harpoon",
+
+				Memory: int64(c.agentConfig.Resources.Memory * 1024 * 1024),
+
+				AllowedDevices: devices.DefaultAllowedDevices,
+			},
+			MountConfig: &libcontainer.MountConfig{
+				DeviceNodes: devices.DefaultAllowedDevices,
+				Mounts: []*mount.Mount{
+					{Type: "bind", Source: "/etc/resolv.conf", Destination: "/etc/resolv.conf", Private: true},
+				},
+				ReadonlyFs: true,
+			},
+		}
+	)
+
+	for k, v := range c.agentConfig.Env {
+		config.Env = append(config.Env, fmt.Sprintf("%s=%s", k, v))
+	}
+
+	for dest, source := range c.agentConfig.Storage.Volumes {
+		config.MountConfig.Mounts = append(config.MountConfig.Mounts, &mount.Mount{
+			Type: "bind", Source: source, Destination: dest, Writable: true, Private: true,
+		})
+	}
+
+	for dest := range c.agentConfig.Storage.Temp {
+		config.MountConfig.Mounts = append(config.MountConfig.Mounts, &mount.Mount{
+			Type: "tmpfs", Destination: dest, Writable: true, Private: true,
+		})
+	}
+
+	return config
 }

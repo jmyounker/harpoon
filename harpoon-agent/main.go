@@ -20,6 +20,7 @@ var (
 	hostname string
 
 	logAddr = flag.String("log.addr", ":3334", "address for log communications")
+	debug   = flag.Bool("debug", false, "log verbosely for debugging, and only for debugging")
 )
 
 func init() {
