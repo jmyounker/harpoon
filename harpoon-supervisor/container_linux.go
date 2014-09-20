@@ -74,7 +74,7 @@ func (c *container) configure() error {
 }
 
 // containerCommand implements namespaces.CreateCommand.
-func (c *container) containerCommand(container *libcontainer.Config, _, _, _, init string, childPipe *os.File, args []string) *exec.Cmd {
+func (c *container) containerCommand(container *libcontainer.Config, _, _, init string, childPipe *os.File, args []string) *exec.Cmd {
 	cmd := exec.Command(init, args...)
 	cmd.Args[0] = containerInitName
 	cmd.ExtraFiles = []*os.File{childPipe}
@@ -112,8 +112,8 @@ func (c *container) Start() error {
 			os.Stdin,
 			os.Stdout,
 			os.Stderr,
-			"",     // no console
-			"", "", // rootfs and datapath handled elsewhere
+			"", // no console
+			"", // datapath handled elsewhere
 			c.args,
 			c.containerCommand,
 			startCallback,
