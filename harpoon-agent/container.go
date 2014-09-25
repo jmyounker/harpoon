@@ -240,7 +240,7 @@ func (c *realContainer) create() error {
 	}
 	defer agentFile.Close()
 
-	if err := json.NewEncoder(agentFile).Encode(agentFile); err != nil {
+	if err := json.NewEncoder(agentFile).Encode(c.ContainerConfig); err != nil {
 		return err
 	}
 
