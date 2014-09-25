@@ -185,6 +185,7 @@ func (c *realContainer) loop() {
 			c.supervisor.Unsubscribe(c.containerStatec)
 
 			if state.Err != "" {
+				log.Printf("[%s] failed: %s", c.ID, state.Err)
 				c.updateStatus(agent.ContainerStatusFailed)
 				continue
 			}
