@@ -230,6 +230,7 @@ func (c *container) Metrics() agent.ContainerMetrics {
 func (c *container) libcontainerConfig() *libcontainer.Config {
 	var (
 		config = &libcontainer.Config{
+			RootFs:   c.rootfs,
 			Hostname: c.hostname,
 			// daemon user and group; must be numeric as we make no assumptions about
 			// the presence or contents of "/etc/passwd" in the container.
