@@ -88,7 +88,12 @@ func (c *container) configure() error {
 	}
 	defer containerConfigFile.Close()
 
-	if err := json.NewEncoder(containerConfigFile).Encode(c.containerConfig); err != nil {
+	buf, err := json.MarshalIndent(c.containerConfig, "", "  ")
+	if err != nil {
+		return fmt.Errorf("unable to marshal container config: %s", err)
+	}
+
+	if _, err := containerConfigFile.Write(buf); err != nil {
 		return fmt.Errorf("Could not write container config: %s", err)
 	}
 
@@ -225,6 +230,7 @@ func (c *container) Metrics() agent.ContainerMetrics {
 func (c *container) libcontainerConfig() *libcontainer.Config {
 	var (
 		config = &libcontainer.Config{
+			RootFs:   c.rootfs,
 			Hostname: c.hostname,
 			// daemon user and group; must be numeric as we make no assumptions about
 			// the presence or contents of "/etc/passwd" in the container.
