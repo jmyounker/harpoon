@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -106,7 +107,7 @@ func TestRandomFit(t *testing.T) {
 		}
 	)
 
-	mapping, unscheduled := randomFit(cfgs, states)
+	mapping, unscheduled := randomFit(cfgs, states, map[string]pendingTask{})
 	if len(mapping) != len(expectedMapping) {
 		t.Fatalf("wrong count of agents with scheduled tasks: actual %d != expected %d", len(mapping), len(expectedMapping))
 	}
@@ -166,13 +167,61 @@ func TestRandomFit(t *testing.T) {
 	}
 }
 
+func TestRandomFitWithPendingTasks(t *testing.T) {
+	var (
+		cfgs         = map[string]agent.ContainerConfig{}
+		states       = map[string]agentState{"state1": newAgentState(1100, 5.5, []string{"/a", "/b", "/c"})}
+		pendingTasks = map[string]pendingTask{}
+	)
+
+	for i := 0; i < 11; i++ {
+		cfgs[fmt.Sprintf("cfg%d", i)] = newConfig(100, 0.5, map[string]string{"/a": "", "/b": ""})
+
+		id := fmt.Sprintf("cfg1%d", i)
+		pendingTasks[id] = pendingTask{
+			id:       id,
+			endpoint: "state1",
+			cfg: agent.ContainerConfig{
+				Resources: agent.Resources{
+					CPUs:   0.5,
+					Memory: 100,
+				},
+			},
+		}
+	}
+
+	mapping, unscheduled := randomFit(cfgs, states, pendingTasks)
+	if want, have := 0, len(mapping); want != have {
+		t.Errorf("not right count of scheduled tasks: expected %d != actual %d", want, have)
+	}
+
+	if want, have := len(cfgs), len(unscheduled); want != have {
+		t.Errorf("not right count of unscheduled tasks: expected %d != actual %d", want, have)
+	}
+
+	states["state2"] = newAgentState(1100, 5.5, []string{"/a", "/b", "/c"})
+	mapping, unscheduled = randomFit(cfgs, states, pendingTasks)
+	if want, have := 1, len(mapping); want != have {
+		t.Errorf("not right count of scheduled tasks: expected %d != actual %d", want, have)
+	}
+
+	if want, have := 0, len(unscheduled); want != have {
+		t.Errorf("not right count of unscheduled tasks: expected %d != actual %d", want, have)
+	}
+
+	if instances, ok := mapping["state2"]; !ok || len(instances) != len(cfgs) {
+		t.Fatalf("On agent should be all cfg ")
+	}
+
+}
+
 func TestRandomFitWithoutResources(t *testing.T) {
 	var (
 		cfgs   = map[string]agent.ContainerConfig{}
 		states = map[string]agentState{}
 	)
 
-	mapping, unscheduled := randomFit(cfgs, states)
+	mapping, unscheduled := randomFit(cfgs, states, map[string]pendingTask{})
 	if expected, actual := 0, len(unscheduled); actual != expected {
 		t.Fatalf("unscheduled task count: actual %d != expected %d", actual, expected)
 	}
@@ -183,7 +232,7 @@ func TestRandomFitWithoutResources(t *testing.T) {
 	cfgs["random1"] = newConfig(100, 12, map[string]string{"/a": ""})
 	cfgs["random2"] = newConfig(100, 12, map[string]string{})
 
-	mapping, unscheduled = randomFit(cfgs, states)
+	mapping, unscheduled = randomFit(cfgs, states, map[string]pendingTask{})
 	if expected, actual := 0, len(mapping); actual != expected {
 		t.Fatalf("unscheduled task count: actual %d != expected %d", actual, expected)
 	}
