@@ -19,10 +19,12 @@ import (
 func TestContainerList(t *testing.T) {
 	var (
 		registry = newRegistry()
-		api      = newAPI(registry)
+		pr       = newPortRange(lowTestPort, highTestPort)
+		api      = newAPI(registry, pr)
 		server   = httptest.NewServer(api)
 	)
 
+	defer pr.exit()
 	defer server.Close()
 
 	req, _ := http.NewRequest("GET", server.URL+"/api/v0/containers", nil)
@@ -65,9 +67,11 @@ func TestLogAPICanTailLogs(t *testing.T) {
 
 	var (
 		registry = newRegistry()
-		api      = newAPI(registry)
+		pr       = newPortRange(lowTestPort, highTestPort)
+		api      = newAPI(registry, pr)
 		server   = httptest.NewServer(api)
 	)
+	defer pr.exit()
 	defer server.Close()
 
 	createReceiveLogsFixture(t, registry)
@@ -136,9 +140,11 @@ func TestLogAPICanRetrieveLastLines(t *testing.T) {
 
 	var (
 		registry = newRegistry()
-		api      = newAPI(registry)
+		pr       = newPortRange(lowTestPort, highTestPort)
+		api      = newAPI(registry, pr)
 		server   = httptest.NewServer(api)
 	)
+	defer pr.exit()
 	defer server.Close()
 
 	createReceiveLogsFixture(t, registry)
@@ -243,26 +249,9 @@ func sendLog(logLine string) error {
 }
 
 func setLogAddrRandomly(t *testing.T) {
-	port, err := GetRandomUDPPort()
+	port, err := getRandomUDPPort()
 	if err != nil {
 		t.Fatalf("Could not locate a random port: %s", err)
 	}
 	*logAddr = "localhost:" + strconv.Itoa(port)
-}
-
-// GetRandomUDPPort identifies a UDP port by attempting to connect to port zero. This
-// port may-or-may-not-be available when you attempt to use it, but it's better than
-// nothing.
-func GetRandomUDPPort() (int, error) {
-	laddr, err := net.ResolveUDPAddr("udp", ":0")
-	if err != nil {
-		return 0, err
-	}
-
-	ln, err := net.ListenUDP("udp", laddr)
-	if err != nil {
-		return 0, err
-	}
-	defer ln.Close()
-	return ln.LocalAddr().(*net.UDPAddr).Port, nil
 }
