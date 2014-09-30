@@ -29,3 +29,5 @@ _testmain.go
 *.test
 
 /dist
+
+/Godeps/_workspace
