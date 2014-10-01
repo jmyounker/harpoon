@@ -18,6 +18,10 @@ import (
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
+// If we ever start getting collisions during testing then we can point this to a
+// temp directory.
+const fixtureContainerRoot = "/run/harpoon"
+
 func TestContainerList(t *testing.T) {
 	agentTotalMem = 1000
 	agentTotalCPU = 2
@@ -25,10 +29,12 @@ func TestContainerList(t *testing.T) {
 
 	var (
 		registry = newRegistry()
-		api      = newAPI(registry)
+		pr       = newPortRange(lowTestPort, highTestPort)
+		api      = newAPI(fixtureContainerRoot, registry, pr)
 		server   = httptest.NewServer(api)
 	)
 
+	defer pr.exit()
 	defer server.Close()
 
 	req, _ := http.NewRequest("GET", server.URL+"/api/v0/containers", nil)
@@ -58,13 +64,14 @@ func TestContainerList(t *testing.T) {
 
 	cont := newContainer(
 		"123",
+		"",
 		agent.ContainerConfig{
 			Resources: agent.Resources{
 				Memory: 100,
 				CPUs:   2,
 			},
 		},
-	)
+		nil)
 
 	registry.m["123"] = cont
 	registry.statec <- cont.ContainerInstance
@@ -109,9 +116,11 @@ func TestLogAPICanTailLogs(t *testing.T) {
 
 	var (
 		registry = newRegistry()
-		api      = newAPI(registry)
+		pr       = newPortRange(lowTestPort, highTestPort)
+		api      = newAPI(fixtureContainerRoot, registry, pr)
 		server   = httptest.NewServer(api)
 	)
+	defer pr.exit()
 	defer server.Close()
 
 	createReceiveLogsFixture(t, registry)
@@ -180,9 +189,11 @@ func TestLogAPICanRetrieveLastLines(t *testing.T) {
 
 	var (
 		registry = newRegistry()
-		api      = newAPI(registry)
+		pr       = newPortRange(lowTestPort, highTestPort)
+		api      = newAPI(fixtureContainerRoot, registry, pr)
 		server   = httptest.NewServer(api)
 	)
+	defer pr.exit()
 	defer server.Close()
 
 	createReceiveLogsFixture(t, registry)
@@ -287,7 +298,7 @@ func sendLog(logLine string) error {
 }
 
 func setLogAddrRandomly(t *testing.T) {
-	port, err := GetRandomUDPPort()
+	port, err := getRandomUDPPort()
 	if err != nil {
 		t.Fatalf("Could not locate a random port: %s", err)
 	}

@@ -18,17 +18,21 @@ import (
 type api struct {
 	http.Handler
 	*registry
+	*portRange
 
-	enabled bool
+	containerRoot string
+	enabled       bool
 	sync.RWMutex
 }
 
-func newAPI(r *registry) *api {
+func newAPI(containerRoot string, r *registry, pr *portRange) *api {
 	var (
 		mux = pat.New()
 		api = &api{
-			Handler:  mux,
-			registry: r,
+			Handler:       mux,
+			containerRoot: containerRoot,
+			registry:      r,
+			portRange:     pr,
 		}
 	)
 
@@ -84,7 +88,7 @@ func (a *api) handleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	container := newContainer(id, config)
+	container := newContainer(id, a.containerRoot, config, a.portRange)
 
 	if ok := a.registry.register(container); !ok {
 		http.Error(w, "already exists", http.StatusConflict)
