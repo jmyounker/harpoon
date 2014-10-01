@@ -193,7 +193,7 @@ func TestRandomFitWithoutResources(t *testing.T) {
 	}
 }
 
-func newConfig(memory int, cpus float64, volumes map[string]string) agent.ContainerConfig {
+func newConfig(memory uint64, cpus float64, volumes map[string]string) agent.ContainerConfig {
 	return agent.ContainerConfig{
 		Resources: agent.Resources{
 			Memory: memory,
@@ -205,13 +205,13 @@ func newConfig(memory int, cpus float64, volumes map[string]string) agent.Contai
 	}
 }
 
-func newAgentState(memory float64, cpus float64, volumes []string) agentState {
+func newAgentState(memory uint64, cpus float64, volumes []string) agentState {
 	return agentState{
 		resources: agent.HostResources{
 			CPUs: agent.TotalReserved{
 				Total: cpus,
 			},
-			Memory: agent.TotalReserved{
+			Memory: agent.TotalReservedInt{
 				Total: memory,
 			},
 			Volumes: volumes,

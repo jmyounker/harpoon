@@ -93,7 +93,7 @@ func (c Command) Valid() error {
 
 // Resources describes resource limits for a container.
 type Resources struct {
-	Memory int     `json:"mem"`  // MB
+	Memory uint64  `json:"mem"`  // MB
 	CPUs   float64 `json:"cpus"` // fractional CPUs
 }
 
@@ -164,10 +164,10 @@ func (g Grace) Valid() error {
 
 // HostResources are returned by agents and reflect their current state.
 type HostResources struct {
-	Memory  TotalReserved `json:"mem"`     // MB
-	CPUs    TotalReserved `json:"cpus"`    // whole CPUs
-	Storage TotalReserved `json:"storage"` // Bytes
-	Volumes []string      `json:"volumes"`
+	Memory  TotalReservedInt `json:"mem"`     // MB
+	CPUs    TotalReserved    `json:"cpus"`    // whole CPUs
+	Storage TotalReserved    `json:"storage"` // Bytes
+	Volumes []string         `json:"volumes"`
 }
 
 // TotalReserved encodes the total scalar amount of an arbitrary resource
@@ -175,6 +175,13 @@ type HostResources struct {
 type TotalReserved struct {
 	Total    float64 `json:"total"`
 	Reserved float64 `json:"reserved"`
+}
+
+// TotalReservedInt encodes the total scalar amount of an arbitrary resource
+// (total) and the amount of it that's currently in-use (reserved) as integer values.
+type TotalReservedInt struct {
+	Total    uint64 `json:"total"`
+	Reserved uint64 `json:"reserved"`
 }
 
 // Stopper describes anything that can be stopped, such as an event stream.

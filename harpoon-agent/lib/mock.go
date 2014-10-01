@@ -296,7 +296,7 @@ func (m *Mock) getResources(w http.ResponseWriter, r *http.Request, p httprouter
 	defer atomic.AddInt32(&m.getResourcesCount, 1)
 
 	json.NewEncoder(w).Encode(HostResources{
-		Memory:  TotalReserved{Total: 32768, Reserved: 16384},
+		Memory:  TotalReservedInt{Total: 32768, Reserved: 16384},
 		CPUs:    TotalReserved{Total: 8, Reserved: 1},
 		Storage: TotalReserved{Total: 322122547200, Reserved: 123125031034},
 		Volumes: []string{"/data/analytics-kibana", "/data/mysql000", "/data/mysql001"},
