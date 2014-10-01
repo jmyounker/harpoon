@@ -93,8 +93,9 @@ func (c Command) Valid() error {
 
 // Resources describes resource limits for a container.
 type Resources struct {
-	Memory int     `json:"mem"`  // MB
-	CPUs   float64 `json:"cpus"` // fractional CPUs
+	Memory int     `json:"mem"`     // MB
+	CPUs   float64 `json:"cpus"`    // fractional CPUs
+	FDs    uint64  `json:"fdlimit"` // file descriptor hard limit
 }
 
 // Valid performs a validation check, to ensure invalid structures may be
