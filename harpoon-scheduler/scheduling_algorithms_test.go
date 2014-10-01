@@ -46,19 +46,42 @@ func TestMatch(t *testing.T) {
 
 func TestFilter(t *testing.T) {
 	var states = map[string]agentState{
-		"state1": newAgentState(700, 3, []string{"/a", "/b", "/c"}),
-		"state2": newAgentState(200, 11, []string{"/a", "/c"}),
-		"state3": newAgentState(1, 1, []string{}),
-		"state4": newAgentState(700, 3, []string{"/b"}),
+		"state1": agentState{
+			resources: freeResources{
+				cpus:    3,
+				memory:  700,
+				volumes: toSet([]string{"/a", "/b", "/c"}),
+			},
+		},
+		"state2": agentState{
+			resources: freeResources{
+				cpus:    11,
+				memory:  200,
+				volumes: toSet([]string{"/a", "/c"}),
+			},
+		},
+		"state3": agentState{
+			resources: freeResources{
+				cpus:    1,
+				memory:  1,
+				volumes: toSet([]string{}),
+			},
+		},
+		"state4": agentState{
+			resources: freeResources{
+				cpus:    3,
+				memory:  700,
+				volumes: toSet([]string{"/b"}),
+			},
+		},
 	}
 
-	free := calculateFreeResources(states)
-	validAgents := filter(newConfig(1100, 12, map[string]string{}), free)
+	validAgents := filter(newConfig(1100, 12, map[string]string{}), states)
 	if len(validAgents) != 0 {
 		t.Errorf("found agent for config with infeasible resources")
 	}
 
-	validAgents = filter(newConfig(300, 2, map[string]string{"/a": "", "/b": ""}), free)
+	validAgents = filter(newConfig(300, 2, map[string]string{"/a": "", "/b": ""}), states)
 	if expected, actual := 1, len(validAgents); actual != expected {
 		t.Fatalf("number of valid agents found: actual %d != expected %d", actual, expected)
 	}
@@ -66,17 +89,23 @@ func TestFilter(t *testing.T) {
 		t.Error("missing valid agent after filtering")
 	}
 
-	free["state"] = freeResources{10000, 100, map[string]struct{}{}}
-	validAgents = filter(newConfig(1, 1, map[string]string{}), free)
-	if expected, actual := len(free), len(validAgents); actual != expected {
+	states["state"] = agentState{
+		resources: freeResources{
+			cpus:    100,
+			memory:  10000,
+			volumes: toSet([]string{}),
+		},
+	}
+	validAgents = filter(newConfig(1, 1, map[string]string{}), states)
+	if expected, actual := len(states), len(validAgents); actual != expected {
 		t.Fatalf("number of valid agents found: actual %d != expected %d", actual, expected)
 	}
 
 	for _, agent := range validAgents {
-		if _, ok := free[agent]; !ok {
+		if _, ok := states[agent]; !ok {
 			t.Errorf("unexpected agent after filter %s", agent)
 		}
-		delete(free, agent)
+		delete(states, agent)
 	}
 }
 
@@ -91,10 +120,34 @@ func TestRandomFit(t *testing.T) {
 			"cfg6": newConfig(1100, 12, map[string]string{}),
 		}
 		states = map[string]agentState{
-			"state1": newAgentState(700, 3, []string{"/a", "/b", "/c"}),
-			"state2": newAgentState(200, 11, []string{"/a", "/c"}),
-			"state3": newAgentState(1, 1, []string{}),
-			"state4": newAgentState(700, 3, []string{"/b"}),
+			"state1": agentState{
+				resources: freeResources{
+					cpus:    3,
+					memory:  700,
+					volumes: toSet([]string{"/a", "/b", "/c"}),
+				},
+			},
+			"state2": agentState{
+				resources: freeResources{
+					cpus:    11,
+					memory:  200,
+					volumes: toSet([]string{"/a", "/c"}),
+				},
+			},
+			"state3": agentState{
+				resources: freeResources{
+					cpus:    1,
+					memory:  1,
+					volumes: toSet([]string{}),
+				},
+			},
+			"state4": agentState{
+				resources: freeResources{
+					cpus:    3,
+					memory:  700,
+					volumes: toSet([]string{"/b"}),
+				},
+			},
 		}
 		expectedMapping = []struct {
 			name           string
@@ -200,20 +253,6 @@ func newConfig(memory int, cpus float64, volumes map[string]string) agent.Contai
 			CPUs:   cpus,
 		},
 		Storage: agent.Storage{
-			Volumes: volumes,
-		},
-	}
-}
-
-func newAgentState(memory float64, cpus float64, volumes []string) agentState {
-	return agentState{
-		resources: agent.HostResources{
-			CPUs: agent.TotalReserved{
-				Total: cpus,
-			},
-			Memory: agent.TotalReserved{
-				Total: memory,
-			},
 			Volumes: volumes,
 		},
 	}
