@@ -197,6 +197,36 @@ func TestShepherdBasicFunctionality(t *testing.T) {
 	if err := verifyInstances(t, <-requestc, s...); err != nil {
 		t.Fatal(err)
 	}
+
+	discovery.add(servers[0].URL)
+
+	ch := make(chan struct{})
+	go func() {
+		for i := 0; i <= 100; i++ {
+			shepherd.schedule(servers[0].URL, fmt.Sprintf("%d", i), agent.ContainerConfig{})
+		}
+		ch <- struct{}{}
+	}()
+
+	go func() {
+		for i := 0; i <= 102; i++ {
+			clients[0].Put(fmt.Sprintf("cfg%d", i), agent.ContainerConfig{})
+		}
+	}()
+
+	timeout := time.Second * 2
+	select {
+	case <-ch:
+	case <-time.After(timeout):
+		t.Fatalf("tasks not scheduled properly after %v", timeout)
+	}
+	time.Sleep(time.Second)
+	for i := 0; i <= 100; i++ {
+		id := fmt.Sprintf("%d", i)
+		if _, err := clients[0].Get(id); err != nil {
+			t.Fatalf("Container not found %q: %v", id, err)
+		}
+	}
 }
 
 func verifyInstances(t *testing.T, have map[string]agentState, s ...string) error {

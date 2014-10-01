@@ -53,8 +53,6 @@ type realStateMachine struct {
 	sync.WaitGroup
 }
 
-var _ stateMachine = &realStateMachine{}
-
 func newRealStateMachine(endpoint string, reconnect, abandon time.Duration) *realStateMachine {
 	m := &realStateMachine{
 		myEndpoint: endpoint,

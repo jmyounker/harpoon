@@ -24,6 +24,7 @@ func main() {
 		listen  = flag.String("listen", ":4444", "HTTP listen address")
 		persist = flag.String("persist", "scheduler-registry.json", "filename to persist registry state")
 		agents  = multiagent{}
+		timeout = flag.Duration("timeout", time.Second, "timeout to set (un)scheduled job request as failed")
 	)
 	flag.Var(&agents, "agent", "repeatable list of agent endpoints")
 	flag.Parse()
@@ -32,7 +33,7 @@ func main() {
 		discovery   = staticAgentDiscovery(agents.slice())
 		shepherd    = newRealShepherd(discovery)
 		registry    = newRealRegistry(*persist)
-		transformer = newTransformer(shepherd, registry, shepherd)
+		transformer = newTransformer(shepherd, registry, shepherd, *timeout)
 		api         = newAPI(registry, shepherd)
 	)
 

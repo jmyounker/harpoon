@@ -35,26 +35,28 @@ type shepherd interface {
 }
 
 type realShepherd struct {
-	sizec     chan int
+	sizec     chan chan int
 	subc      chan chan<- map[string]agentState
 	unsubc    chan chan<- map[string]agentState
-	snapshotc chan map[string]agentState
+	snapshotc chan chan map[string]agentState
 	schedc    chan schedTaskReq
 	unschedc  chan unschedTaskReq
 	quitc     chan chan struct{}
+	workQueue *workQueue
 }
 
 var _ shepherd = &realShepherd{}
 
 func newRealShepherd(d agentDiscovery) *realShepherd {
 	s := &realShepherd{
-		sizec:     make(chan int),
+		sizec:     make(chan chan int),
 		subc:      make(chan chan<- map[string]agentState),
 		unsubc:    make(chan chan<- map[string]agentState),
-		snapshotc: make(chan map[string]agentState),
+		snapshotc: make(chan chan map[string]agentState),
 		schedc:    make(chan schedTaskReq),
 		unschedc:  make(chan unschedTaskReq),
 		quitc:     make(chan chan struct{}),
+		workQueue: newWorkQueue(),
 	}
 	go s.loop(d)
 	return s
@@ -69,7 +71,9 @@ func (s *realShepherd) unsubscribe(c chan<- map[string]agentState) {
 }
 
 func (s *realShepherd) snapshot() map[string]agentState {
-	return <-s.snapshotc
+	req := make(chan map[string]agentState)
+	s.snapshotc <- req
+	return <-req
 }
 
 func (s *realShepherd) schedule(endpoint, id string, cfg agent.ContainerConfig) error {
@@ -85,7 +89,9 @@ func (s *realShepherd) unschedule(endpoint, id string) error {
 }
 
 func (s *realShepherd) size() int {
-	return <-s.sizec
+	req := make(chan int)
+	s.sizec <- req
+	return <-req
 }
 
 func (s *realShepherd) quit() {
@@ -114,7 +120,7 @@ func (s *realShepherd) loop(d agentDiscovery) {
 			}
 
 			volumes := make(map[string]struct{}, len(state.resources.volumes))
-			for path, _ := range state.resources.volumes {
+			for path := range state.resources.volumes {
 				volumes[path] = struct{}{}
 			}
 
@@ -145,50 +151,71 @@ func (s *realShepherd) loop(d agentDiscovery) {
 
 	for {
 		select {
-		case endpoints = <-discoveryc:
-			machines = diff(machines, endpoints, updatec)
+		case endpoints := <-discoveryc:
+			s.workQueue.push(func() { machines = diff(machines, endpoints, updatec) })
 			// The updatec will receive the first update from any new state
 			// machines naturally.
 
 		case update := <-updatec:
-			for endpoint, instances := range update {
-				current[endpoint] = instances // deleted instances are managed in the state machine
-			}
+			s.workQueue.push(
+				func() {
+					for endpoint, instances := range update {
+						current[endpoint] = instances // deleted instances are managed in the state machine
+					}
 
-			m := cp()
-
-			for c := range subs {
-				c <- m
-			}
-
+					m := cp()
+					for c := range subs {
+						c <- m
+					}
+				},
+			)
 		case c := <-s.subc:
-			subs[c] = struct{}{}
-			go func(m map[string]agentState) { c <- m }(cp())
+			s.workQueue.push(
+				func() {
+					subs[c] = struct{}{}
+					c <- cp()
+				},
+			)
 
 		case c := <-s.unsubc:
-			delete(subs, c)
+			s.workQueue.push(func() { delete(subs, c) })
 
-		case s.snapshotc <- cp():
+		case req := <-s.snapshotc:
+			s.workQueue.push(func() { req <- cp() })
 
 		case req := <-s.schedc:
-			stateMachine, ok := machines[req.endpoint]
-			if !ok {
-				req.err <- fmt.Errorf("endpoint %s not available", req.endpoint)
-				continue
-			}
-			req.err <- stateMachine.schedule("", req.id, req.ContainerConfig)
+			s.workQueue.push(
+				func() {
+					stateMachine, ok := machines[req.endpoint]
+					if !ok {
+						req.err <- fmt.Errorf("endpoint %s not available", req.endpoint)
+						return
+					}
+					req.err <- stateMachine.schedule("", req.id, req.ContainerConfig)
+				},
+			)
 
 		case req := <-s.unschedc:
-			stateMachine, ok := machines[req.endpoint]
-			if !ok {
-				req.err <- fmt.Errorf("endpoint %s not available", req.endpoint)
-				continue
-			}
-			req.err <- stateMachine.unschedule("", req.id)
+			s.workQueue.push(
+				func() {
+					stateMachine, ok := machines[req.endpoint]
+					if !ok {
+						req.err <- fmt.Errorf("endpoint %s not available", req.endpoint)
+						return
+					}
+					req.err <- stateMachine.unschedule("", req.id)
+				},
+			)
 
-		case s.sizec <- len(current):
+		case req := <-s.sizec:
+			s.workQueue.push(func() { req <- len(current) })
 
 		case q := <-s.quitc:
+			for _, machine := range machines {
+				machine.unsubscribe(updatec)
+				machine.quit()
+			}
+			s.workQueue.quit()
 			close(q)
 			return
 		}
@@ -298,7 +325,6 @@ func (t *mockTaskScheduler) schedule(endpoint, id string, cfg agent.ContainerCon
 	}
 
 	t.started[endpoint][id] = cfg
-
 	return nil
 }
 
