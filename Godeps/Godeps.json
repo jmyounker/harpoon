@@ -25,7 +25,7 @@
 		},
 		{
 			"ImportPath": "github.com/coreos/go-systemd/dbus",
-			"Comment": "Before they changed the interface to the systemd Conn class",
+			"Comment": "v2-31-gc5023e7",
 			"Rev": "c5023e7fcbf021ef75cd1ec77c7ce9fffa771e5d"
 		},
 		{
