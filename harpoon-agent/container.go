@@ -38,8 +38,9 @@ const (
 type realContainer struct {
 	agent.ContainerInstance
 
-	portRange *portRange
-	logs      *containerLog
+	containerRoot string
+	portRange     *portRange
+	logs          *containerLog
 
 	supervisor      *supervisor
 	containerStatec chan agent.ContainerProcessState
@@ -54,7 +55,7 @@ type realContainer struct {
 // Satisfaction guaranteed.
 var _ container = &realContainer{}
 
-func newContainer(id string, config agent.ContainerConfig, pr *portRange) *realContainer {
+func newContainer(id string, containerRoot string, config agent.ContainerConfig, pr *portRange) *realContainer {
 	c := &realContainer{
 		ContainerInstance: agent.ContainerInstance{
 			ID:              id,
@@ -62,8 +63,9 @@ func newContainer(id string, config agent.ContainerConfig, pr *portRange) *realC
 			ContainerConfig: config,
 		},
 
-		portRange: pr,
-		logs:      newContainerLog(containerLogRingBufferSize),
+		containerRoot: containerRoot,
+		portRange:     pr,
+		logs:          newContainerLog(containerLogRingBufferSize),
 
 		subscribers: map[chan<- agent.ContainerInstance]struct{}{},
 
@@ -204,7 +206,7 @@ func (c *realContainer) loop() {
 
 func (c *realContainer) create() error {
 	var (
-		rundir = filepath.Join("/run/harpoon", c.ID)
+		rundir = filepath.Join(c.containerRoot, c.ID)
 		logdir = filepath.Join("/srv/harpoon/log/", c.ID)
 
 		agentJSONPath     = filepath.Join(rundir, "agent.json")
@@ -314,7 +316,7 @@ func (c *realContainer) assignPorts() error {
 
 func (c *realContainer) destroy() error {
 	var (
-		rundir = filepath.Join("/run/harpoon", c.ID)
+		rundir = filepath.Join(c.containerRoot, c.ID)
 	)
 
 	switch c.ContainerInstance.ContainerStatus {
@@ -385,7 +387,7 @@ func (c *realContainer) start() error {
 	}
 
 	var (
-		rundir = path.Join("/run/harpoon", c.ID)
+		rundir = path.Join(c.containerRoot, c.ID)
 		logdir = filepath.Join("/srv/harpoon/log/", c.ID)
 	)
 

@@ -36,6 +36,7 @@ func main() {
 	flag.Int64Var(&agentTotalCPU, "cpu", -1, "available cpu resources (-1 to use all cpus)")
 	flag.Int64Var(&agentTotalMem, "mem", -1, "available memory resources in MB (-1 to use all)")
 	flag.Var(&configuredVolumes, "v", "repeatable list of available volumes")
+	containerRoot := flag.String("run", "/run/harpoon", "filesytem root for packages")
 	portRangeStart64 := flag.Uint64("ports.start", 30000, "starting of port allocation range")
 	portRangeEnd64 := flag.Uint64("ports.end", 32767, "ending of port allocation range")
 
@@ -71,7 +72,7 @@ func main() {
 	var (
 		r   = newRegistry()
 		pr  = newPortRange(portRangeStart, portRangeEnd)
-		api = newAPI(r, pr)
+		api = newAPI(*containerRoot, r, pr)
 	)
 
 	go receiveLogs(r)
@@ -80,7 +81,7 @@ func main() {
 
 	go func() {
 		// recover our state from disk
-		recoverContainers(r)
+		recoverContainers(*containerRoot, r)
 
 		// begin accepting runner updates
 		r.acceptStateUpdates()

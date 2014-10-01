@@ -16,11 +16,15 @@ import (
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
+// If we ever start getting collisions during testing then we can point this to a
+// temp directory.
+const fixtureContainerRoot = "/run/harpoon"
+
 func TestContainerList(t *testing.T) {
 	var (
 		registry = newRegistry()
 		pr       = newPortRange(lowTestPort, highTestPort)
-		api      = newAPI(registry, pr)
+		api      = newAPI(fixtureContainerRoot, registry, pr)
 		server   = httptest.NewServer(api)
 	)
 
@@ -68,7 +72,7 @@ func TestLogAPICanTailLogs(t *testing.T) {
 	var (
 		registry = newRegistry()
 		pr       = newPortRange(lowTestPort, highTestPort)
-		api      = newAPI(registry, pr)
+		api      = newAPI(fixtureContainerRoot, registry, pr)
 		server   = httptest.NewServer(api)
 	)
 	defer pr.exit()
@@ -141,7 +145,7 @@ func TestLogAPICanRetrieveLastLines(t *testing.T) {
 	var (
 		registry = newRegistry()
 		pr       = newPortRange(lowTestPort, highTestPort)
-		api      = newAPI(registry, pr)
+		api      = newAPI(fixtureContainerRoot, registry, pr)
 		server   = httptest.NewServer(api)
 	)
 	defer pr.exit()

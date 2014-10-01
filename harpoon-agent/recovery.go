@@ -14,8 +14,8 @@ import (
 //
 // BUG: all components are not yet available to support recovery, so this
 // function will instead kill all running containers.
-func recoverContainers(r *registry) {
-	matches, err := filepath.Glob("/run/harpoon/*/control")
+func recoverContainers(containerRoot string, r *registry) {
+	matches, err := filepath.Glob(filepath.Join(containerRoot, "*", "control"))
 	if err != nil {
 		log.Println("unable to scan rundir for containers: ", err)
 		return
