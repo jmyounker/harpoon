@@ -15,8 +15,8 @@ var (
 	addr              = flag.String("addr", ":3333", "address to listen on")
 	configuredVolumes = volumes{}
 
-	agentTotalMem int64
-	agentTotalCPU int64
+	agentTotalMem uint64
+	agentTotalCPU uint64
 
 	hostname string
 
@@ -33,8 +33,10 @@ func init() {
 }
 
 func main() {
-	flag.Int64Var(&agentTotalCPU, "cpu", -1, "available cpu resources (-1 to use all cpus)")
-	flag.Int64Var(&agentTotalMem, "mem", -1, "available memory resources in MB (-1 to use all)")
+	var cpu, mem int64
+
+	flag.Int64Var(&cpu, "cpu", -1, "available cpu resources (-1 to use all cpus)")
+	flag.Int64Var(&mem, "mem", -1, "available memory resources in MB (-1 to use all)")
 	flag.Var(&configuredVolumes, "v", "repeatable list of available volumes")
 	containerRoot := flag.String("run", "/run/harpoon", "filesytem root for packages")
 	portRangeStart64 := flag.Uint64("ports.start", 30000, "starting of port allocation range")
@@ -56,17 +58,20 @@ func main() {
 		log.Fatal("port range start must be before port range end")
 	}
 
-	if agentTotalCPU == -1 {
+	if cpu == -1 {
 		agentTotalCPU = systemCPUs()
+	} else {
+		agentTotalCPU = uint64(cpu)
 	}
 
-	if agentTotalMem == -1 {
-		mem, err := systemMemoryMB()
+	if mem == -1 {
+		memory, err := systemMemoryMB()
 		if err != nil {
 			log.Fatal("unable to get available memory: ", err)
 		}
-
-		agentTotalMem = mem
+		agentTotalMem = memory
+	} else {
+		agentTotalMem = uint64(mem)
 	}
 
 	var (

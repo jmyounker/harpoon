@@ -19,7 +19,7 @@ type agentState struct {
 }
 
 type freeResources struct {
-	memory  float64
+	memory  uint64
 	cpus    float64
 	volumes map[string]struct{}
 }
@@ -114,7 +114,7 @@ func randomFit(
 		}
 
 		resource.cpus -= task.cfg.CPUs
-		resource.memory -= float64(task.cfg.Memory)
+		resource.memory -= task.cfg.Memory
 		resources[task.endpoint] = resource
 	}
 
@@ -138,7 +138,7 @@ func randomFit(
 
 		hostResources := resources[endpoint]
 		hostResources.cpus -= cfg.CPUs
-		hostResources.memory -= float64(cfg.Memory)
+		hostResources.memory -= cfg.Memory
 		resources[endpoint] = hostResources
 	}
 
@@ -173,7 +173,7 @@ func match(cfg agent.ContainerConfig, resources freeResources) bool {
 		return false
 	}
 
-	if float64(cfg.Memory) > resources.memory {
+	if cfg.Memory > resources.memory {
 		return false
 	}
 

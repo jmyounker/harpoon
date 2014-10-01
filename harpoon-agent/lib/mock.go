@@ -39,7 +39,7 @@ func NewMock() *Mock {
 		instances:   map[string]ContainerInstance{},
 		subscribers: map[chan<- StateEvent]struct{}{},
 		hostResources: HostResources{
-			Memory:  TotalReserved{Total: 32768, Reserved: 0},
+			Memory:  TotalReservedInt{Total: 32768, Reserved: 0},
 			CPUs:    TotalReserved{Total: 8, Reserved: 0},
 			Storage: TotalReserved{Total: 322122547200, Reserved: 0},
 			Volumes: []string{"/data/analytics-kibana", "/data/mysql000", "/data/mysql001"},
@@ -195,7 +195,7 @@ func (m *Mock) createContainer(w http.ResponseWriter, r *http.Request, p httprou
 		defer m.Unlock()
 		m.instances[id] = instance
 		m.hostResources.CPUs.Reserved += instance.CPUs
-		m.hostResources.Memory.Reserved += float64(instance.Memory)
+		m.hostResources.Memory.Reserved += instance.Memory
 		broadcast(m.subscribers, StateEvent{Resources: m.hostResources, Containers: m.instances})
 	}()
 
@@ -246,7 +246,7 @@ func (m *Mock) destroyContainer(w http.ResponseWriter, r *http.Request, p httpro
 		instance.ContainerStatus = ContainerStatusDeleted
 		m.instances[id] = instance
 		m.hostResources.CPUs.Reserved -= instance.CPUs
-		m.hostResources.Memory.Reserved -= float64(instance.Memory)
+		m.hostResources.Memory.Reserved -= instance.Memory
 		broadcast(m.subscribers, StateEvent{Resources: m.hostResources, Containers: m.instances})
 		delete(m.instances, id)
 		w.WriteHeader(http.StatusOK)
@@ -313,6 +313,5 @@ func (m *Mock) getContainerLog(w http.ResponseWriter, r *http.Request, p httprou
 
 func (m *Mock) getResources(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 	defer atomic.AddInt32(&m.getResourcesCount, 1)
-
 	json.NewEncoder(w).Encode(m.hostResources)
 }

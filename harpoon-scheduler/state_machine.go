@@ -120,7 +120,7 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 	var (
 		subs    = map[chan<- map[string]agentState]struct{}{}
 		current = agentState{
-			resources: freeResources{memory: -1, cpus: -1, volumes: map[string]struct{}{}},
+			resources: freeResources{memory: 0, cpus: -1, volumes: map[string]struct{}{}},
 			instances: map[string]agent.ContainerInstance{},
 		}
 		tangos   = map[string]time.Time{} // container ID to be destroyed: deadline
@@ -328,7 +328,7 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 
 		case <-abandonc:
 			current = agentState{
-				resources: freeResources{memory: -1, cpus: -1, volumes: map[string]struct{}{}},
+				resources: freeResources{memory: 0, cpus: -1, volumes: map[string]struct{}{}},
 				instances: map[string]agent.ContainerInstance{},
 			}
 			broadcast()

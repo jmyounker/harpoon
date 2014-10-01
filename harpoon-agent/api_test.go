@@ -54,7 +54,7 @@ func TestContainerList(t *testing.T) {
 
 	expected := agent.HostResources{
 		CPUs:    agent.TotalReserved{Total: 2.0, Reserved: 0.0},
-		Memory:  agent.TotalReserved{Total: 1000.0, Reserved: 0.0},
+		Memory:  agent.TotalReservedInt{Total: 1000.0, Reserved: 0.0},
 		Volumes: []string{"/tmp"},
 	}
 

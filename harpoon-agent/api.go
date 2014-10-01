@@ -325,16 +325,19 @@ func resources(instances map[string]agent.ContainerInstance) agent.HostResources
 		volumes = append(volumes, vol)
 	}
 
-	var reservedMem, reservedCPU float64
+	var (
+		reservedMem uint64
+		reservedCPU float64
+	)
 
 	for _, instance := range instances {
-		reservedMem += float64(instance.ContainerConfig.Resources.Memory)
-		reservedCPU += float64(instance.ContainerConfig.Resources.CPUs)
+		reservedMem += instance.ContainerConfig.Resources.Memory
+		reservedCPU += instance.ContainerConfig.Resources.CPUs
 	}
 
 	return agent.HostResources{
-		Memory: agent.TotalReserved{
-			Total:    float64(agentTotalMem),
+		Memory: agent.TotalReservedInt{
+			Total:    agentTotalMem,
 			Reserved: reservedMem,
 		},
 		CPUs: agent.TotalReserved{
