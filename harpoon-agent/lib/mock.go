@@ -19,8 +19,9 @@ type Mock struct {
 
 	sync.RWMutex
 	instances   map[string]ContainerInstance
-	subscribers map[chan<- map[string]ContainerInstance]struct{}
+	subscribers map[chan<- StateEvent]struct{}
 
+	hostResources         HostResources
 	listContainersCount   int32
 	createContainerCount  int32
 	getContainerCount     int32
@@ -36,7 +37,13 @@ func NewMock() *Mock {
 	m := &Mock{
 		Router:      httprouter.New(),
 		instances:   map[string]ContainerInstance{},
-		subscribers: map[chan<- map[string]ContainerInstance]struct{}{},
+		subscribers: map[chan<- StateEvent]struct{}{},
+		hostResources: HostResources{
+			Memory:  TotalReservedInt{Total: 32768, Reserved: 0},
+			CPUs:    TotalReserved{Total: 8, Reserved: 0},
+			Storage: TotalReserved{Total: 322122547200, Reserved: 0},
+			Volumes: []string{"/data/analytics-kibana", "/data/mysql000", "/data/mysql001"},
+		},
 	}
 
 	m.Router.GET(APIVersionPrefix+APIListContainersPath, m.listContainers)
@@ -51,21 +58,21 @@ func NewMock() *Mock {
 	return m
 }
 
-func (m *Mock) subscribe(c chan<- map[string]ContainerInstance) {
+func (m *Mock) subscribe(c chan<- StateEvent) {
 	m.Lock()
 	defer m.Unlock()
 
 	m.subscribers[c] = struct{}{}
 }
 
-func (m *Mock) unsubscribe(c chan<- map[string]ContainerInstance) {
+func (m *Mock) unsubscribe(c chan<- StateEvent) {
 	m.Lock()
 	defer m.Unlock()
 
 	delete(m.subscribers, c)
 }
 
-func broadcast(dst map[chan<- map[string]ContainerInstance]struct{}, src map[string]ContainerInstance) {
+func broadcast(dst map[chan<- StateEvent]struct{}, src StateEvent) {
 	for c := range dst {
 		select {
 		case c <- src:
@@ -87,12 +94,17 @@ func (m *Mock) listContainers(w http.ResponseWriter, r *http.Request, p httprout
 
 	if strings.Contains(r.Header.Get("Accept"), "text/event-stream") {
 		eventsource.Handler(func(lastID string, enc *eventsource.Encoder, stop <-chan bool) {
-			changec := make(chan map[string]ContainerInstance)
+			changec := make(chan StateEvent)
 
 			m.subscribe(changec)
 			defer m.unsubscribe(changec)
 
-			buf, _ := json.Marshal(m.getContainerInstances())
+			buf, _ := json.Marshal(
+				StateEvent{
+					Resources:  m.hostResources,
+					Containers: m.getContainerInstances(),
+				},
+			)
 			enc.Encode(eventsource.Event{Data: buf})
 
 			for {
@@ -101,8 +113,8 @@ func (m *Mock) listContainers(w http.ResponseWriter, r *http.Request, p httprout
 					log.Printf("mockAgent getContainerEvents: HTTP request closed")
 					return
 
-				case instances := <-changec:
-					buf, _ = json.Marshal(instances)
+				case state := <-changec:
+					buf, _ = json.Marshal(state)
 					enc.Encode(eventsource.Event{Data: buf})
 				}
 			}
@@ -125,13 +137,16 @@ func (m *Mock) getContainerEvents(w http.ResponseWriter, r *http.Request, p http
 	var (
 		enc     = eventsource.NewEncoder(w)
 		closec  = closeNotifier.CloseNotify()
-		changec = make(chan map[string]ContainerInstance)
+		changec = make(chan StateEvent)
 	)
 
 	m.subscribe(changec)
 	defer m.unsubscribe(changec)
 
-	buf, err := json.Marshal(m.getContainerInstances())
+	buf, err := json.Marshal(StateEvent{
+		Resources:  m.hostResources,
+		Containers: m.getContainerInstances(),
+	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -143,8 +158,8 @@ func (m *Mock) getContainerEvents(w http.ResponseWriter, r *http.Request, p http
 
 	for {
 		select {
-		case instances := <-changec:
-			buf, _ := json.Marshal(instances)
+		case state := <-changec:
+			buf, _ := json.Marshal(state)
 			enc.Encode(eventsource.Event{Data: buf})
 		case <-closec:
 			log.Printf("mockAgent getContainerEvents: HTTP request closed")
@@ -179,7 +194,9 @@ func (m *Mock) createContainer(w http.ResponseWriter, r *http.Request, p httprou
 		m.Lock()
 		defer m.Unlock()
 		m.instances[id] = instance
-		broadcast(m.subscribers, m.instances)
+		m.hostResources.CPUs.Reserved += instance.CPUs
+		m.hostResources.Memory.Reserved += instance.Memory
+		broadcast(m.subscribers, StateEvent{Resources: m.hostResources, Containers: m.instances})
 	}()
 
 	w.WriteHeader(http.StatusCreated)
@@ -228,7 +245,9 @@ func (m *Mock) destroyContainer(w http.ResponseWriter, r *http.Request, p httpro
 	case ContainerStatusFailed, ContainerStatusFinished:
 		instance.ContainerStatus = ContainerStatusDeleted
 		m.instances[id] = instance
-		broadcast(m.subscribers, m.instances)
+		m.hostResources.CPUs.Reserved -= instance.CPUs
+		m.hostResources.Memory.Reserved -= instance.Memory
+		broadcast(m.subscribers, StateEvent{Resources: m.hostResources, Containers: m.instances})
 		delete(m.instances, id)
 		w.WriteHeader(http.StatusOK)
 		return
@@ -282,7 +301,7 @@ func (m *Mock) stopContainer(w http.ResponseWriter, r *http.Request, p httproute
 		m.Lock()
 		defer m.Unlock()
 		m.instances[id] = instance
-		broadcast(m.subscribers, m.instances)
+		broadcast(m.subscribers, StateEvent{Containers: m.instances})
 	}()
 }
 
@@ -294,11 +313,5 @@ func (m *Mock) getContainerLog(w http.ResponseWriter, r *http.Request, p httprou
 
 func (m *Mock) getResources(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 	defer atomic.AddInt32(&m.getResourcesCount, 1)
-
-	json.NewEncoder(w).Encode(HostResources{
-		Memory:  TotalReservedInt{Total: 32768, Reserved: 16384},
-		CPUs:    TotalReserved{Total: 8, Reserved: 1},
-		Storage: TotalReserved{Total: 322122547200, Reserved: 123125031034},
-		Volumes: []string{"/data/analytics-kibana", "/data/mysql000", "/data/mysql001"},
-	})
+	json.NewEncoder(w).Encode(m.hostResources)
 }

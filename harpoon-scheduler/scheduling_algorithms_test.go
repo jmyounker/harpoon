@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -45,20 +46,35 @@ func TestMatch(t *testing.T) {
 }
 
 func TestFilter(t *testing.T) {
-	var states = map[string]agentState{
-		"state1": newAgentState(700, 3, []string{"/a", "/b", "/c"}),
-		"state2": newAgentState(200, 11, []string{"/a", "/c"}),
-		"state3": newAgentState(1, 1, []string{}),
-		"state4": newAgentState(700, 3, []string{"/b"}),
+	var resources = map[string]freeResources{
+		"state1": freeResources{
+			cpus:    3,
+			memory:  700,
+			volumes: toSet([]string{"/a", "/b", "/c"}),
+		},
+		"state2": freeResources{
+			cpus:    11,
+			memory:  200,
+			volumes: toSet([]string{"/a", "/c"}),
+		},
+		"state3": freeResources{
+			cpus:    1,
+			memory:  1,
+			volumes: toSet([]string{}),
+		},
+		"state4": freeResources{
+			cpus:    3,
+			memory:  700,
+			volumes: toSet([]string{"/b"}),
+		},
 	}
 
-	free := calculateFreeResources(states)
-	validAgents := filter(newConfig(1100, 12, map[string]string{}), free)
+	validAgents := filter(newConfig(1100, 12, map[string]string{}), resources)
 	if len(validAgents) != 0 {
 		t.Errorf("found agent for config with infeasible resources")
 	}
 
-	validAgents = filter(newConfig(300, 2, map[string]string{"/a": "", "/b": ""}), free)
+	validAgents = filter(newConfig(300, 2, map[string]string{"/a": "", "/b": ""}), resources)
 	if expected, actual := 1, len(validAgents); actual != expected {
 		t.Fatalf("number of valid agents found: actual %d != expected %d", actual, expected)
 	}
@@ -66,17 +82,21 @@ func TestFilter(t *testing.T) {
 		t.Error("missing valid agent after filtering")
 	}
 
-	free["state"] = freeResources{10000, 100, map[string]struct{}{}}
-	validAgents = filter(newConfig(1, 1, map[string]string{}), free)
-	if expected, actual := len(free), len(validAgents); actual != expected {
+	resources["state"] = freeResources{
+		cpus:    100,
+		memory:  10000,
+		volumes: toSet([]string{}),
+	}
+	validAgents = filter(newConfig(1, 1, map[string]string{}), resources)
+	if expected, actual := len(resources), len(validAgents); actual != expected {
 		t.Fatalf("number of valid agents found: actual %d != expected %d", actual, expected)
 	}
 
 	for _, agent := range validAgents {
-		if _, ok := free[agent]; !ok {
+		if _, ok := resources[agent]; !ok {
 			t.Errorf("unexpected agent after filter %s", agent)
 		}
-		delete(free, agent)
+		delete(resources, agent)
 	}
 }
 
@@ -91,10 +111,34 @@ func TestRandomFit(t *testing.T) {
 			"cfg6": newConfig(1100, 12, map[string]string{}),
 		}
 		states = map[string]agentState{
-			"state1": newAgentState(700, 3, []string{"/a", "/b", "/c"}),
-			"state2": newAgentState(200, 11, []string{"/a", "/c"}),
-			"state3": newAgentState(1, 1, []string{}),
-			"state4": newAgentState(700, 3, []string{"/b"}),
+			"state1": agentState{
+				resources: freeResources{
+					cpus:    3,
+					memory:  700,
+					volumes: toSet([]string{"/a", "/b", "/c"}),
+				},
+			},
+			"state2": agentState{
+				resources: freeResources{
+					cpus:    11,
+					memory:  200,
+					volumes: toSet([]string{"/a", "/c"}),
+				},
+			},
+			"state3": agentState{
+				resources: freeResources{
+					cpus:    1,
+					memory:  1,
+					volumes: toSet([]string{}),
+				},
+			},
+			"state4": agentState{
+				resources: freeResources{
+					cpus:    3,
+					memory:  700,
+					volumes: toSet([]string{"/b"}),
+				},
+			},
 		}
 		expectedMapping = []struct {
 			name           string
@@ -106,7 +150,7 @@ func TestRandomFit(t *testing.T) {
 		}
 	)
 
-	mapping, unscheduled := randomFit(cfgs, states)
+	mapping, unscheduled := randomFit(cfgs, states, map[string]pendingTask{})
 	if len(mapping) != len(expectedMapping) {
 		t.Fatalf("wrong count of agents with scheduled tasks: actual %d != expected %d", len(mapping), len(expectedMapping))
 	}
@@ -166,13 +210,77 @@ func TestRandomFit(t *testing.T) {
 	}
 }
 
+func TestRandomFitWithPendingTasks(t *testing.T) {
+	var (
+		cfgs   = map[string]agent.ContainerConfig{}
+		states = map[string]agentState{
+			"state1": agentState{
+				resources: freeResources{
+					cpus:    5.5,
+					memory:  1100,
+					volumes: toSet([]string{"/a", "/b", "/c"}),
+				},
+			},
+		}
+		pendingTasks = map[string]pendingTask{}
+	)
+
+	for i := 0; i < 11; i++ {
+		cfgs[fmt.Sprintf("cfg%d", i)] = newConfig(100, 0.5, map[string]string{"/a": "", "/b": ""})
+
+		id := fmt.Sprintf("cfg1%d", i)
+		pendingTasks[id] = pendingTask{
+			id:       id,
+			endpoint: "state1",
+			cfg: agent.ContainerConfig{
+				Resources: agent.Resources{
+					CPUs:   0.5,
+					Memory: 100,
+				},
+			},
+		}
+	}
+
+	mapping, unscheduled := randomFit(cfgs, states, pendingTasks)
+	fmt.Println(mapping)
+	if want, have := 0, len(mapping); want != have {
+		t.Errorf("not right count of scheduled tasks: expected %d != actual %d", want, have)
+	}
+
+	if want, have := len(cfgs), len(unscheduled); want != have {
+		t.Errorf("not right count of unscheduled tasks: expected %d != actual %d", want, have)
+	}
+
+	states["state2"] = agentState{
+		resources: freeResources{
+			cpus:    5.5,
+			memory:  1100,
+			volumes: toSet([]string{"/a", "/b", "/c"}),
+		},
+	}
+
+	mapping, unscheduled = randomFit(cfgs, states, pendingTasks)
+	if want, have := 1, len(mapping); want != have {
+		t.Errorf("not right count of scheduled tasks: expected %d != actual %d", want, have)
+	}
+
+	if want, have := 0, len(unscheduled); want != have {
+		t.Errorf("not right count of unscheduled tasks: expected %d != actual %d", want, have)
+	}
+
+	if instances, ok := mapping["state2"]; !ok || len(instances) != len(cfgs) {
+		t.Fatalf("On agent should be all cfg ")
+	}
+
+}
+
 func TestRandomFitWithoutResources(t *testing.T) {
 	var (
 		cfgs   = map[string]agent.ContainerConfig{}
 		states = map[string]agentState{}
 	)
 
-	mapping, unscheduled := randomFit(cfgs, states)
+	mapping, unscheduled := randomFit(cfgs, states, map[string]pendingTask{})
 	if expected, actual := 0, len(unscheduled); actual != expected {
 		t.Fatalf("unscheduled task count: actual %d != expected %d", actual, expected)
 	}
@@ -183,7 +291,7 @@ func TestRandomFitWithoutResources(t *testing.T) {
 	cfgs["random1"] = newConfig(100, 12, map[string]string{"/a": ""})
 	cfgs["random2"] = newConfig(100, 12, map[string]string{})
 
-	mapping, unscheduled = randomFit(cfgs, states)
+	mapping, unscheduled = randomFit(cfgs, states, map[string]pendingTask{})
 	if expected, actual := 0, len(mapping); actual != expected {
 		t.Fatalf("unscheduled task count: actual %d != expected %d", actual, expected)
 	}
@@ -200,20 +308,6 @@ func newConfig(memory uint64, cpus float64, volumes map[string]string) agent.Con
 			CPUs:   cpus,
 		},
 		Storage: agent.Storage{
-			Volumes: volumes,
-		},
-	}
-}
-
-func newAgentState(memory uint64, cpus float64, volumes []string) agentState {
-	return agentState{
-		resources: agent.HostResources{
-			CPUs: agent.TotalReserved{
-				Total: cpus,
-			},
-			Memory: agent.TotalReservedInt{
-				Total: memory,
-			},
 			Volumes: volumes,
 		},
 	}

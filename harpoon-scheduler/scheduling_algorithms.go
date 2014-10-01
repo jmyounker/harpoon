@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"math/rand"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
@@ -13,7 +14,7 @@ import (
 
 type agentState struct {
 	instances map[string]agent.ContainerInstance
-	resources agent.HostResources
+	resources freeResources
 	dirty     bool
 }
 
@@ -29,13 +30,22 @@ func makeContainerID(cfg configstore.JobConfig, i int) string {
 
 // randomChoice is a dumb scheduling algorithm.
 //
-//  cfgs:   container ID -> ContainerConfig - should be scheduled
-//  states: endpoint -> agentState          - candidate agents
+//  cfgs:    container ID -> ContainerConfig - should be scheduled
+//  states:  endpoint -> agentState          - candidate agents
+//  pending: container ID -> pendingTask     - already scheduled tasks in pending state
 //
 //  return:
-//		mapping: endpoint -> (container ID -> ContainerConfig)
-//		unscheduledCfg: container ID -> ContainerConfig
-func randomChoice(cfgs map[string]agent.ContainerConfig, states map[string]agentState) (map[string]map[string]agent.ContainerConfig, map[string]agent.ContainerConfig) {
+//		mapping:     endpoint -> (container ID -> ContainerConfig)
+//		unscheduled: container ID -> ContainerConfig
+//
+func randomChoice(
+	cfgs map[string]agent.ContainerConfig,
+	states map[string]agentState,
+	pending map[string]pendingTask,
+) (
+	map[string]map[string]agent.ContainerConfig,
+	map[string]agent.ContainerConfig,
+) {
 	var mapping = map[string]map[string]agent.ContainerConfig{}
 
 	if len(states) <= 0 {
@@ -70,18 +80,43 @@ func randomChoice(cfgs map[string]agent.ContainerConfig, states map[string]agent
 // randomFit is a naïve scheduling algorithm which schedules configurations
 // on a random agent that matches the requirements.
 //
-//  cfgs:   container ID -> ContainerConfig - should be scheduled
-//  states: endpoint -> agentState          - candidate agents
+//  cfgs:    container ID -> ContainerConfig - should be scheduled
+//  states:  endpoint -> agentState          - candidate agents
+//  pending: container ID -> pendingTask     - already scheduled tasks in pending state
 //
 //  return:
-//		mapping: endpoint -> (container ID -> ContainerConfig)
-//		unscheduledCfg: container ID -> ContainerConfig
-func randomFit(cfgs map[string]agent.ContainerConfig, states map[string]agentState) (map[string]map[string]agent.ContainerConfig, map[string]agent.ContainerConfig) {
+//		mapping:     endpoint -> (container ID -> ContainerConfig)
+//		unscheduled: container ID -> ContainerConfig
+//
+func randomFit(
+	cfgs map[string]agent.ContainerConfig,
+	states map[string]agentState,
+	pending map[string]pendingTask,
+) (
+	map[string]map[string]agent.ContainerConfig,
+	map[string]agent.ContainerConfig,
+) {
 	var (
 		mapping     = map[string]map[string]agent.ContainerConfig{}
-		resources   = calculateFreeResources(states)
 		unscheduled = map[string]agent.ContainerConfig{}
+		resources   = make(map[string]freeResources, len(states))
 	)
+
+	for id, state := range states {
+		resources[id] = state.resources
+	}
+
+	for _, task := range pending {
+		resource, ok := resources[task.endpoint]
+		if !ok {
+			log.Println("Agent disappeared", task.endpoint)
+			continue
+		}
+
+		resource.cpus -= task.cfg.CPUs
+		resource.memory -= task.cfg.Memory
+		resources[task.endpoint] = resource
+	}
 
 	for id, cfg := range cfgs {
 		validEndpoints := filter(cfg, resources)
@@ -101,26 +136,13 @@ func randomFit(cfgs map[string]agent.ContainerConfig, states map[string]agentSta
 
 		mapping[endpoint] = placed
 
-		endpointResources := resources[endpoint]
-		endpointResources.cpus -= cfg.CPUs
-
-		endpointResources.memory -= cfg.Memory
-		resources[endpoint] = endpointResources
+		hostResources := resources[endpoint]
+		hostResources.cpus -= cfg.CPUs
+		hostResources.memory -= cfg.Memory
+		resources[endpoint] = hostResources
 	}
 
 	return mapping, unscheduled
-}
-
-func calculateFreeResources(states map[string]agentState) map[string]freeResources {
-	var resources = map[string]freeResources{}
-	for endpoint, state := range states {
-		resources[endpoint] = freeResources{
-			cpus:    state.resources.CPUs.Total - state.resources.CPUs.Reserved,
-			memory:  state.resources.Memory.Total - state.resources.Memory.Reserved,
-			volumes: toSet(state.resources.Volumes),
-		}
-	}
-	return resources
 }
 
 func toSet(array []string) map[string]struct{} {
@@ -131,11 +153,11 @@ func toSet(array []string) map[string]struct{} {
 	return set
 }
 
-func filter(cfg agent.ContainerConfig, resources map[string]freeResources) []string {
-	var validEndpoints = make([]string, 0, len(resources))
+func filter(cfg agent.ContainerConfig, free map[string]freeResources) []string {
+	var validEndpoints = make([]string, 0, len(free))
 
-	for endpoint, resource := range resources {
-		if !match(cfg, resource) {
+	for endpoint, resources := range free {
+		if !match(cfg, resources) {
 			continue
 		}
 
@@ -156,8 +178,7 @@ func match(cfg agent.ContainerConfig, resources freeResources) bool {
 	}
 
 	for volume := range cfg.Volumes {
-		_, ok := resources.volumes[volume]
-		if !ok {
+		if _, ok := resources.volumes[volume]; !ok {
 			return false
 		}
 	}

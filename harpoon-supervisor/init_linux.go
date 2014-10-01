@@ -12,7 +12,11 @@ import (
 	"github.com/docker/libcontainer"
 	"github.com/docker/libcontainer/namespaces"
 	"github.com/docker/libcontainer/syncpipe"
+
+	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
+
+const DefaultFDs uint64 = 4069
 
 func init() {
 	// If the process name is harpoon-container-init (set by commandBuilder in
@@ -49,6 +53,31 @@ func init() {
 
 	if len(args) == 0 {
 		syncPipe.ReportChildError(fmt.Errorf("no command given for container"))
+		os.Exit(2)
+	}
+
+	// Load and parse Harpoon agent Config
+	agentFile, err := os.Open(agentFileName)
+	if err != nil {
+		syncPipe.ReportChildError(fmt.Errorf("unable to open %q: %s", agentFileName, err))
+		os.Exit(2)
+	}
+	defer agentFile.Close()
+
+	var agentConfig agent.ContainerConfig
+	if err := json.NewDecoder(agentFile).Decode(&agentConfig); err != nil {
+		syncPipe.ReportChildError(fmt.Errorf("unable to parse %q: %s", agentFileName, err))
+		os.Exit(2)
+	}
+
+	// Set file descriptor count.
+	fds := agentConfig.Resources.FDs
+	if fds == 0 {
+		fds = DefaultFDs
+	}
+	err = syscall.Setrlimit(syscall.RLIMIT_NOFILE, &syscall.Rlimit{Cur: fds, Max: fds})
+	if err != nil {
+		syncPipe.ReportChildError(fmt.Errorf("could not set fd limits to %d: %s", fds, err))
 		os.Exit(2)
 	}
 

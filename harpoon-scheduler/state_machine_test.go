@@ -32,7 +32,7 @@ func TestStateMachineBasicFunctionality(t *testing.T) {
 
 	var (
 		id       = "foo-container"
-		updatec  = make(chan map[string]map[string]agent.ContainerInstance)
+		updatec  = make(chan map[string]agentState)
 		currentc = make(chan string) // always for `id`
 	)
 
@@ -47,9 +47,9 @@ func TestStateMachineBasicFunctionality(t *testing.T) {
 					return
 				}
 				current = "most recent update didn't have the instance"
-				for endpoint, instances := range update {
+				for endpoint, state := range update {
 					if endpoint == server.URL {
-						for id0, instance := range instances {
+						for id0, instance := range state.instances {
 							if id0 == id {
 								current = fmt.Sprint(instance.ContainerStatus)
 							}
@@ -124,7 +124,7 @@ func TestStateMachineInterruption(t *testing.T) {
 		t.Fatal("machine snapshot missing its own endpoint")
 	}
 
-	if _, ok := preSnapshot[machine.endpoint()][id]; !ok {
+	if _, ok := preSnapshot[machine.endpoint()].instances[id]; !ok {
 		t.Fatal("machine snapshot missing expected container")
 	}
 
@@ -184,7 +184,7 @@ func TestStateMachineInterruption(t *testing.T) {
 		t.Fatal("machine snapshot missing its own endpoint")
 	}
 
-	if _, ok := postSnapshot[machine.endpoint()][id]; ok {
+	if _, ok := postSnapshot[machine.endpoint()].instances[id]; ok {
 		t.Fatal("machine snapshot has container that should have been abandoned")
 	}
 }

@@ -38,7 +38,9 @@ const (
 type realContainer struct {
 	agent.ContainerInstance
 
-	logs *containerLog
+	containerRoot string
+	portRange     *portRange
+	logs          *containerLog
 
 	supervisor      *supervisor
 	containerStatec chan agent.ContainerProcessState
@@ -53,7 +55,7 @@ type realContainer struct {
 // Satisfaction guaranteed.
 var _ container = &realContainer{}
 
-func newContainer(id string, config agent.ContainerConfig) *realContainer {
+func newContainer(id string, containerRoot string, config agent.ContainerConfig, pr *portRange) *realContainer {
 	c := &realContainer{
 		ContainerInstance: agent.ContainerInstance{
 			ID:              id,
@@ -61,7 +63,9 @@ func newContainer(id string, config agent.ContainerConfig) *realContainer {
 			ContainerConfig: config,
 		},
 
-		logs: newContainerLog(containerLogRingBufferSize),
+		containerRoot: containerRoot,
+		portRange:     pr,
+		logs:          newContainerLog(containerLogRingBufferSize),
 
 		subscribers: map[chan<- agent.ContainerInstance]struct{}{},
 
@@ -202,7 +206,7 @@ func (c *realContainer) loop() {
 
 func (c *realContainer) create() error {
 	var (
-		rundir = filepath.Join("/run/harpoon", c.ID)
+		rundir = filepath.Join(c.containerRoot, c.ID)
 		logdir = filepath.Join("/srv/harpoon/log/", c.ID)
 
 		agentJSONPath     = filepath.Join(rundir, "agent.json")
@@ -214,7 +218,10 @@ func (c *realContainer) create() error {
 		return err
 	}
 
-	c.assignPorts()
+	err := c.assignPorts()
+	if err != nil {
+		return fmt.Errorf("could not assign ports: %s", err)
+	}
 
 	// expand variables in command
 	command := c.ContainerConfig.Command.Exec
@@ -289,10 +296,14 @@ func (c *realContainer) validateConfig() error {
 
 // assignPorts assigns any automatic ports, updating the config's port and
 // environment maps.
-func (c *realContainer) assignPorts() {
+func (c *realContainer) assignPorts() error {
 	for name, port := range c.ContainerConfig.Ports {
 		if port == 0 {
-			port = uint16(nextPort())
+			var err error
+			port, err = c.portRange.getPort()
+			if err != nil {
+				return err
+			}
 		}
 
 		portName := fmt.Sprintf("PORT_%s", strings.ToUpper(name))
@@ -300,11 +311,12 @@ func (c *realContainer) assignPorts() {
 		c.ContainerConfig.Ports[name] = port
 		c.ContainerConfig.Env[portName] = strconv.Itoa(int(port))
 	}
+	return nil
 }
 
 func (c *realContainer) destroy() error {
 	var (
-		rundir = filepath.Join("/run/harpoon", c.ID)
+		rundir = filepath.Join(c.containerRoot, c.ID)
 	)
 
 	switch c.ContainerInstance.ContainerStatus {
@@ -314,6 +326,11 @@ func (c *realContainer) destroy() error {
 	}
 
 	c.updateStatus(agent.ContainerStatusDeleted)
+
+	// Return assigned ports
+	for _, port := range c.ContainerConfig.Ports {
+		c.portRange.returnPort(port) // doesn't matter if we try to remove unallocated ports
+	}
 
 	err := os.RemoveAll(rundir)
 	if err != nil {
@@ -370,7 +387,7 @@ func (c *realContainer) start() error {
 	}
 
 	var (
-		rundir = path.Join("/run/harpoon", c.ID)
+		rundir = path.Join(c.containerRoot, c.ID)
 		logdir = filepath.Join("/srv/harpoon/log/", c.ID)
 	)
 
@@ -479,22 +496,4 @@ func getArtifactDetails(artifactURL string) (string, string, error) {
 	default:
 		return "", "", fmt.Errorf("unknown suffix for artifact url: %s", artifactURL)
 	}
-}
-
-// HACK
-var port = make(chan int)
-
-func init() {
-	go func() {
-		i := 30000
-
-		for {
-			port <- i
-			i++
-		}
-	}()
-}
-
-func nextPort() int {
-	return <-port
 }

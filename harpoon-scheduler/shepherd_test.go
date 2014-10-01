@@ -61,8 +61,8 @@ func TestShepherdBasicFunctionality(t *testing.T) {
 	var (
 		discovery = newManualAgentDiscovery([]string{servers[0].URL}) // start with one
 		shepherd  = newRealShepherd(discovery)
-		updatec   = make(chan map[string]map[string]agent.ContainerInstance)
-		requestc  = make(chan map[string]map[string]agent.ContainerInstance)
+		updatec   = make(chan map[string]agentState)
+		requestc  = make(chan map[string]agentState)
 	)
 
 	go func() {
@@ -98,7 +98,7 @@ func TestShepherdBasicFunctionality(t *testing.T) {
 		t.Fatalf("%s not represented", servers[0].URL)
 	}
 
-	if want, have := 0, len(current[servers[0].URL]); want != have {
+	if want, have := 0, len(current[servers[0].URL].instances); want != have {
 		t.Fatalf("%s: want %d, have %d", servers[0].URL, want, have)
 	}
 
@@ -197,9 +197,39 @@ func TestShepherdBasicFunctionality(t *testing.T) {
 	if err := verifyInstances(t, <-requestc, s...); err != nil {
 		t.Fatal(err)
 	}
+
+	discovery.add(servers[0].URL)
+
+	ch := make(chan struct{})
+	go func() {
+		for i := 0; i <= 100; i++ {
+			shepherd.schedule(servers[0].URL, fmt.Sprintf("%d", i), agent.ContainerConfig{})
+		}
+		ch <- struct{}{}
+	}()
+
+	go func() {
+		for i := 0; i <= 102; i++ {
+			clients[0].Put(fmt.Sprintf("cfg%d", i), agent.ContainerConfig{})
+		}
+	}()
+
+	timeout := time.Second * 2
+	select {
+	case <-ch:
+	case <-time.After(timeout):
+		t.Fatalf("tasks not scheduled properly after %v", timeout)
+	}
+	time.Sleep(time.Second)
+	for i := 0; i <= 100; i++ {
+		id := fmt.Sprintf("%d", i)
+		if _, err := clients[0].Get(id); err != nil {
+			t.Fatalf("Container not found %q: %v", id, err)
+		}
+	}
 }
 
-func verifyInstances(t *testing.T, have map[string]map[string]agent.ContainerInstance, s ...string) error {
+func verifyInstances(t *testing.T, have map[string]agentState, s ...string) error {
 	if len(s)%3 != 0 {
 		return fmt.Errorf("bad invocation of verifyInstances")
 	}
@@ -217,13 +247,13 @@ func verifyInstances(t *testing.T, have map[string]map[string]agent.ContainerIns
 	}
 
 	for endpoint, statuses := range want {
-		instances, ok := have[endpoint]
+		state, ok := have[endpoint]
 		if !ok {
 			return fmt.Errorf("want endpoint %s, but it's missing", endpoint)
 		}
 
 		for id, status := range statuses {
-			instance, ok := instances[id]
+			instance, ok := state.instances[id]
 			if !ok {
 				return fmt.Errorf("endpoint %s, want %q, but it's missing", endpoint, id)
 			}
