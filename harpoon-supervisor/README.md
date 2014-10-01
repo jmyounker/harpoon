@@ -7,11 +7,15 @@
 `harpoon-supervisor` must be executed from a directory containing the following
 two files:
 
-  - `container.json`—a libcontainer container spec as json
+  - `agent.json`-a harpoon agent file: a json serialized agent.ContainerConfig object
   - `rootfs`—the container's root filesystem (directory or symlink)
 
-All arguments to `harpoon-supervisor` will be interpreted as the command to
-execute inside the container.
+The supervisor has two mandatory arguments, `--hostname` and `--ID`.  The hostname
+should be the hostname the supervisor thinks its running in, and ID should is an
+arbitrary string that uniquely identifies the container on this machine.
+
+These mandatory arguments are followed by the option '--' and everything after this
+options is interpreted as the command to be executed within the container.
 
 ## Signals
 
@@ -51,7 +55,7 @@ Currently supported commands are:
 ### Simulation
 
 ```
-$ harpoon-supervisor command &
+$ harpoon-supervisor --hostname your.host.name --ID somejobid -- command &
 
 $ socat UNIX-CONNECT:./control - &
 

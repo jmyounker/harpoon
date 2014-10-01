@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -14,11 +13,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-
-	"github.com/docker/libcontainer"
-	"github.com/docker/libcontainer/cgroups"
-	"github.com/docker/libcontainer/devices"
-	"github.com/docker/libcontainer/mount"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
@@ -44,7 +38,9 @@ const (
 type realContainer struct {
 	agent.ContainerInstance
 
-	logs *containerLog
+	containerRoot string
+	portRange     *portRange
+	logs          *containerLog
 
 	supervisor      *supervisor
 	containerStatec chan agent.ContainerProcessState
@@ -59,7 +55,7 @@ type realContainer struct {
 // Satisfaction guaranteed.
 var _ container = &realContainer{}
 
-func newContainer(id string, config agent.ContainerConfig) *realContainer {
+func newContainer(id string, containerRoot string, config agent.ContainerConfig, pr *portRange) *realContainer {
 	c := &realContainer{
 		ContainerInstance: agent.ContainerInstance{
 			ID:              id,
@@ -67,7 +63,9 @@ func newContainer(id string, config agent.ContainerConfig) *realContainer {
 			ContainerConfig: config,
 		},
 
-		logs: newContainerLog(containerLogRingBufferSize),
+		containerRoot: containerRoot,
+		portRange:     pr,
+		logs:          newContainerLog(containerLogRingBufferSize),
 
 		subscribers: map[chan<- agent.ContainerInstance]struct{}{},
 
@@ -191,6 +189,7 @@ func (c *realContainer) loop() {
 			c.supervisor.Unsubscribe(c.containerStatec)
 
 			if state.Err != "" {
+				log.Printf("[%s] failed: %s", c.ID, state.Err)
 				c.updateStatus(agent.ContainerStatusFailed)
 				continue
 			}
@@ -207,10 +206,10 @@ func (c *realContainer) loop() {
 
 func (c *realContainer) create() error {
 	var (
-		rundir = filepath.Join("/run/harpoon", c.ID)
+		rundir = filepath.Join(c.containerRoot, c.ID)
 		logdir = filepath.Join("/srv/harpoon/log/", c.ID)
 
-		containerJSONPath = filepath.Join(rundir, "container.json")
+		agentJSONPath     = filepath.Join(rundir, "agent.json")
 		rootfsSymlinkPath = filepath.Join(rundir, "rootfs")
 		logSymlinkPath    = filepath.Join(rundir, "log")
 	)
@@ -219,7 +218,10 @@ func (c *realContainer) create() error {
 		return err
 	}
 
-	c.assignPorts()
+	err := c.assignPorts()
+	if err != nil {
+		return fmt.Errorf("could not assign ports: %s", err)
+	}
 
 	// expand variables in command
 	command := c.ContainerConfig.Command.Exec
@@ -229,23 +231,29 @@ func (c *realContainer) create() error {
 		})
 	}
 
-	config, err := json.Marshal(c.libcontainerConfig())
-	if err != nil {
-		return err
-	}
-
-	if err := os.MkdirAll(rundir, os.ModePerm); err != nil {
+	// Create directories need for container
+	if err := os.MkdirAll(rundir, 0775); err != nil {
 		return fmt.Errorf("mkdir all %s: %s", rundir, err)
 	}
 
-	if err := os.MkdirAll(logdir, os.ModePerm); err != nil {
+	if err := os.MkdirAll(logdir, 0775); err != nil {
 		return fmt.Errorf("mkdir all %s: %s", logdir, err)
 	}
 
-	if err := ioutil.WriteFile(containerJSONPath, config, os.ModePerm); err != nil {
+	// Write agent config file
+	agentFile, err := os.OpenFile(agentJSONPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	defer agentFile.Close()
+
+	if err := json.NewEncoder(agentFile).Encode(c.ContainerConfig); err != nil {
 		return err
 	}
 
+	if *debug {
+		log.Printf("agent file written to: %s", agentJSONPath)
+	}
 	// TODO(pb): it's a problem that this is blocking
 	rootfs, err := c.fetchArtifact()
 	if err != nil {
@@ -260,6 +268,9 @@ func (c *realContainer) create() error {
 		return fmt.Errorf("symlink log: %s", err)
 	}
 
+	if *debug {
+		log.Printf("artifact successfully retrieved and unpacked")
+	}
 	return nil
 }
 
@@ -285,10 +296,14 @@ func (c *realContainer) validateConfig() error {
 
 // assignPorts assigns any automatic ports, updating the config's port and
 // environment maps.
-func (c *realContainer) assignPorts() {
+func (c *realContainer) assignPorts() error {
 	for name, port := range c.ContainerConfig.Ports {
 		if port == 0 {
-			port = uint16(nextPort())
+			var err error
+			port, err = c.portRange.getPort()
+			if err != nil {
+				return err
+			}
 		}
 
 		portName := fmt.Sprintf("PORT_%s", strings.ToUpper(name))
@@ -296,64 +311,12 @@ func (c *realContainer) assignPorts() {
 		c.ContainerConfig.Ports[name] = port
 		c.ContainerConfig.Env[portName] = strconv.Itoa(int(port))
 	}
-}
-
-// libcontainerConfig builds a complete libcontainer.Config from an
-// agent.ContainerConfig.
-func (c *realContainer) libcontainerConfig() *libcontainer.Config {
-	var (
-		config = &libcontainer.Config{
-			Hostname: hostname,
-			// daemon user and group; must be numeric as we make no assumptions about
-			// the presence or contents of "/etc/passwd" in the container.
-			User:       "1:1",
-			WorkingDir: c.ContainerConfig.Command.WorkingDir,
-			Namespaces: map[string]bool{
-				"NEWNS":  true, // mounts
-				"NEWUTS": true, // hostname
-				"NEWIPC": true, // system V ipc
-				"NEWPID": true, // pid
-			},
-			Cgroups: &cgroups.Cgroup{
-				Name:   c.ID,
-				Parent: "harpoon",
-
-				Memory: int64(c.ContainerConfig.Resources.Memory * 1024 * 1024),
-
-				AllowedDevices: devices.DefaultAllowedDevices,
-			},
-			MountConfig: &libcontainer.MountConfig{
-				DeviceNodes: devices.DefaultAllowedDevices,
-				Mounts: []*mount.Mount{
-					{Type: "bind", Source: "/etc/resolv.conf", Destination: "/etc/resolv.conf", Private: true},
-				},
-				ReadonlyFs: true,
-			},
-		}
-	)
-
-	for k, v := range c.ContainerConfig.Env {
-		config.Env = append(config.Env, fmt.Sprintf("%s=%s", k, v))
-	}
-
-	for dest, source := range c.ContainerConfig.Storage.Volumes {
-		config.MountConfig.Mounts = append(config.MountConfig.Mounts, &mount.Mount{
-			Type: "bind", Source: source, Destination: dest, Writable: true, Private: true,
-		})
-	}
-
-	for dest := range c.ContainerConfig.Storage.Temp {
-		config.MountConfig.Mounts = append(config.MountConfig.Mounts, &mount.Mount{
-			Type: "tmpfs", Destination: dest, Writable: true, Private: true,
-		})
-	}
-
-	return config
+	return nil
 }
 
 func (c *realContainer) destroy() error {
 	var (
-		rundir = filepath.Join("/run/harpoon", c.ID)
+		rundir = filepath.Join(c.containerRoot, c.ID)
 	)
 
 	switch c.ContainerInstance.ContainerStatus {
@@ -363,6 +326,11 @@ func (c *realContainer) destroy() error {
 	}
 
 	c.updateStatus(agent.ContainerStatusDeleted)
+
+	// Return assigned ports
+	for _, port := range c.ContainerConfig.Ports {
+		c.portRange.returnPort(port) // doesn't matter if we try to remove unallocated ports
+	}
 
 	err := os.RemoveAll(rundir)
 	if err != nil {
@@ -419,7 +387,7 @@ func (c *realContainer) start() error {
 	}
 
 	var (
-		rundir = path.Join("/run/harpoon", c.ID)
+		rundir = path.Join(c.containerRoot, c.ID)
 		logdir = filepath.Join("/srv/harpoon/log/", c.ID)
 	)
 
@@ -439,7 +407,7 @@ func (c *realContainer) start() error {
 	// ensure we don't hold on to the logger
 	defer logPipe.Close()
 
-	s := newSupervisor(rundir)
+	s := newSupervisor(c.ID, rundir)
 
 	if err := s.Start(c.ContainerConfig, logPipe, supervisorLog); err != nil {
 		return err
@@ -496,7 +464,7 @@ func extractArtifact(src io.Reader, dst string, compression string) (err error) 
 	cmd.Stdin = src
 
 	if err := cmd.Run(); err != nil {
-		return err
+		return fmt.Errorf("tar extraction failed: %s", err)
 	}
 
 	return nil
@@ -528,22 +496,4 @@ func getArtifactDetails(artifactURL string) (string, string, error) {
 	default:
 		return "", "", fmt.Errorf("unknown suffix for artifact url: %s", artifactURL)
 	}
-}
-
-// HACK
-var port = make(chan int)
-
-func init() {
-	go func() {
-		i := 30000
-
-		for {
-			port <- i
-			i++
-		}
-	}()
-}
-
-func nextPort() int {
-	return <-port
 }

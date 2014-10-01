@@ -14,7 +14,7 @@ import (
 
 type agentState struct {
 	instances map[string]agent.ContainerInstance
-	resources agent.HostResources
+	resources freeResources
 	dirty     bool
 }
 
@@ -98,9 +98,13 @@ func randomFit(
 ) {
 	var (
 		mapping     = map[string]map[string]agent.ContainerConfig{}
-		resources   = calculateFreeResources(states)
 		unscheduled = map[string]agent.ContainerConfig{}
+		resources   = make(map[string]freeResources, len(states))
 	)
+
+	for id, state := range states {
+		resources[id] = state.resources
+	}
 
 	for _, task := range pending {
 		resource, ok := resources[task.endpoint]
@@ -132,26 +136,13 @@ func randomFit(
 
 		mapping[endpoint] = placed
 
-		endpointResources := resources[endpoint]
-		endpointResources.cpus -= cfg.CPUs
-
-		endpointResources.memory -= float64(cfg.Memory)
-		resources[endpoint] = endpointResources
+		hostResources := resources[endpoint]
+		hostResources.cpus -= cfg.CPUs
+		hostResources.memory -= float64(cfg.Memory)
+		resources[endpoint] = hostResources
 	}
 
 	return mapping, unscheduled
-}
-
-func calculateFreeResources(states map[string]agentState) map[string]freeResources {
-	var resources = map[string]freeResources{}
-	for endpoint, state := range states {
-		resources[endpoint] = freeResources{
-			cpus:    state.resources.CPUs.Total - state.resources.CPUs.Reserved,
-			memory:  state.resources.Memory.Total - state.resources.Memory.Reserved,
-			volumes: toSet(state.resources.Volumes),
-		}
-	}
-	return resources
 }
 
 func toSet(array []string) map[string]struct{} {
@@ -162,11 +153,11 @@ func toSet(array []string) map[string]struct{} {
 	return set
 }
 
-func filter(cfg agent.ContainerConfig, resources map[string]freeResources) []string {
-	var validEndpoints = make([]string, 0, len(resources))
+func filter(cfg agent.ContainerConfig, free map[string]freeResources) []string {
+	var validEndpoints = make([]string, 0, len(free))
 
-	for endpoint, resource := range resources {
-		if !match(cfg, resource) {
+	for endpoint, resources := range free {
+		if !match(cfg, resources) {
 			continue
 		}
 

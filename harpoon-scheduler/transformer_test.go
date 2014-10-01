@@ -38,7 +38,7 @@ func TestTransform(t *testing.T) {
 
 	type testCase struct {
 		wantJobs      map[string]configstore.JobConfig
-		haveInstances map[string]map[string]agent.ContainerInstance
+		haveInstances map[string]agentState
 		started       map[string]map[string]agent.ContainerConfig
 		stopped       map[string]map[string]struct{}
 		countStarted  int
@@ -48,7 +48,7 @@ func TestTransform(t *testing.T) {
 	for i, input := range []testCase{
 		{
 			wantJobs:      map[string]configstore.JobConfig{},
-			haveInstances: map[string]map[string]agent.ContainerInstance{},
+			haveInstances: map[string]agentState{},
 			started:       map[string]map[string]agent.ContainerConfig{},
 			stopped:       map[string]map[string]struct{}{},
 			countStarted:  0,
@@ -56,7 +56,7 @@ func TestTransform(t *testing.T) {
 		},
 		{
 			wantJobs:      map[string]configstore.JobConfig{job: cfg},
-			haveInstances: map[string]map[string]agent.ContainerInstance{endpoint: map[string]agent.ContainerInstance{}},
+			haveInstances: map[string]agentState{endpoint: agentState{instances: map[string]agent.ContainerInstance{}}},
 			started:       map[string]map[string]agent.ContainerConfig{endpoint: map[string]agent.ContainerConfig{id: agent.ContainerConfig{}}},
 			stopped:       map[string]map[string]struct{}{},
 			countStarted:  1,
@@ -64,7 +64,7 @@ func TestTransform(t *testing.T) {
 		},
 		{
 			wantJobs:      map[string]configstore.JobConfig{job: cfg},
-			haveInstances: map[string]map[string]agent.ContainerInstance{endpoint: map[string]agent.ContainerInstance{id: agent.ContainerInstance{}}},
+			haveInstances: map[string]agentState{endpoint: agentState{instances: map[string]agent.ContainerInstance{id: agent.ContainerInstance{}}}},
 			started:       map[string]map[string]agent.ContainerConfig{},
 			stopped:       map[string]map[string]struct{}{},
 			countStarted:  0,
@@ -72,7 +72,7 @@ func TestTransform(t *testing.T) {
 		},
 		{
 			wantJobs:      map[string]configstore.JobConfig{},
-			haveInstances: map[string]map[string]agent.ContainerInstance{endpoint: map[string]agent.ContainerInstance{job: agent.ContainerInstance{}}},
+			haveInstances: map[string]agentState{endpoint: agentState{instances: map[string]agent.ContainerInstance{job: agent.ContainerInstance{}}}},
 			started:       map[string]map[string]agent.ContainerConfig{},
 			stopped:       map[string]map[string]struct{}{endpoint: map[string]struct{}{job: struct{}{}}},
 			countStarted:  0,
@@ -80,7 +80,7 @@ func TestTransform(t *testing.T) {
 		},
 		{
 			wantJobs:      map[string]configstore.JobConfig{},
-			haveInstances: map[string]map[string]agent.ContainerInstance{endpoint: containerInstances},
+			haveInstances: map[string]agentState{endpoint: agentState{instances: containerInstances}},
 			started:       map[string]map[string]agent.ContainerConfig{},
 			stopped:       map[string]map[string]struct{}{endpoint: stopped},
 			countStarted:  0,
@@ -88,7 +88,7 @@ func TestTransform(t *testing.T) {
 		},
 		{
 			wantJobs:      map[string]configstore.JobConfig{job: cfgScaled},
-			haveInstances: map[string]map[string]agent.ContainerInstance{endpoint: map[string]agent.ContainerInstance{}},
+			haveInstances: map[string]agentState{endpoint: agentState{instances: map[string]agent.ContainerInstance{}}},
 			started:       map[string]map[string]agent.ContainerConfig{endpoint: containerCfgs},
 			stopped:       map[string]map[string]struct{}{},
 			countStarted:  4,
@@ -96,10 +96,12 @@ func TestTransform(t *testing.T) {
 		},
 		{
 			wantJobs: map[string]configstore.JobConfig{job: cfgScaled},
-			haveInstances: map[string]map[string]agent.ContainerInstance{
-				endpoint: map[string]agent.ContainerInstance{
-					id: agent.ContainerInstance{},
-					makeContainerID(cfgScaled, 2): agent.ContainerInstance{},
+			haveInstances: map[string]agentState{
+				endpoint: agentState{
+					instances: map[string]agent.ContainerInstance{
+						id: agent.ContainerInstance{},
+						makeContainerID(cfgScaled, 2): agent.ContainerInstance{},
+					},
 				},
 			},
 			started: map[string]map[string]agent.ContainerConfig{
@@ -107,7 +109,8 @@ func TestTransform(t *testing.T) {
 					makeContainerID(cfgScaled, 0): agent.ContainerConfig{},
 					makeContainerID(cfgScaled, 1): agent.ContainerConfig{},
 					makeContainerID(cfgScaled, 3): agent.ContainerConfig{},
-				}},
+				},
+			},
 			stopped:      map[string]map[string]struct{}{endpoint: map[string]struct{}{id: struct{}{}}},
 			countStarted: 3,
 			countStopped: 1,
@@ -255,7 +258,7 @@ func TestTransformExpired(t *testing.T) {
 
 	type testCase struct {
 		wantJobs      map[string]configstore.JobConfig
-		haveInstances map[string]map[string]agent.ContainerInstance
+		haveInstances map[string]agentState
 		started       map[string]map[string]agent.ContainerConfig
 		stopped       map[string]map[string]struct{}
 		countStarted  int
@@ -265,7 +268,7 @@ func TestTransformExpired(t *testing.T) {
 	for i, input := range []testCase{
 		{
 			wantJobs:      map[string]configstore.JobConfig{job: cfg},
-			haveInstances: map[string]map[string]agent.ContainerInstance{endpoint: map[string]agent.ContainerInstance{}},
+			haveInstances: map[string]agentState{endpoint: agentState{instances: map[string]agent.ContainerInstance{}}},
 			started:       map[string]map[string]agent.ContainerConfig{endpoint: map[string]agent.ContainerConfig{id: agent.ContainerConfig{}}},
 			stopped:       map[string]map[string]struct{}{},
 			countStarted:  1,
@@ -273,7 +276,7 @@ func TestTransformExpired(t *testing.T) {
 		},
 		{
 			wantJobs:      map[string]configstore.JobConfig{job: cfg},
-			haveInstances: map[string]map[string]agent.ContainerInstance{endpoint: map[string]agent.ContainerInstance{id: agent.ContainerInstance{}}},
+			haveInstances: map[string]agentState{endpoint: agentState{instances: map[string]agent.ContainerInstance{id: agent.ContainerInstance{}}}},
 			started:       map[string]map[string]agent.ContainerConfig{},
 			stopped:       map[string]map[string]struct{}{},
 			countStarted:  0,
@@ -281,7 +284,7 @@ func TestTransformExpired(t *testing.T) {
 		},
 		{
 			wantJobs:      map[string]configstore.JobConfig{},
-			haveInstances: map[string]map[string]agent.ContainerInstance{endpoint: map[string]agent.ContainerInstance{job: agent.ContainerInstance{}}},
+			haveInstances: map[string]agentState{endpoint: agentState{instances: map[string]agent.ContainerInstance{job: agent.ContainerInstance{}}}},
 			started:       map[string]map[string]agent.ContainerConfig{},
 			stopped:       map[string]map[string]struct{}{endpoint: map[string]struct{}{job: struct{}{}}},
 			countStarted:  0,
@@ -349,9 +352,11 @@ func TestTaskSuccessfullyUnscheduled(t *testing.T) {
 		wantJobs      = map[string]configstore.JobConfig{job: cfg}
 		id            = makeContainerID(cfg, 0)
 		endpoint      = "state2"
-		haveInstances = map[string]map[string]agent.ContainerInstance{
-			endpoint: map[string]agent.ContainerInstance{
-				id: agent.ContainerInstance{},
+		haveInstances = map[string]agentState{
+			endpoint: agentState{
+				instances: map[string]agent.ContainerInstance{
+					id: agent.ContainerInstance{},
+				},
 			},
 		}
 
@@ -377,8 +382,10 @@ func TestTaskNotScheduledYet(t *testing.T) {
 		wantJobs      = map[string]configstore.JobConfig{job: cfg}
 		id            = makeContainerID(cfg, 0)
 		endpoint      = "state2"
-		haveInstances = map[string]map[string]agent.ContainerInstance{
-			endpoint: map[string]agent.ContainerInstance{},
+		haveInstances = map[string]agentState{
+			endpoint: agentState{
+				instances: map[string]agent.ContainerInstance{},
+			},
 		}
 
 		target = newMockTaskScheduler()
@@ -400,8 +407,10 @@ func TestPendingTask(t *testing.T) {
 	var (
 		wantJobs      = map[string]configstore.JobConfig{}
 		endpoint      = "state2"
-		haveInstances = map[string]map[string]agent.ContainerInstance{
-			endpoint: map[string]agent.ContainerInstance{},
+		haveInstances = map[string]agentState{
+			endpoint: agentState{
+				instances: map[string]agent.ContainerInstance{},
+			},
 		}
 
 		target = newMockTaskScheduler()
@@ -426,10 +435,12 @@ func TestEverythingOK(t *testing.T) {
 		wantJobs      = map[string]configstore.JobConfig{job: cfg}
 		id1           = makeContainerID(cfg, 0)
 		id2           = makeContainerID(cfg, 1)
-		haveInstances = map[string]map[string]agent.ContainerInstance{
-			"state2": map[string]agent.ContainerInstance{
-				id1: agent.ContainerInstance{},
-				id2: agent.ContainerInstance{},
+		haveInstances = map[string]agentState{
+			"state2": agentState{
+				instances: map[string]agent.ContainerInstance{
+					id1: agent.ContainerInstance{},
+					id2: agent.ContainerInstance{},
+				},
 			},
 		}
 
@@ -454,9 +465,11 @@ func TestScheduleNeeded(t *testing.T) {
 		id1           = makeContainerID(cfg, 0)
 		id2           = makeContainerID(cfg, 1)
 		endpoint      = "state2"
-		haveInstances = map[string]map[string]agent.ContainerInstance{
-			endpoint: map[string]agent.ContainerInstance{
-				id2: agent.ContainerInstance{},
+		haveInstances = map[string]agentState{
+			"state2": agentState{
+				instances: map[string]agent.ContainerInstance{
+					id2: agent.ContainerInstance{},
+				},
 			},
 		}
 
@@ -498,9 +511,11 @@ func TestUnscheduleNeeded(t *testing.T) {
 		wantJobs      = map[string]configstore.JobConfig{}
 		id1           = makeContainerID(cfg, 0)
 		endpoint      = "state2"
-		haveInstances = map[string]map[string]agent.ContainerInstance{
-			endpoint: map[string]agent.ContainerInstance{
-				id1: agent.ContainerInstance{},
+		haveInstances = map[string]agentState{
+			"state2": agentState{
+				instances: map[string]agent.ContainerInstance{
+					id1: agent.ContainerInstance{},
+				},
 			},
 		}
 
@@ -543,10 +558,12 @@ func TestUnscheduledPendingTask(t *testing.T) {
 		id2           = makeContainerID(cfg, 1)
 		wantJobs      = map[string]configstore.JobConfig{job: cfg}
 		endpoint      = "state2"
-		haveInstances = map[string]map[string]agent.ContainerInstance{
-			endpoint: map[string]agent.ContainerInstance{
-				id1: agent.ContainerInstance{},
-				id2: agent.ContainerInstance{},
+		haveInstances = map[string]agentState{
+			"state2": agentState{
+				instances: map[string]agent.ContainerInstance{
+					id1: agent.ContainerInstance{},
+					id2: agent.ContainerInstance{},
+				},
 			},
 		}
 
@@ -575,8 +592,10 @@ func TestUnscheduledPendingTask(t *testing.T) {
 	target = newMockTaskScheduler()
 	tr.transform(
 		wantJobs,
-		map[string]map[string]agent.ContainerInstance{
-			endpoint: map[string]agent.ContainerInstance{},
+		map[string]agentState{
+			endpoint: agentState{
+				instances: map[string]agent.ContainerInstance{},
+			},
 		},
 		target,
 	)
@@ -610,7 +629,7 @@ func TestUnscheduledPendingTask(t *testing.T) {
 	target = newMockTaskScheduler()
 	tr.transform(
 		map[string]configstore.JobConfig{},
-		map[string]map[string]agent.ContainerInstance{},
+		map[string]agentState{},
 		target,
 	)
 	if err := validate(target, tr, 0, 0, 0, 0); err != nil {

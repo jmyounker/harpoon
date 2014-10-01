@@ -50,9 +50,9 @@ func (tr *transformer) quit() {
 func (tr *transformer) loop(actual actualBroadcaster, desired desiredBroadcaster, target taskScheduler) {
 	var (
 		ticker   = time.NewTicker(tr.ttl)
-		actualc  = make(chan map[string]map[string]agent.ContainerInstance)
+		actualc  = make(chan map[string]agentState)
 		desiredc = make(chan map[string]configstore.JobConfig)
-		have     = map[string]map[string]agent.ContainerInstance{}
+		have     = map[string]agentState{}
 		want     = map[string]configstore.JobConfig{}
 	)
 
@@ -95,7 +95,7 @@ func (tr *transformer) loop(actual actualBroadcaster, desired desiredBroadcaster
 
 func (tr *transformer) transform(
 	wantJobs map[string]configstore.JobConfig,
-	haveInstances map[string]map[string]agent.ContainerInstance,
+	agentStates map[string]agentState,
 	target taskScheduler,
 ) {
 	var (
@@ -106,22 +106,14 @@ func (tr *transformer) transform(
 		id2endpoint = map[string]string{}
 	)
 
-	// TODO(pb): do this properly
-	agentStates := map[string]agentState{}
-	for endpoint, instances := range haveInstances {
-		state := agentStates[endpoint]
-		state.instances = instances
-		agentStates[endpoint] = state
-	}
-
 	for _, cfg := range wantJobs {
 		for i := 0; i < cfg.Scale; i++ {
 			wantTasks[makeContainerID(cfg, i)] = cfg.ContainerConfig
 		}
 	}
 
-	for endpoint, instances := range haveInstances {
-		for id, instance := range instances {
+	for endpoint, state := range agentStates {
+		for id, instance := range state.instances {
 			haveTasks[id] = instance.ContainerConfig
 			id2endpoint[id] = endpoint
 		}

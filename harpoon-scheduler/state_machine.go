@@ -38,14 +38,14 @@ type stateMachine interface {
 type realStateMachine struct {
 	myEndpoint string
 
-	subc          chan chan<- map[string]map[string]agent.ContainerInstance
-	unsubc        chan chan<- map[string]map[string]agent.ContainerInstance
-	snapshotc     chan map[string]map[string]agent.ContainerInstance
+	subc          chan chan<- map[string]agentState
+	unsubc        chan chan<- map[string]agentState
+	snapshotc     chan map[string]agentState
 	schedc        chan schedTaskReq
 	unschedc      chan unschedTaskReq
 	connectedc    chan bool
-	initializec   chan map[string]agent.ContainerInstance
-	updatec       chan map[string]agent.ContainerInstance
+	initializec   chan agent.StateEvent
+	updatec       chan agent.StateEvent
 	reconnectc    chan struct{} // signal from requestLoop to connectionLoop to reconnect
 	interruptionc chan struct{}
 	quitc         chan struct{}
@@ -57,14 +57,14 @@ func newRealStateMachine(endpoint string, reconnect, abandon time.Duration) *rea
 	m := &realStateMachine{
 		myEndpoint: endpoint,
 
-		subc:          make(chan chan<- map[string]map[string]agent.ContainerInstance),
-		unsubc:        make(chan chan<- map[string]map[string]agent.ContainerInstance),
-		snapshotc:     make(chan map[string]map[string]agent.ContainerInstance),
+		subc:          make(chan chan<- map[string]agentState),
+		unsubc:        make(chan chan<- map[string]agentState),
+		snapshotc:     make(chan map[string]agentState),
 		schedc:        make(chan schedTaskReq),
 		unschedc:      make(chan unschedTaskReq),
 		connectedc:    make(chan bool),
-		initializec:   make(chan map[string]agent.ContainerInstance),
-		updatec:       make(chan map[string]agent.ContainerInstance),
+		initializec:   make(chan agent.StateEvent),
+		updatec:       make(chan agent.StateEvent),
 		reconnectc:    make(chan struct{}),
 		interruptionc: make(chan struct{}),
 		quitc:         make(chan struct{}),
@@ -85,15 +85,15 @@ func (m *realStateMachine) connected() bool {
 	return <-m.connectedc
 }
 
-func (m *realStateMachine) subscribe(c chan<- map[string]map[string]agent.ContainerInstance) {
+func (m *realStateMachine) subscribe(c chan<- map[string]agentState) {
 	m.subc <- c
 }
 
-func (m *realStateMachine) unsubscribe(c chan<- map[string]map[string]agent.ContainerInstance) {
+func (m *realStateMachine) unsubscribe(c chan<- map[string]agentState) {
 	m.unsubc <- c
 }
 
-func (m *realStateMachine) snapshot() map[string]map[string]agent.ContainerInstance {
+func (m *realStateMachine) snapshot() map[string]agentState {
 	return <-m.snapshotc
 }
 
@@ -118,8 +118,11 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 	defer m.Done()
 
 	var (
-		subs     = map[chan<- map[string]map[string]agent.ContainerInstance]struct{}{}
-		current  = map[string]agent.ContainerInstance{}
+		subs    = map[chan<- map[string]agentState]struct{}{}
+		current = agentState{
+			resources: freeResources{memory: -1, cpus: -1, volumes: map[string]struct{}{}},
+			instances: map[string]agent.ContainerInstance{},
+		}
 		tangos   = map[string]time.Time{} // container ID to be destroyed: deadline
 		tangoc   = tick(1 * time.Second)
 		abandonc <-chan time.Time // initially nil
@@ -130,14 +133,19 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 		panic(err)
 	}
 
-	cp := func() map[string]map[string]agent.ContainerInstance {
-		out := make(map[string]agent.ContainerInstance, len(current))
+	cp := func() map[string]agentState {
+		instances := make(map[string]agent.ContainerInstance, len(current.instances))
 
-		for k, v := range current {
-			out[k] = v
+		for k, v := range current.instances {
+			instances[k] = v
 		}
 
-		return map[string]map[string]agent.ContainerInstance{m.myEndpoint: out}
+		return map[string]agentState{
+			m.myEndpoint: agentState{
+				resources: current.resources,
+				instances: instances,
+			},
+		}
 	}
 
 	broadcast := func() {
@@ -147,13 +155,17 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 		}
 	}
 
-	update := func(delta map[string]agent.ContainerInstance) {
-		for id, instance := range delta {
+	update := func(delta agent.StateEvent) {
+		memory, cpus := delta.Resources.Memory, delta.Resources.CPUs
+		current.resources.memory = memory.Total - memory.Reserved
+		current.resources.cpus = cpus.Total - cpus.Reserved
+
+		for id, instance := range delta.Containers {
 			switch instance.ContainerStatus {
 			case agent.ContainerStatusDeleted:
-				delete(current, id)
+				delete(current.instances, id)
 			default:
-				current[id] = instance
+				current.instances[id] = instance
 			}
 		}
 	}
@@ -180,7 +192,7 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 			return errAgentConnectionInterrupted
 		}
 
-		instance, ok := current[id]
+		instance, ok := current.instances[id]
 		if !ok {
 			log.Printf("state machine: %s: unschedule request for %q, but it's not scheduled", m.myEndpoint, id)
 			return nil
@@ -203,7 +215,7 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 
 	dance := func() {
 		for id, deadline := range tangos {
-			instance, ok := current[id]
+			instance, ok := current.instances[id]
 			if !ok {
 				log.Printf("state machine: %s: tango %s neutralized", m.myEndpoint, id)
 				delete(tangos, id)
@@ -278,7 +290,7 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 		select {
 		case c := <-m.subc:
 			subs[c] = struct{}{}
-			go func(m map[string]map[string]agent.ContainerInstance) { c <- m }(cp())
+			go func(m map[string]agentState) { c <- m }(cp())
 
 		case c := <-m.unsubc:
 			delete(subs, c)
@@ -293,7 +305,15 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 
 		case m.connectedc <- abandonc == nil:
 
-		case current = <-m.initializec:
+		case state := <-m.initializec:
+			current = agentState{
+				resources: freeResources{
+					cpus:    state.Resources.CPUs.Total - state.Resources.CPUs.Reserved,
+					memory:  state.Resources.Memory.Total - state.Resources.Memory.Reserved,
+					volumes: toSet(state.Resources.Volumes),
+				},
+				instances: state.Containers,
+			}
 			abandonc = nil
 			broadcast()
 
@@ -307,7 +327,10 @@ func (m *realStateMachine) requestLoop(abandon time.Duration) {
 			}
 
 		case <-abandonc:
-			current = map[string]agent.ContainerInstance{}
+			current = agentState{
+				resources: freeResources{memory: -1, cpus: -1, volumes: map[string]struct{}{}},
+				instances: map[string]agent.ContainerInstance{},
+			}
 			broadcast()
 
 		case <-tangoc:
@@ -369,7 +392,7 @@ func (m *realStateMachine) connectionLoop(reconnect time.Duration) {
 	}
 }
 
-func (m *realStateMachine) readLoop(statec <-chan map[string]agent.ContainerInstance, stopper agent.Stopper) error {
+func (m *realStateMachine) readLoop(statec <-chan agent.StateEvent, stopper agent.Stopper) error {
 	defer stopper.Stop()
 
 	// When this function exits, we've lost our connection to the agent. When

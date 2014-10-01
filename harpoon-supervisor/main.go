@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"net"
 	"os"
@@ -11,6 +12,7 @@ import (
 
 const (
 	controlFileName   = "./control"
+	agentFileName     = "./agent.json"
 	containerFileName = "./container.json"
 	rootfsFileName    = "./rootfs"
 
@@ -18,6 +20,19 @@ const (
 )
 
 func main() {
+	var (
+		hostname = flag.String("hostname", "", "hostname")
+		id       = flag.String("id", "", "container ID")
+	)
+	flag.Parse()
+	if *hostname == "" {
+		log.Fatal("hostname not supplied")
+	}
+
+	if *id == "" {
+		log.Fatal("container ID not supplied")
+	}
+
 	ln, err := net.Listen("unix", controlFileName)
 	if err != nil {
 		log.Fatalf("unable to listen on %q: %s", controlFileName, err)
@@ -28,7 +43,14 @@ func main() {
 	signal.Notify(sigc, syscall.SIGTERM, syscall.SIGINT)
 
 	var (
-		container     = newContainer(containerFileName, rootfsFileName, os.Args[1:])
+		container = newContainer(
+			*hostname,
+			*id,
+			agentFileName,
+			containerFileName,
+			rootfsFileName,
+			flag.Args(),
+		)
 		supervisor    = newSupervisor(container)
 		signalHandler = newSignalHandler(sigc, supervisor)
 		controller    = newController(ln, supervisor)

@@ -105,11 +105,11 @@ func (c client) Containers() (map[string]ContainerInstance, error) {
 
 	switch resp.StatusCode {
 	case http.StatusOK:
-		var instances map[string]ContainerInstance
-		if err := json.NewDecoder(resp.Body).Decode(&instances); err != nil {
+		var state StateEvent
+		if err := json.NewDecoder(resp.Body).Decode(&state); err != nil {
 			return map[string]ContainerInstance{}, fmt.Errorf("invalid agent response (%s)", err)
 		}
-		return instances, nil
+		return state.Containers, nil
 
 	default:
 		buf, _ := ioutil.ReadAll(resp.Body)
@@ -118,7 +118,7 @@ func (c client) Containers() (map[string]ContainerInstance, error) {
 }
 
 // Events implements the Agent interface.
-func (c client) Events() (<-chan map[string]ContainerInstance, Stopper, error) {
+func (c client) Events() (<-chan StateEvent, Stopper, error) {
 	c.URL.Path = APIVersionPrefix + APIListContainersPath
 
 	req, err := http.NewRequest("GET", c.URL.String(), nil)
@@ -141,7 +141,7 @@ func (c client) Events() (<-chan map[string]ContainerInstance, Stopper, error) {
 	}
 
 	var (
-		statec = make(chan map[string]ContainerInstance)
+		statec = make(chan StateEvent)
 		stopc  = make(chan struct{})
 	)
 
@@ -165,7 +165,7 @@ func (c client) Events() (<-chan map[string]ContainerInstance, Stopper, error) {
 				return
 			}
 
-			var state map[string]ContainerInstance
+			var state StateEvent
 
 			if err := json.Unmarshal(event.Data, &state); err != nil {
 				log.Printf("%s: unmarshal: %s", c.URL.String(), err)

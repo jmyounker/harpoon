@@ -18,17 +18,21 @@ import (
 type api struct {
 	http.Handler
 	*registry
+	*portRange
 
-	enabled bool
+	containerRoot string
+	enabled       bool
 	sync.RWMutex
 }
 
-func newAPI(r *registry) *api {
+func newAPI(containerRoot string, r *registry, pr *portRange) *api {
 	var (
 		mux = pat.New()
 		api = &api{
-			Handler:  mux,
-			registry: r,
+			Handler:       mux,
+			containerRoot: containerRoot,
+			registry:      r,
+			portRange:     pr,
 		}
 	)
 
@@ -84,7 +88,7 @@ func (a *api) handleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	container := newContainer(id, config)
+	container := newContainer(id, a.containerRoot, config, a.portRange)
 
 	if ok := a.registry.register(container); !ok {
 		http.Error(w, "already exists", http.StatusConflict)
@@ -184,7 +188,13 @@ func (a *api) handleContainerStream(_ string, enc *eventsource.Encoder, stop <-c
 	a.registry.notify(statec)
 	defer a.registry.stop(statec)
 
-	b, err := json.Marshal(a.registry.instances())
+	instances := a.registry.instances()
+	b, err := json.Marshal(
+		&agent.StateEvent{
+			Resources:  resources(instances),
+			Containers: instances,
+		},
+	)
 	if err != nil {
 		log.Printf("container stream: fatal error: %s", err)
 		return
@@ -199,8 +209,14 @@ func (a *api) handleContainerStream(_ string, enc *eventsource.Encoder, stop <-c
 		select {
 		case <-stop:
 			return
+
 		case state := <-statec:
-			b, err := json.Marshal(map[string]agent.ContainerInstance{state.ID: state})
+			b, err := json.Marshal(
+				agent.StateEvent{
+					Resources:  resources(a.registry.instances()),
+					Containers: map[string]agent.ContainerInstance{state.ID: state},
+				},
+			)
 			if err != nil {
 				log.Printf("container stream: fatal error: %s", err)
 				return
@@ -299,6 +315,10 @@ func (a *api) streamLog(logs *containerLog, enc *eventsource.Encoder, stop <-cha
 }
 
 func (a *api) handleResources(w http.ResponseWriter, r *http.Request) {
+	json.NewEncoder(w).Encode(resources(a.registry.instances()))
+}
+
+func resources(instances map[string]agent.ContainerInstance) agent.HostResources {
 	volumes := make([]string, 0, len(configuredVolumes))
 
 	for vol := range configuredVolumes {
@@ -307,12 +327,12 @@ func (a *api) handleResources(w http.ResponseWriter, r *http.Request) {
 
 	var reservedMem, reservedCPU float64
 
-	for _, instance := range a.registry.instances() {
+	for _, instance := range instances {
 		reservedMem += float64(instance.ContainerConfig.Resources.Memory)
 		reservedCPU += float64(instance.ContainerConfig.Resources.CPUs)
 	}
 
-	json.NewEncoder(w).Encode(&agent.HostResources{
+	return agent.HostResources{
 		Memory: agent.TotalReserved{
 			Total:    float64(agentTotalMem),
 			Reserved: reservedMem,
@@ -322,5 +342,5 @@ func (a *api) handleResources(w http.ResponseWriter, r *http.Request) {
 			Reserved: reservedCPU,
 		},
 		Volumes: volumes,
-	})
+	}
 }

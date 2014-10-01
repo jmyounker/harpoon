@@ -17,6 +17,7 @@ import (
 )
 
 type supervisor struct {
+	ID     string
 	rundir string
 
 	exitc        chan chan error
@@ -28,8 +29,9 @@ type supervisor struct {
 	exited chan struct{}
 }
 
-func newSupervisor(rundir string) *supervisor {
+func newSupervisor(id string, rundir string) *supervisor {
 	return &supervisor{
+		ID:           id,
 		rundir:       rundir,
 		exitc:        make(chan chan error),
 		stopc:        make(chan time.Duration),
@@ -43,7 +45,14 @@ func newSupervisor(rundir string) *supervisor {
 // Start starts the supervisor and connects to its control socket. If an error
 // is returned, the supervisor was not started.
 func (s *supervisor) Start(config agent.ContainerConfig, stdout, stderr io.Writer) error {
-	cmd := exec.Command("harpoon-supervisor", config.Command.Exec...)
+	args := []string{"--hostname", hostname, "--id", s.ID}
+	args = append(args, "--")
+	args = append(args, config.Command.Exec...)
+
+	if *debug {
+		log.Printf("launching harpoon-supervisor with args: %s", args)
+	}
+	cmd := exec.Command("harpoon-supervisor", args...)
 
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr

@@ -2,11 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strconv"
 	"testing"
 	"time"
@@ -16,13 +18,23 @@ import (
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
+// If we ever start getting collisions during testing then we can point this to a
+// temp directory.
+const fixtureContainerRoot = "/run/harpoon"
+
 func TestContainerList(t *testing.T) {
+	agentTotalMem = 1000
+	agentTotalCPU = 2
+	configuredVolumes = map[string]struct{}{"/tmp": struct{}{}}
+
 	var (
 		registry = newRegistry()
-		api      = newAPI(registry)
+		pr       = newPortRange(lowTestPort, highTestPort)
+		api      = newAPI(fixtureContainerRoot, registry, pr)
 		server   = httptest.NewServer(api)
 	)
 
+	defer pr.exit()
 	defer server.Close()
 
 	req, _ := http.NewRequest("GET", server.URL+"/api/v0/containers", nil)
@@ -34,29 +46,68 @@ func TestContainerList(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var containers map[string]agent.ContainerInstance
+	var state agent.StateEvent
 
-	if err := json.Unmarshal(ev.Data, &containers); err != nil {
+	if err := json.Unmarshal(ev.Data, &state); err != nil {
 		t.Fatal("unable to load containers json:", err)
 	}
 
-	registry.statec <- agent.ContainerInstance{ID: "123"}
+	expected := agent.HostResources{
+		CPUs:    agent.TotalReserved{Total: 2.0, Reserved: 0.0},
+		Memory:  agent.TotalReserved{Total: 1000.0, Reserved: 0.0},
+		Volumes: []string{"/tmp"},
+	}
+
+	if err := validateEvent(expected, state, 0, ""); err != nil {
+		t.Error(err)
+	}
+
+	cont := newContainer(
+		"123",
+		"",
+		agent.ContainerConfig{
+			Resources: agent.Resources{
+				Memory: 100,
+				CPUs:   2,
+			},
+		},
+		nil)
+
+	registry.m["123"] = cont
+	registry.statec <- cont.ContainerInstance
 
 	ev, err = es.Read()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if err := json.Unmarshal(ev.Data, &containers); err != nil {
+	if err := json.Unmarshal(ev.Data, &state); err != nil {
 		t.Fatal("unable to load containers json:", err)
 	}
 
-	if len(containers) != 1 {
-		t.Fatal("invalid number of containers in delta update")
+	expected.CPUs.Reserved = 2
+	expected.Memory.Reserved = 100
+	if err := validateEvent(expected, state, 1, agent.ContainerStatusCreated); err != nil {
+		t.Error(err)
 	}
 
-	if _, ok := containers["123"]; !ok {
-		t.Fatal("container event invalid")
+	delete(registry.m, "123")
+	cont.ContainerStatus = agent.ContainerStatusDeleted
+	registry.statec <- cont.ContainerInstance
+
+	ev, err = es.Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := json.Unmarshal(ev.Data, &state); err != nil {
+		t.Fatal("unable to load containers json:", err)
+	}
+
+	expected.CPUs.Reserved = 0
+	expected.Memory.Reserved = 0
+	if err := validateEvent(expected, state, 1, agent.ContainerStatusDeleted); err != nil {
+		t.Error(err)
 	}
 }
 
@@ -65,9 +116,11 @@ func TestLogAPICanTailLogs(t *testing.T) {
 
 	var (
 		registry = newRegistry()
-		api      = newAPI(registry)
+		pr       = newPortRange(lowTestPort, highTestPort)
+		api      = newAPI(fixtureContainerRoot, registry, pr)
 		server   = httptest.NewServer(api)
 	)
+	defer pr.exit()
 	defer server.Close()
 
 	createReceiveLogsFixture(t, registry)
@@ -136,9 +189,11 @@ func TestLogAPICanRetrieveLastLines(t *testing.T) {
 
 	var (
 		registry = newRegistry()
-		api      = newAPI(registry)
+		pr       = newPortRange(lowTestPort, highTestPort)
+		api      = newAPI(fixtureContainerRoot, registry, pr)
 		server   = httptest.NewServer(api)
 	)
+	defer pr.exit()
 	defer server.Close()
 
 	createReceiveLogsFixture(t, registry)
@@ -243,7 +298,7 @@ func sendLog(logLine string) error {
 }
 
 func setLogAddrRandomly(t *testing.T) {
-	port, err := GetRandomUDPPort()
+	port, err := getRandomUDPPort()
 	if err != nil {
 		t.Fatalf("Could not locate a random port: %s", err)
 	}
@@ -265,4 +320,32 @@ func GetRandomUDPPort() (int, error) {
 	}
 	defer ln.Close()
 	return ln.LocalAddr().(*net.UDPAddr).Port, nil
+}
+
+func validateEvent(expected agent.HostResources, have agent.StateEvent, containersCount int, status agent.ContainerStatus) error {
+	if expected.CPUs != have.Resources.CPUs {
+		return fmt.Errorf("invalid cpu resources: expected %v != have %v", expected.CPUs, have.Resources.CPUs)
+	}
+
+	if expected.Memory != have.Resources.Memory {
+		return fmt.Errorf("invalid memory resources: expected %v != have %v", expected.Memory, have.Resources.Memory)
+	}
+
+	if !reflect.DeepEqual(expected.Volumes, have.Resources.Volumes) {
+		return fmt.Errorf("invalid volumes : expected %v != have %v", expected.Volumes, have.Resources.Volumes)
+	}
+
+	if len(have.Containers) != containersCount {
+		return fmt.Errorf("invalid number of containers in delta update, expected %d != %d", len(have.Containers), containersCount)
+	}
+
+	if containersCount == 0 {
+		return nil
+	}
+
+	if container, ok := have.Containers["123"]; !ok || container.ContainerStatus != status {
+		return fmt.Errorf("container event invalid")
+	}
+
+	return nil
 }
