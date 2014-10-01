@@ -17,9 +17,9 @@ var (
 )
 
 type actualBroadcaster interface {
-	subscribe(c chan<- map[string]map[string]agent.ContainerInstance)
-	unsubscribe(c chan<- map[string]map[string]agent.ContainerInstance)
-	snapshot() map[string]map[string]agent.ContainerInstance
+	subscribe(c chan<- map[string]agentState)
+	unsubscribe(c chan<- map[string]agentState)
+	snapshot() map[string]agentState
 }
 
 type taskScheduler interface {
@@ -36,9 +36,9 @@ type shepherd interface {
 
 type realShepherd struct {
 	sizec     chan int
-	subc      chan chan<- map[string]map[string]agent.ContainerInstance
-	unsubc    chan chan<- map[string]map[string]agent.ContainerInstance
-	snapshotc chan map[string]map[string]agent.ContainerInstance
+	subc      chan chan<- map[string]agentState
+	unsubc    chan chan<- map[string]agentState
+	snapshotc chan map[string]agentState
 	schedc    chan schedTaskReq
 	unschedc  chan unschedTaskReq
 	quitc     chan chan struct{}
@@ -49,9 +49,9 @@ var _ shepherd = &realShepherd{}
 func newRealShepherd(d agentDiscovery) *realShepherd {
 	s := &realShepherd{
 		sizec:     make(chan int),
-		subc:      make(chan chan<- map[string]map[string]agent.ContainerInstance),
-		unsubc:    make(chan chan<- map[string]map[string]agent.ContainerInstance),
-		snapshotc: make(chan map[string]map[string]agent.ContainerInstance),
+		subc:      make(chan chan<- map[string]agentState),
+		unsubc:    make(chan chan<- map[string]agentState),
+		snapshotc: make(chan map[string]agentState),
 		schedc:    make(chan schedTaskReq),
 		unschedc:  make(chan unschedTaskReq),
 		quitc:     make(chan chan struct{}),
@@ -60,15 +60,15 @@ func newRealShepherd(d agentDiscovery) *realShepherd {
 	return s
 }
 
-func (s *realShepherd) subscribe(c chan<- map[string]map[string]agent.ContainerInstance) {
+func (s *realShepherd) subscribe(c chan<- map[string]agentState) {
 	s.subc <- c
 }
 
-func (s *realShepherd) unsubscribe(c chan<- map[string]map[string]agent.ContainerInstance) {
+func (s *realShepherd) unsubscribe(c chan<- map[string]agentState) {
 	s.unsubc <- c
 }
 
-func (s *realShepherd) snapshot() map[string]map[string]agent.ContainerInstance {
+func (s *realShepherd) snapshot() map[string]agentState {
 	return <-s.snapshotc
 }
 
@@ -99,19 +99,32 @@ func (s *realShepherd) loop(d agentDiscovery) {
 		discoveryc = make(chan []string)
 		endpoints  = []string{}
 		machines   = map[string]stateMachine{}
-		updatec    = make(chan map[string]map[string]agent.ContainerInstance)
-		current    = map[string]map[string]agent.ContainerInstance{}
-		subs       = map[chan<- map[string]map[string]agent.ContainerInstance]struct{}{}
+		updatec    = make(chan map[string]agentState)
+		current    = map[string]agentState{}
+		subs       = map[chan<- map[string]agentState]struct{}{}
 	)
 
-	cp := func() map[string]map[string]agent.ContainerInstance {
-		out := make(map[string]map[string]agent.ContainerInstance, len(current))
+	cp := func() map[string]agentState {
+		out := make(map[string]agentState, len(current))
 
-		for endpoint, instances := range current {
-			out[endpoint] = make(map[string]agent.ContainerInstance, len(instances))
+		for endpoint, state := range current {
+			instances := make(map[string]agent.ContainerInstance, len(state.instances))
+			for id, instance := range state.instances {
+				instances[id] = instance
+			}
 
-			for id, instance := range instances {
-				out[endpoint][id] = instance
+			volumes := make(map[string]struct{}, len(state.resources.volumes))
+			for path, _ := range state.resources.volumes {
+				volumes[path] = struct{}{}
+			}
+
+			out[endpoint] = agentState{
+				resources: freeResources{
+					memory:  state.resources.memory,
+					cpus:    state.resources.cpus,
+					volumes: volumes,
+				},
+				instances: instances,
 			}
 		}
 
@@ -150,7 +163,7 @@ func (s *realShepherd) loop(d agentDiscovery) {
 
 		case c := <-s.subc:
 			subs[c] = struct{}{}
-			go func(m map[string]map[string]agent.ContainerInstance) { c <- m }(cp())
+			go func(m map[string]agentState) { c <- m }(cp())
 
 		case c := <-s.unsubc:
 			delete(subs, c)
@@ -186,7 +199,7 @@ func (s *realShepherd) loop(d agentDiscovery) {
 // endpoints. Endpoints without a state machine are created, and the updatec
 // subscribed. State machines without an endpoint are stopped and deleted, and
 // the updatec unsubscribed.
-func diff(firstGen map[string]stateMachine, endpoints []string, updatec chan map[string]map[string]agent.ContainerInstance) map[string]stateMachine {
+func diff(firstGen map[string]stateMachine, endpoints []string, updatec chan map[string]agentState) map[string]stateMachine {
 	var (
 		secondGen = map[string]stateMachine{}
 	)
@@ -218,9 +231,9 @@ func diff(firstGen map[string]stateMachine, endpoints []string, updatec chan map
 // initialize captures map[string]agent.ContainerInstance from the updatec
 // until all expected endpoints are collected. If all expected endpoints
 // aren't collected within a certain time, we panic.
-func initialize(updatec chan map[string]map[string]agent.ContainerInstance, expected []string) map[string]map[string]agent.ContainerInstance {
+func initialize(updatec chan map[string]agentState, expected []string) map[string]agentState {
 	var (
-		current     = map[string]map[string]agent.ContainerInstance{}
+		current     = map[string]agentState{}
 		outstanding = map[string]struct{}{}
 		timeoutc    = after(1 * time.Second)
 	)

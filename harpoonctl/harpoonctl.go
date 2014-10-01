@@ -246,8 +246,8 @@ func (*harpoonctl) wait(a agent.Agent, id string) {
 	}
 	defer stopper.Stop()
 
-	for containers := range events {
-		container, ok := containers[id]
+	for event := range events {
+		container, ok := event.Containers[id]
 		if !ok {
 			continue
 		}

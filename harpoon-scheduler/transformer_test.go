@@ -23,29 +23,41 @@ func TestTransform(t *testing.T) {
 
 	type testCase struct {
 		wantJobs      map[string]configstore.JobConfig
-		haveInstances map[string]map[string]agent.ContainerInstance
+		haveInstances map[string]agentState
 		started       map[string]map[string]agent.ContainerConfig
 		stopped       map[string]map[string]struct{}
 	}
 
 	for i, input := range []testCase{
 		{
-			wantJobs:      map[string]configstore.JobConfig{job: cfg},
-			haveInstances: map[string]map[string]agent.ContainerInstance{endpoint: map[string]agent.ContainerInstance{}},
-			started:       map[string]map[string]agent.ContainerConfig{endpoint: map[string]agent.ContainerConfig{id: agent.ContainerConfig{}}},
-			stopped:       map[string]map[string]struct{}{},
+			wantJobs: map[string]configstore.JobConfig{job: cfg},
+			haveInstances: map[string]agentState{
+				endpoint: agentState{
+					instances: map[string]agent.ContainerInstance{},
+				},
+			},
+			started: map[string]map[string]agent.ContainerConfig{endpoint: map[string]agent.ContainerConfig{id: agent.ContainerConfig{}}},
+			stopped: map[string]map[string]struct{}{},
 		},
 		{
-			wantJobs:      map[string]configstore.JobConfig{job: cfg},
-			haveInstances: map[string]map[string]agent.ContainerInstance{endpoint: map[string]agent.ContainerInstance{id: agent.ContainerInstance{}}},
-			started:       map[string]map[string]agent.ContainerConfig{},
-			stopped:       map[string]map[string]struct{}{},
+			wantJobs: map[string]configstore.JobConfig{job: cfg},
+			haveInstances: map[string]agentState{
+				endpoint: agentState{
+					instances: map[string]agent.ContainerInstance{id: agent.ContainerInstance{}},
+				},
+			},
+			started: map[string]map[string]agent.ContainerConfig{},
+			stopped: map[string]map[string]struct{}{},
 		},
 		{
-			wantJobs:      map[string]configstore.JobConfig{},
-			haveInstances: map[string]map[string]agent.ContainerInstance{endpoint: map[string]agent.ContainerInstance{job: agent.ContainerInstance{}}},
-			started:       map[string]map[string]agent.ContainerConfig{},
-			stopped:       map[string]map[string]struct{}{endpoint: map[string]struct{}{job: struct{}{}}},
+			wantJobs: map[string]configstore.JobConfig{},
+			haveInstances: map[string]agentState{
+				endpoint: agentState{
+					instances: map[string]agent.ContainerInstance{job: agent.ContainerInstance{}},
+				},
+			},
+			started: map[string]map[string]agent.ContainerConfig{},
+			stopped: map[string]map[string]struct{}{endpoint: map[string]struct{}{job: struct{}{}}},
 		},
 	} {
 		target := newMockTaskScheduler()

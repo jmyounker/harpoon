@@ -20,7 +20,7 @@ type Agent interface {
 	Replace(newContainerID, oldContainerID string) error                 // PUT /containers/{newID}?replace={oldID}
 	Delete(containerID string) error                                     // DELETE /containers/{id}
 	Containers() (map[string]ContainerInstance, error)                   // GET /containers
-	Events() (<-chan map[string]ContainerInstance, Stopper, error)       // GET /containers with request header Accept: text/event-stream
+	Events() (<-chan StateEvent, Stopper, error)                         // GET /containers with request header Accept: text/event-stream
 	Log(containerID string, history int) (<-chan string, Stopper, error) // GET /containers/{id}/log?history=10
 	Resources() (HostResources, error)                                   // GET /resources
 }
@@ -161,6 +161,13 @@ func (g Grace) Valid() error {
 	}
 
 	return nil
+}
+
+// StateEvent is returned whenever a container changes state. It reflects the
+// changed container and the current host resources (post-change).
+type StateEvent struct {
+	Resources  HostResources                `json:"resources"`
+	Containers map[string]ContainerInstance `json:"containers"`
 }
 
 // HostResources are returned by agents and reflect their current state.

@@ -13,7 +13,7 @@ import (
 
 type agentState struct {
 	instances map[string]agent.ContainerInstance
-	resources agent.HostResources
+	resources freeResources
 	dirty     bool
 }
 
@@ -79,12 +79,11 @@ func randomChoice(cfgs map[string]agent.ContainerConfig, states map[string]agent
 func randomFit(cfgs map[string]agent.ContainerConfig, states map[string]agentState) (map[string]map[string]agent.ContainerConfig, map[string]agent.ContainerConfig) {
 	var (
 		mapping     = map[string]map[string]agent.ContainerConfig{}
-		resources   = calculateFreeResources(states)
 		unscheduled = map[string]agent.ContainerConfig{}
 	)
 
 	for id, cfg := range cfgs {
-		validEndpoints := filter(cfg, resources)
+		validEndpoints := filter(cfg, states)
 
 		if len(validEndpoints) <= 0 {
 			unscheduled[id] = cfg
@@ -101,26 +100,13 @@ func randomFit(cfgs map[string]agent.ContainerConfig, states map[string]agentSta
 
 		mapping[endpoint] = placed
 
-		endpointResources := resources[endpoint]
-		endpointResources.cpus -= cfg.CPUs
-
-		endpointResources.memory -= float64(cfg.Memory)
-		resources[endpoint] = endpointResources
+		endpointState := states[endpoint]
+		endpointState.resources.cpus -= cfg.CPUs
+		endpointState.resources.memory -= float64(cfg.Memory)
+		states[endpoint] = endpointState
 	}
 
 	return mapping, unscheduled
-}
-
-func calculateFreeResources(states map[string]agentState) map[string]freeResources {
-	var resources = map[string]freeResources{}
-	for endpoint, state := range states {
-		resources[endpoint] = freeResources{
-			cpus:    state.resources.CPUs.Total - state.resources.CPUs.Reserved,
-			memory:  state.resources.Memory.Total - state.resources.Memory.Reserved,
-			volumes: toSet(state.resources.Volumes),
-		}
-	}
-	return resources
 }
 
 func toSet(array []string) map[string]struct{} {
@@ -131,11 +117,11 @@ func toSet(array []string) map[string]struct{} {
 	return set
 }
 
-func filter(cfg agent.ContainerConfig, resources map[string]freeResources) []string {
-	var validEndpoints = make([]string, 0, len(resources))
+func filter(cfg agent.ContainerConfig, agents map[string]agentState) []string {
+	var validEndpoints = make([]string, 0, len(agents))
 
-	for endpoint, resource := range resources {
-		if !match(cfg, resource) {
+	for endpoint, state := range agents {
+		if !match(cfg, state.resources) {
 			continue
 		}
 
