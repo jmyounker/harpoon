@@ -74,11 +74,10 @@ func main() {
 		agentTotalMem = uint64(mem)
 	}
 
-	var (
-		r   = newRegistry()
-		pr  = newPortRange(portRangeStart, portRangeEnd)
-		api = newAPI(*containerRoot, r, pr)
-	)
+	r := newRegistry()
+	pr := newPortRange(portRangeStart, portRangeEnd)
+	defer pr.exit()
+	api := newAPI(*containerRoot, r, pr)
 
 	go receiveLogs(r)
 

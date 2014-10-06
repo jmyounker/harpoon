@@ -10,10 +10,8 @@ import (
 type portRange struct {
 	startPort uint16 // inclusive
 	endPort   uint16 // inclusive
+	port      uint16 // this will be the next port returned by nextPort
 	ports     map[uint16]struct{}
-
-	// The next port that might be available.
-	portc chan uint16
 
 	// Sent from GetPort to getPort. Contains a channel for getPort to back results.
 	getportc chan chan getPortResults
@@ -22,7 +20,7 @@ type portRange struct {
 	returnportc chan uint16
 
 	// Closed to indicate that goroutines should terminate.
-	exitc chan struct{}
+	exitc chan chan struct{}
 }
 
 // getPortResults communicates results back from the getPort call to the GetPort call.
@@ -37,12 +35,12 @@ func newPortRange(startPort, endPort uint16) *portRange {
 		startPort: startPort,
 		endPort:   endPort,
 		ports:     map[uint16]struct{}{},
+		port:      startPort,
 
 		getportc:    make(chan chan getPortResults),
 		returnportc: make(chan uint16),
-		exitc:       make(chan struct{}),
+		exitc:       make(chan chan struct{}),
 	}
-	pr.portc = pr.possiblePorts()
 	go pr.loop()
 	return pr
 }
@@ -62,8 +60,12 @@ func (pr *portRange) returnPort(port uint16) {
 }
 
 // exit terminates the loop() function.
+//
+// Ensure this is called after the client goroutines have shut down.
 func (pr *portRange) exit() {
-	close(pr.exitc)
+	exitc := make(chan struct{})
+	pr.exitc <- exitc
+	<-exitc
 }
 
 // getPort implements GetPort functionality in a thread-hostile way.
@@ -75,7 +77,7 @@ func (pr *portRange) getPortUnsafe() (uint16, error) {
 	}
 	maxAttempts := numberPorts
 	for i := 0; i < maxAttempts; i++ {
-		port := <-pr.portc
+		port := pr.nextPort()
 		_, assigned := pr.ports[port]
 		if assigned {
 			continue
@@ -100,31 +102,11 @@ func (pr *portRange) loop() {
 			resultc <- getPortResults{port: port, err: err}
 		case port := <-pr.returnportc:
 			delete(pr.ports, port)
-		case <-pr.exitc:
+		case exitc := <-pr.exitc:
+			close(exitc)
 			return
 		}
 	}
-}
-
-// possiblePorts generates an infinite list of ports
-//
-// These ports are chosen from the range [startPort, endPort]. In this
-// case they are enumerated from startPort up to endPort by one, and
-// when the range is complete it wraps around to startPort.
-func (pr *portRange) possiblePorts() chan uint16 {
-	portc := make(chan uint16)
-	go func() {
-		for {
-			for port := pr.startPort; port <= pr.endPort; port++ {
-				select {
-				case portc <- port:
-				case <-pr.exitc:
-					return
-				}
-			}
-		}
-	}()
-	return portc
 }
 
 // isPortInUse returns true if the port is not available for binding.
@@ -135,4 +117,15 @@ func (pr *portRange) isPortInUse(port uint16) bool {
 	}
 	ln.Close()
 	return false
+}
+
+// nextPort returns the next available port and then calculates and records its successor.
+func (pr *portRange) nextPort() uint16 {
+	nextPort := pr.port
+	port := pr.port + 1
+	if port > pr.endPort {
+		port = pr.startPort
+	}
+	pr.port = port
+	return nextPort
 }
