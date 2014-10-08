@@ -79,7 +79,7 @@ func TestBasicTaskSchedule(t *testing.T) {
 	}
 }
 
-func TestUnscheduleNonexistent(t *testing.T) {
+func TestUnscheduleNonexistentTask(t *testing.T) {
 	clientScheduler, err := scheduler.NewClient(scheduleURL)
 	if err != nil {
 		t.Fatal(err)
@@ -221,23 +221,94 @@ func TestDirectScheduleOnAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	container, err := client.Get("basic-test")
+	statuses := map[agent.ContainerStatus]struct{}{
+		agent.ContainerStatusCreated: struct{}{},
+	}
+
+	status, err := client.Wait("basic-test", statuses, time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if container.ContainerStatus == agent.ContainerStatusFailed {
-		t.Fatal("container failed")
+	statuses = map[agent.ContainerStatus]struct{}{
+		agent.ContainerStatusDeleted: struct{}{},
+	}
+
+	status, err = client.Wait("basic-test", statuses, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if status != agent.ContainerStatusDeleted {
+		t.Fatalf("incorrect status %s", status)
+	}
+}
+
+func TestTaskConsumesAllAllowedResources(t *testing.T) {
+	clientScheduler, err := scheduler.NewClient(scheduleURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	clientAgent, err := agent.NewClient(agentURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := clientAgent.Resources()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var (
+		mem  = res.Memory.Total
+		cpus = res.CPUs.Total
+	)
+
+	var cfg = configstore.JobConfig{
+		Job:         "test",
+		Scale:       5,
+		Environment: "Env",
+		Product:     "Product",
+		ContainerConfig: agent.ContainerConfig{
+			ArtifactURL: "http://asset-host.test/busybox.tar.gz",
+			Command: agent.Command{
+				WorkingDir: "/bin",
+				Exec:       []string{"./true"},
+			},
+			Resources: agent.Resources{
+				Memory: mem / 3,
+				CPUs:   cpus / 3,
+			},
+			Grace: agent.Grace{
+				Startup:  agent.JSONDuration{time.Second},
+				Shutdown: agent.JSONDuration{time.Second},
+			},
+		},
+	}
+
+	if _, err := clientScheduler.Schedule(cfg); err != nil {
+		t.Fatal(err)
 	}
 
 	time.Sleep(time.Second)
 
-	if _, err := client.Get("basic-test"); err != agent.ErrContainerNotExist {
+	if err := validateContainers(clientAgent, 3, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err = clientScheduler.Unschedule(cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	time.Sleep(time.Second)
+
+	if err := validateContainers(clientAgent, 0, configstore.JobConfig{}); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestScheduleTwoTasks(t *testing.T) {
+func TestTaskScheduledWhenResourcesAreFree(t *testing.T) {
 	clientScheduler, err := scheduler.NewClient(scheduleURL)
 	if err != nil {
 		t.Fatal(err)
@@ -288,15 +359,11 @@ func TestScheduleTwoTasks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	time.Sleep(time.Second)
-
-	if err := validateContainers(clientAgent, 3, firstCfg); err != nil {
-		t.Fatal(err)
-	}
-
 	if _, err := clientScheduler.Schedule(secondCfg); err != nil {
 		t.Fatal(err)
 	}
+
+	time.Sleep(time.Second * 2)
 
 	if err := validateContainers(clientAgent, 3, firstCfg); err != nil {
 		t.Fatal(err)
@@ -306,7 +373,7 @@ func TestScheduleTwoTasks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	time.Sleep(time.Second)
+	time.Sleep(time.Second * 2)
 
 	if err := validateContainers(clientAgent, 2, secondCfg); err != nil {
 		t.Fatal(err)
@@ -323,7 +390,7 @@ func TestScheduleTwoTasks(t *testing.T) {
 	}
 }
 
-func TestScheduleThreeTasksOneAfterAnother(t *testing.T) {
+func TestScheduleMultipleIndependentTasksThatFit(t *testing.T) {
 	clientScheduler, err := scheduler.NewClient(scheduleURL)
 	if err != nil {
 		t.Fatal(err)
@@ -373,7 +440,7 @@ func TestScheduleThreeTasksOneAfterAnother(t *testing.T) {
 		}
 	}
 
-	time.Sleep(time.Second)
+	time.Sleep(time.Second * 2)
 
 	if err := validateContainers(clientAgent, 7, configstore.JobConfig{}); err != nil {
 		t.Fatal(err)

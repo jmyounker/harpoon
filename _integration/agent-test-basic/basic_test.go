@@ -1,7 +1,6 @@
 package agent_test
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
@@ -36,7 +35,13 @@ func TestAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	status, err := wait(client, "basic-test", time.Second)
+	statuses := map[agent.ContainerStatus]struct{}{
+		agent.ContainerStatusRunning:  struct{}{},
+		agent.ContainerStatusFinished: struct{}{},
+		agent.ContainerStatusFailed:   struct{}{},
+	}
+
+	status, err := client.Wait("basic-test", statuses, time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,29 +57,4 @@ func TestAgent(t *testing.T) {
 	if _, err := client.Get("basic-test"); err != agent.ErrContainerNotExist {
 		t.Fatal(err)
 	}
-}
-
-func wait(a agent.Agent, id string, timeout time.Duration) (agent.ContainerStatus, error) {
-	events, stopper, err := a.Events()
-	if err != nil {
-		return "", err
-	}
-	defer stopper.Stop()
-	for {
-		select {
-		case event := <-events:
-			container, ok := event.Containers[id]
-			if !ok {
-				continue
-			}
-
-			switch status := container.ContainerStatus; status {
-			case agent.ContainerStatusRunning, agent.ContainerStatusFailed, agent.ContainerStatusFinished:
-				return status, nil
-			}
-		case <-time.After(timeout):
-			return "", fmt.Errorf("event not received after %v", timeout)
-		}
-	}
-	return "", fmt.Errorf("event stream ended without expected status")
 }
