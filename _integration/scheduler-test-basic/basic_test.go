@@ -79,7 +79,7 @@ func TestBasicTaskSchedule(t *testing.T) {
 	}
 }
 
-func TestUnscheduleNonexisting(t *testing.T) {
+func TestUnscheduleNonexistent(t *testing.T) {
 	clientScheduler, err := scheduler.NewClient(scheduleURL)
 	if err != nil {
 		t.Fatal(err)
@@ -393,6 +393,8 @@ func TestScheduleThreeTasksOneAfterAnother(t *testing.T) {
 	}
 }
 
+// validateContainers checks if the expected number of containers are present,
+// and ensures that all are either running or finished
 func validateContainers(client agent.Agent, expectedCount int, cfg configstore.JobConfig) error {
 	containers, err := client.Containers()
 	if err != nil {
