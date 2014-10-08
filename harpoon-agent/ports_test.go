@@ -72,6 +72,18 @@ func TestCantGetAPortThatsAllocated(t *testing.T) {
 	}
 }
 
+func TestNextPort(t *testing.T) {
+	pr := newPortRange(7, 9)
+	defer pr.exit()
+	var a string
+	for i := 0; i < 4; i++ {
+		a += fmt.Sprintf("%d", pr.nextPort())
+	}
+	if expected, got := "7897", a; got != expected {
+		t.Errorf("expected %s but got %s", expected, got)
+	}
+}
+
 func AssertNoError(t *testing.T, err error) {
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
