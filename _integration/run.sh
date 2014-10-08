@@ -41,10 +41,11 @@ echo "run: create test artifact"
   make_rootfs $artifact_dir || abort "run: unable to create artifact"
 }
 
+logfile=$PWD/agent.log
 echo "run: starting agent at localhost:7777"
 {
   pushd $rootfs >/dev/null
-  sudo $nsinit exec -- /srv/harpoon/bin/harpoon-agent -addr ":7777" & AGENT_PID=$!
+  sudo $nsinit exec -- /srv/harpoon/bin/harpoon-agent -addr ":7777" > $logfile 2>&1  & AGENT_PID=$!
   popd >/dev/null
 } || abort "unable to start harpoon-agent"
 trap "shutdown $AGENT_PID" EXIT
@@ -61,4 +62,18 @@ do
   fi
 done
 
-go test -v ./...
+go test -v agent-test-basic/basic_test.go
+
+logfile=$PWD/scheduler.log
+
+echo "run: starting scheduler at localhost:4444"
+{
+  pushd $rootfs >/dev/null
+  sudo $nsinit exec -- /srv/harpoon/bin/harpoon-scheduler -agent=http://127.0.0.1:7777 > $logfile 2>&1  & SCHEDULER_PID=$!
+  popd >/dev/null
+} || abort "unable to start harpoon-scheduler"
+trap "shutdown $SCHEDULER_PID & shutdown $AGENT_PID" EXIT
+
+go test -v scheduler-test-basic/basic_test.go
+
+echo $logfile
