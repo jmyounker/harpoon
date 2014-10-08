@@ -63,6 +63,7 @@ func (tr *transformer) loop(actual actualBroadcaster, desired desiredBroadcaster
 
 	select {
 	case have = <-actualc:
+		log.Println("Initial state", have)
 	case <-after(time.Millisecond):
 		panic("misbehaving actual-state broadcaster")
 	}
@@ -77,14 +78,37 @@ func (tr *transformer) loop(actual actualBroadcaster, desired desiredBroadcaster
 	}
 
 	for {
-		target, have, want := target, have, want
 		select {
 		case <-ticker.C:
-			tr.workQueue.push(func() { tr.transform(want, have, target) })
+			func(wantJobs map[string]configstore.JobConfig,
+				agentStates map[string]agentState,
+				target taskScheduler,
+			) {
+				tr.workQueue.push(func() {
+					log.Println("ticker...")
+					tr.transform(want, have, target)
+				})
+			}(want, have, target)
 		case want = <-desiredc:
-			tr.workQueue.push(func() { tr.transform(want, have, target) })
+			func(wantJobs map[string]configstore.JobConfig,
+				agentStates map[string]agentState,
+				target taskScheduler,
+			) {
+				tr.workQueue.push(func() {
+					log.Println("(un)schedule...")
+					tr.transform(want, have, target)
+				})
+			}(want, have, target)
 		case have = <-actualc:
-			tr.workQueue.push(func() { tr.transform(want, have, target) })
+			func(wantJobs map[string]configstore.JobConfig,
+				agentStates map[string]agentState,
+				target taskScheduler,
+			) {
+				tr.workQueue.push(func() {
+					log.Println("update...")
+					tr.transform(want, have, target)
+				})
+			}(want, have, target)
 		case q := <-tr.quitc:
 			tr.workQueue.quit()
 			close(q)
@@ -98,6 +122,9 @@ func (tr *transformer) transform(
 	agentStates map[string]agentState,
 	target taskScheduler,
 ) {
+	log.Println("want:", wantJobs)
+	log.Println("have:", agentStates)
+
 	var (
 		todo        = []func() error{}
 		wantTasks   = map[string]agent.ContainerConfig{}
@@ -149,7 +176,7 @@ func (tr *transformer) transform(
 
 	mapping, unscheduled := algo(toSchedule, agentStates, tr.scheduled)
 	if len(unscheduled) > 0 {
-		log.Printf("transformer: error unscheduled tasks: %v", unscheduled)
+		log.Printf("transformer: error unscheduled tasks: %v state: %v", unscheduled, agentStates)
 		// TODO(pb): do something else?
 	}
 

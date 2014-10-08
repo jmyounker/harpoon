@@ -105,11 +105,11 @@ func (c client) Containers() (map[string]ContainerInstance, error) {
 
 	switch resp.StatusCode {
 	case http.StatusOK:
-		var state StateEvent
-		if err := json.NewDecoder(resp.Body).Decode(&state); err != nil {
+		var containers map[string]ContainerInstance
+		if err := json.NewDecoder(resp.Body).Decode(&containers); err != nil {
 			return map[string]ContainerInstance{}, fmt.Errorf("invalid agent response (%s)", err)
 		}
-		return state.Containers, nil
+		return containers, nil
 
 	default:
 		buf, _ := ioutil.ReadAll(resp.Body)
