@@ -11,7 +11,7 @@ import (
 
 type container struct{}
 
-func newContainer(config, rootfs string, args []string) Container {
+func newContainer(hostname string, id string, agentConfig, containerConfig, rootfs string, args []string) Container {
 	return &container{}
 }
 
