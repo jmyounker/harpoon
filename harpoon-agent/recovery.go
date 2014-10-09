@@ -21,7 +21,11 @@ func recoverContainers(containerRoot string, r *registry) {
 		return
 	}
 
-	log.Printf("%d containers may still be running; killing now", len(matches))
+	if len(matches) <= 0 {
+		return
+	}
+
+	log.Printf("%d container(s) may still be running; killing now", len(matches))
 
 	killContainer := func(conn net.Conn) {
 		done := make(chan struct{})
