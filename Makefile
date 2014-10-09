@@ -28,6 +28,6 @@ archive: dep
 
 .PHONY: dep
 dep:
-	GOOS=$(GOOS) GOARCH=$(GOARCH) go get github.com/tools/godep
-	GOOS=$(GOOS) GOARCH=$(GOARCH) $(GOBIN)/godep restore
+	go get github.com/tools/godep
+	$(GOBIN)/godep restore
 
