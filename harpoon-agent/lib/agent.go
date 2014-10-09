@@ -13,16 +13,17 @@ import (
 // as a stream. Clients are expected to stop the stream after enough log lines
 // have been received.
 type Agent interface {
-	Put(containerID string, containerConfig ContainerConfig) error       // PUT /containers/{id}
-	Get(containerID string) (ContainerInstance, error)                   // GET /containers/{id}
-	Start(containerID string) error                                      // POST /containers/{id}/start
-	Stop(containerID string) error                                       // POST /containers/{id}/stop
-	Replace(newContainerID, oldContainerID string) error                 // PUT /containers/{newID}?replace={oldID}
-	Delete(containerID string) error                                     // DELETE /containers/{id}
-	Containers() (map[string]ContainerInstance, error)                   // GET /containers
-	Events() (<-chan StateEvent, Stopper, error)                         // GET /containers with request header Accept: text/event-stream
-	Log(containerID string, history int) (<-chan string, Stopper, error) // GET /containers/{id}/log?history=10
-	Resources() (HostResources, error)                                   // GET /resources
+	Put(containerID string, containerConfig ContainerConfig) error                                                  // PUT /containers/{id}
+	Get(containerID string) (ContainerInstance, error)                                                              // GET /containers/{id}
+	Start(containerID string) error                                                                                 // POST /containers/{id}/start
+	Stop(containerID string) error                                                                                  // POST /containers/{id}/stop
+	Replace(newContainerID, oldContainerID string) error                                                            // PUT /containers/{newID}?replace={oldID}
+	Delete(containerID string) error                                                                                // DELETE /containers/{id}
+	Containers() (map[string]ContainerInstance, error)                                                              // GET /containers
+	Events() (<-chan StateEvent, Stopper, error)                                                                    // GET /containers with request header Accept: text/event-stream
+	Log(containerID string, history int) (<-chan string, Stopper, error)                                            // GET /containers/{id}/log?history=10
+	Resources() (HostResources, error)                                                                              // GET /resources
+	Wait(containerID string, statuses map[ContainerStatus]struct{}, timeout time.Duration) (ContainerStatus, error) // Waits for event with one of the statuses
 }
 
 // ContainerConfig describes the information necessary to start a container on

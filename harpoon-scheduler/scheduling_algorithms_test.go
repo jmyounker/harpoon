@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
+	"log"
 	"reflect"
 	"testing"
 
@@ -11,6 +13,8 @@ import (
 var ok = struct{}{}
 
 func TestMatch(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+
 	var (
 		cfg            = newConfig(300, 2, map[string]string{"/a": "", "/b": ""})
 		validResources = []freeResources{
@@ -242,7 +246,6 @@ func TestRandomFitWithPendingTasks(t *testing.T) {
 	}
 
 	mapping, unscheduled := randomFit(cfgs, states, pendingTasks)
-	fmt.Println(mapping)
 	if want, have := 0, len(mapping); want != have {
 		t.Errorf("not right count of scheduled tasks: expected %d != actual %d", want, have)
 	}

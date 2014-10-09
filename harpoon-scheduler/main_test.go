@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
+	"log"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -11,6 +13,7 @@ import (
 )
 
 func TestScheduleUnschedule(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
 
 	var (
 		numAgents = 3

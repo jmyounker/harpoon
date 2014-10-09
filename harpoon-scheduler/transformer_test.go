@@ -204,6 +204,8 @@ func TestTransform(t *testing.T) {
 }
 
 func TestPurgePengingTasks(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+
 	var (
 		tr = transformer{
 			scheduled:   map[string]pendingTask{},
@@ -346,6 +348,8 @@ func TestTransformExpired(t *testing.T) {
 }
 
 func TestTaskSuccessfullyUnscheduled(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+
 	var (
 		job           = "professor-wiggles-scaled"
 		cfg           = configstore.JobConfig{Job: job, Scale: 1}
@@ -376,6 +380,8 @@ func TestTaskSuccessfullyUnscheduled(t *testing.T) {
 }
 
 func TestTaskNotScheduledYet(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+
 	var (
 		job           = "professor-wiggles-scaled"
 		cfg           = configstore.JobConfig{Job: job, Scale: 1}
@@ -404,6 +410,8 @@ func TestTaskNotScheduledYet(t *testing.T) {
 }
 
 func TestPendingTask(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+
 	var (
 		wantJobs      = map[string]configstore.JobConfig{}
 		endpoint      = "state2"
@@ -429,6 +437,8 @@ func TestPendingTask(t *testing.T) {
 }
 
 func TestEverythingOK(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+
 	var (
 		job           = "professor-wiggles-scaled"
 		cfg           = configstore.JobConfig{Job: job, Scale: 2}
@@ -458,6 +468,8 @@ func TestEverythingOK(t *testing.T) {
 }
 
 func TestScheduleNeeded(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+
 	var (
 		job           = "professor-wiggles-scaled"
 		cfg           = configstore.JobConfig{Job: job, Scale: 2}
@@ -505,6 +517,8 @@ func TestScheduleNeeded(t *testing.T) {
 }
 
 func TestUnscheduleNeeded(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+
 	var (
 		job           = "professor-wiggles-scaled"
 		cfg           = configstore.JobConfig{Job: job, Scale: 2}
@@ -551,6 +565,8 @@ func TestUnscheduleNeeded(t *testing.T) {
 }
 
 func TestUnscheduledPendingTask(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+
 	var (
 		job           = "professor-wiggles-scaled"
 		cfg           = configstore.JobConfig{Job: job, Scale: 2}

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/bernerdschaefer/eventsource"
 )
@@ -61,6 +62,9 @@ var (
 	// ErrContainerAlreadyStopped is returned when clients try to Stop a
 	// container that's already in ContainerStatusFinished.
 	ErrContainerAlreadyStopped = errors.New("container already stopped")
+
+	// ErrTimeout is returned when clients try to Wait for container status too long
+	ErrTimeout = errors.New("timeout")
 )
 
 type client struct{ url.URL }
@@ -433,6 +437,39 @@ func (c client) Log(id string, history int) (<-chan string, Stopper, error) {
 		defer resp.Body.Close()
 		buf, _ := ioutil.ReadAll(resp.Body)
 		return nil, nil, fmt.Errorf("HTTP %d (%s)", resp.StatusCode, bytes.TrimSpace(buf))
+	}
+}
+
+// Wait waits to receive event with information about container with the passed id with one of the statuses
+func (c client) Wait(id string, statuses map[ContainerStatus]struct{}, timeout time.Duration) (ContainerStatus, error) {
+	events, stopper, err := c.Events()
+	if err != nil {
+		return "", err
+	}
+	defer stopper.Stop()
+
+	timeoutc := make(chan struct{})
+	go func() {
+		<-time.After(timeout)
+		close(timeoutc)
+	}()
+
+	for {
+		select {
+		case event := <-events:
+			container, ok := event.Containers[id]
+			if !ok {
+				continue
+			}
+
+			if _, ok := statuses[container.ContainerStatus]; ok {
+				return container.ContainerStatus, nil
+			}
+		case _, ok := <-timeoutc:
+			if !ok {
+				return "", ErrTimeout
+			}
+		}
 	}
 }
 
