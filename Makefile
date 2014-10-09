@@ -20,10 +20,10 @@ clean:
 	git clean -dfx
 
 .PHONY: archive
-archive:
-	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -o $(DISTDIR)/harpoon-agent ./harpoon-agent
-	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -o $(DISTDIR)/harpoon-container ./harpoon-container
-	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -o $(DISTDIR)/harpoon-scheduler ./harpoon-scheduler
+archive: dep
+	GOOS=$(GOOS) GOARCH=$(GOARCH) godep go build -o $(DISTDIR)/harpoon-agent ./harpoon-agent
+	GOOS=$(GOOS) GOARCH=$(GOARCH) godep go build -o $(DISTDIR)/harpoon-supervisor ./harpoon-supervisor
+	GOOS=$(GOOS) GOARCH=$(GOARCH) godep go build -o $(DISTDIR)/harpoon-scheduler ./harpoon-scheduler
 	tar -C $(DISTDIR) -czvf dist/$(ARCHIVE) .
 
 .PHONY: dep
