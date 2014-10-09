@@ -72,6 +72,15 @@ func TestCantGetAPortThatsAllocated(t *testing.T) {
 	}
 }
 
+func TestClaimPort(t *testing.T) {
+	pr := newPortRange(lowTestPort, lowTestPort)
+	defer pr.exit()
+	pr.claimPort(lowTestPort)
+	if _, ok := pr.ports[lowTestPort]; !ok {
+		t.Error("could not claim port")
+	}
+}
+
 func TestNextPort(t *testing.T) {
 	pr := newPortRange(7, 9)
 	defer pr.exit()

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"math/rand"
 	"net"
 )
@@ -26,4 +28,12 @@ func getRandomUDPPort() (int, error) {
 	}
 	defer ln.Close()
 	return ln.LocalAddr().(*net.UDPAddr).Port, nil
+}
+
+func dumpJSONPretty(v interface{}) string {
+	x, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return fmt.Sprintf("CONVERSTION ERROR: %s", err)
+	}
+	return string(x)
 }

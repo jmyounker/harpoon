@@ -305,23 +305,6 @@ func setLogAddrRandomly(t *testing.T) {
 	*logAddr = "localhost:" + strconv.Itoa(port)
 }
 
-// GetRandomUDPPort identifies a UDP port by attempting to connect to port zero. This
-// port may-or-may-not-be available when you attempt to use it, but it's better than
-// nothing.
-func GetRandomUDPPort() (int, error) {
-	laddr, err := net.ResolveUDPAddr("udp", ":0")
-	if err != nil {
-		return 0, err
-	}
-
-	ln, err := net.ListenUDP("udp", laddr)
-	if err != nil {
-		return 0, err
-	}
-	defer ln.Close()
-	return ln.LocalAddr().(*net.UDPAddr).Port, nil
-}
-
 func validateEvent(expected agent.HostResources, have agent.StateEvent, containersCount int, status agent.ContainerStatus) error {
 	if expected.CPUs != have.Resources.CPUs {
 		return fmt.Errorf("invalid cpu resources: expected %v != have %v", expected.CPUs, have.Resources.CPUs)

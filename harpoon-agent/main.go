@@ -85,7 +85,7 @@ func main() {
 
 	go func() {
 		// recover our state from disk
-		recoverContainers(*containerRoot, r)
+		recoverContainers(*containerRoot, r, pr)
 
 		// begin accepting runner updates
 		r.acceptStateUpdates()

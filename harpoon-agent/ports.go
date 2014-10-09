@@ -13,10 +13,13 @@ type portRange struct {
 	port      uint16 // this will be the next port returned by nextPort
 	ports     map[uint16]struct{}
 
-	// Sent from GetPort to getPort. Contains a channel for getPort to back results.
+	// Sent from getPort to getPortUnsafe. Contains a channel for getPort to back results.
 	getportc chan chan getPortResults
 
-	// Sent from ReturnPort. Contains the port to return to the pool.
+	// Set from claimPort. Passes in the port to claim.
+	claimportc chan uint16
+
+	// Sent from returnPort. Contains the port to return to the pool.
 	returnportc chan uint16
 
 	// Closed to indicate that goroutines should terminate.
@@ -38,6 +41,7 @@ func newPortRange(startPort, endPort uint16) *portRange {
 		port:      startPort,
 
 		getportc:    make(chan chan getPortResults),
+		claimportc:  make(chan uint16),
 		returnportc: make(chan uint16),
 		exitc:       make(chan chan struct{}),
 	}
@@ -93,6 +97,11 @@ func (pr *portRange) getPortUnsafe() (uint16, error) {
 	return 0, fmt.Errorf("could not allocate a port within %d attempts", maxAttempts)
 }
 
+// claimPort claims a port from the range without performing any checks
+func (pr *portRange) claimPort(port uint16) {
+	pr.claimportc <- port
+}
+
 // loop coordinates commands
 func (pr *portRange) loop() {
 	for {
@@ -100,6 +109,8 @@ func (pr *portRange) loop() {
 		case resultc := <-pr.getportc:
 			port, err := pr.getPortUnsafe()
 			resultc <- getPortResults{port: port, err: err}
+		case port := <-pr.claimportc:
+			pr.ports[port] = struct{}{}
 		case port := <-pr.returnportc:
 			delete(pr.ports, port)
 		case exitc := <-pr.exitc:

@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
+	"syscall"
 )
 
 // container is a high level interface to an operating system container. The
@@ -28,6 +29,8 @@ type container interface {
 	Subscribe(ch chan<- agent.ContainerInstance)
 	Unsubscribe(ch chan<- agent.ContainerInstance)
 	Logs() *containerLog
+	Recover() error
+	Exit()
 }
 
 const (
@@ -50,6 +53,8 @@ type realContainer struct {
 	actionc chan actionRequest
 	subc    chan chan<- agent.ContainerInstance
 	unsubc  chan chan<- agent.ContainerInstance
+
+	quitc chan chan struct{}
 }
 
 // Satisfaction guaranteed.
@@ -73,6 +78,7 @@ func newContainer(id string, containerRoot string, config agent.ContainerConfig,
 		subc:            make(chan chan<- agent.ContainerInstance),
 		unsubc:          make(chan chan<- agent.ContainerInstance),
 		containerStatec: make(chan agent.ContainerProcessState),
+		quitc:           make(chan chan struct{}),
 	}
 
 	go c.loop()
@@ -200,8 +206,55 @@ func (c *realContainer) loop() {
 
 		case ch := <-c.unsubc:
 			delete(c.subscribers, ch)
+
+		case quitc := <-c.quitc:
+			close(quitc)
+			return
 		}
 	}
+}
+
+// Recover attempts to recover an existing container which may or may not be running.
+func (c *realContainer) Recover() error {
+	var (
+		rundir = filepath.Join(c.containerRoot, c.ID)
+		logdir = filepath.Join("/srv/harpoon/log/", c.ID)
+	)
+
+	if err := c.validateConfig(); err != nil {
+		return err
+	}
+
+	for _, port := range c.ContainerConfig.Ports {
+		c.portRange.claimPort(port)
+	}
+
+	logPipe, err := startLogger(c.ID, logdir)
+	if err != nil {
+		return err
+	}
+	// ensure we don't hold on to the logger
+	defer logPipe.Close()
+
+	c.supervisor = newSupervisor(c.ID, rundir)
+
+	_, err = os.Stat(filepath.Join(rundir, "control"))
+	if err == syscall.ENOENT || err == syscall.ENOTDIR {
+		return err
+	}
+	if err == nil {
+		exitedc := make(chan error, 1)
+		c.supervisor.attach(exitedc)
+		c.supervisor.Subscribe(c.containerStatec)
+	}
+
+	return nil
+}
+
+func (c *realContainer) Exit() {
+	q := make(chan struct{})
+	c.quitc <- q
+	<-q
 }
 
 func (c *realContainer) create() error {

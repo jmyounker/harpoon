@@ -68,6 +68,13 @@ func (s *supervisor) Start(config agent.ContainerConfig, stdout, stderr io.Write
 	// case it exits before we can connect.
 	go func() { exitedc <- cmd.Wait() }()
 
+	return s.attach(exitedc)
+}
+
+// attach attaches to an existing control socket and starts responding. This is invoked by
+// Start when creating a container from scratch, or it is called directly when recovering
+// an existing container.
+func (s *supervisor) attach(exitedc chan error) error {
 	rwc, err := s.connect(path.Join(s.rundir, "control"), exitedc)
 	if err != nil {
 		return err

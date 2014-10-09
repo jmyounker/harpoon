@@ -1,60 +1,66 @@
 package main
 
 import (
-	"io"
-	"io/ioutil"
+	"encoding/json"
+	"fmt"
 	"log"
-	"net"
+	"os"
 	"path/filepath"
-	"time"
+
+	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
 // recoverContainers restores container states from disk, e.g., after
 // harpoon-agent is restarted.
-//
-// BUG: all components are not yet available to support recovery, so this
-// function will instead kill all running containers.
-func recoverContainers(containerRoot string, r *registry) {
-	matches, err := filepath.Glob(filepath.Join(containerRoot, "*", "control"))
+func recoverContainers(containerRoot string, r *registry, pr *portRange) {
+	// Get only containers which have been successfully started
+	containerFilePaths, err := filepath.Glob(filepath.Join(containerRoot, "*", "container.json"))
 	if err != nil {
-		log.Println("unable to scan rundir for containers: ", err)
+		log.Println("unable to scan rundir for container files: ", err)
 		return
 	}
 
-	if len(matches) <= 0 {
+	// We got nothin!
+	if len(containerFilePaths) == 0 {
 		return
 	}
 
-	log.Printf("%d container(s) may still be running; killing now", len(matches))
+	// Attempt to restore all the containers
+	for _, containerFilePath := range containerFilePaths {
+		incContainerRecoveryAttempts(1)
+		containerDir := filepath.Dir(containerFilePath)
+		containerRoot := filepath.Dir(containerDir)
+		id := filepath.Base(containerDir)
 
-	killContainer := func(conn net.Conn) {
-		done := make(chan struct{})
-
-		// ignore state updates
-		go func() { io.Copy(ioutil.Discard, conn); close(done) }()
-
-		for {
-			conn.Write([]byte("event: kill\n\nevent: exit\n\n"))
-
-			select {
-			case <-done:
-				return
-
-			case <-time.After(10 * time.Millisecond):
-			}
-		}
-	}
-
-	for _, controlPath := range matches {
-		id := filepath.Base(filepath.Dir(controlPath))
-
-		conn, err := net.Dial("unix", controlPath)
-		if err != nil {
+		err := recoverContainer(id, containerRoot, r, pr)
+		if err == nil {
+			log.Printf("recovered container %q from %s", id, containerDir)
 			continue
 		}
-
-		log.Printf("container[%s]: killing", id)
-		killContainer(conn)
-		log.Printf("container[%s]: killed", id)
+		log.Printf("failed to recover container %q from %s: %s", id, containerDir, err)
 	}
+}
+
+func recoverContainer(id string, containerRoot string, r *registry, pr *portRange) error {
+	agentFilePath := filepath.Join(containerRoot, id, "agent.json")
+	agentFile, err := os.Open(agentFilePath)
+	if err != nil {
+		return fmt.Errorf("could not read agent file: %s", err)
+	}
+	defer agentFile.Close()
+
+	var agentConfig agent.ContainerConfig
+	if err := json.NewDecoder(agentFile).Decode(&agentConfig); err != nil {
+		return fmt.Errorf("could not parse agent file: %s", err)
+	}
+
+	c := newContainer(id, containerRoot, agentConfig, pr)
+	if err := c.Recover(); err != nil {
+		c.Exit()
+		return err
+	}
+
+	r.register(c)
+
+	return nil
 }

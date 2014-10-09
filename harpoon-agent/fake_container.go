@@ -81,6 +81,16 @@ func (c *fakeContainer) Stop() error {
 	return <-req.res
 }
 
+func (c *fakeContainer) Recover() error {
+	return nil
+}
+
+func (c *fakeContainer) Exit() {
+	q := make(chan struct{})
+	c.quitc <- q
+	<-q
+}
+
 func (c *fakeContainer) Subscribe(ch chan<- agent.ContainerInstance) {
 	c.subc <- ch
 }
@@ -130,9 +140,7 @@ func (c *fakeContainer) destroy() error {
 
 	c.subscribers = map[chan<- agent.ContainerInstance]struct{}{}
 
-	q := make(chan struct{})
-	c.quitc <- q
-	<-q
+	c.Exit()
 
 	return nil
 }
