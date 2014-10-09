@@ -1,6 +1,7 @@
 package scheduler_test
 
 import (
+	"flag"
 	"fmt"
 	"testing"
 	"time"
@@ -11,17 +12,17 @@ import (
 )
 
 var (
-	scheduleURL = "http://127.0.0.1:4444"
-	agentURL    = "http://127.0.0.1:7777"
+	schedulerURL = flag.String("integ.scheduler.url", "", "integration test scheduler url")
+	agentURL     = flag.String("integ.agent.url", "", "integration test agent url")
 )
 
 func TestBasicTaskSchedule(t *testing.T) {
-	clientScheduler, err := scheduler.NewClient(scheduleURL)
+	clientScheduler, err := scheduler.NewClient(*schedulerURL)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	clientAgent, err := agent.NewClient(agentURL)
+	clientAgent, err := agent.NewClient(*agentURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,12 +81,12 @@ func TestBasicTaskSchedule(t *testing.T) {
 }
 
 func TestUnscheduleNonexistentTask(t *testing.T) {
-	clientScheduler, err := scheduler.NewClient(scheduleURL)
+	clientScheduler, err := scheduler.NewClient(*schedulerURL)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	clientAgent, err := agent.NewClient(agentURL)
+	clientAgent, err := agent.NewClient(*agentURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,12 +125,12 @@ func TestUnscheduleNonexistentTask(t *testing.T) {
 }
 
 func TestImpossibleTasks(t *testing.T) {
-	clientScheduler, err := scheduler.NewClient(scheduleURL)
+	clientScheduler, err := scheduler.NewClient(*schedulerURL)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	clientAgent, err := agent.NewClient(agentURL)
+	clientAgent, err := agent.NewClient(*agentURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +197,7 @@ func TestImpossibleTasks(t *testing.T) {
 }
 
 func TestDirectScheduleOnAgent(t *testing.T) {
-	client, err := agent.NewClient("http://localhost:7777")
+	client, err := agent.NewClient(*agentURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,12 +246,12 @@ func TestDirectScheduleOnAgent(t *testing.T) {
 }
 
 func TestTaskConsumesAllAllowedResources(t *testing.T) {
-	clientScheduler, err := scheduler.NewClient(scheduleURL)
+	clientScheduler, err := scheduler.NewClient(*schedulerURL)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	clientAgent, err := agent.NewClient(agentURL)
+	clientAgent, err := agent.NewClient(*agentURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -309,12 +310,12 @@ func TestTaskConsumesAllAllowedResources(t *testing.T) {
 }
 
 func TestTaskScheduledWhenResourcesAreFree(t *testing.T) {
-	clientScheduler, err := scheduler.NewClient(scheduleURL)
+	clientScheduler, err := scheduler.NewClient(*schedulerURL)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	clientAgent, err := agent.NewClient(agentURL)
+	clientAgent, err := agent.NewClient(*agentURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -391,12 +392,12 @@ func TestTaskScheduledWhenResourcesAreFree(t *testing.T) {
 }
 
 func TestScheduleMultipleIndependentTasksThatFit(t *testing.T) {
-	clientScheduler, err := scheduler.NewClient(scheduleURL)
+	clientScheduler, err := scheduler.NewClient(*schedulerURL)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	clientAgent, err := agent.NewClient(agentURL)
+	clientAgent, err := agent.NewClient(*agentURL)
 	if err != nil {
 		t.Fatal(err)
 	}

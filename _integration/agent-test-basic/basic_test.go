@@ -1,10 +1,15 @@
 package agent_test
 
 import (
+	"flag"
 	"testing"
 	"time"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
+)
+
+var (
+	agentURL = flag.String("integ.agent.url", "", "integration test URL")
 )
 
 func TestAgent(t *testing.T) {
@@ -22,7 +27,7 @@ func TestAgent(t *testing.T) {
 		}
 	)
 
-	client, err := agent.NewClient("http://localhost:7777")
+	client, err := agent.NewClient(*agentURL)
 	if err != nil {
 		t.Fatal(err)
 	}

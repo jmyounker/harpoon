@@ -1,5 +1,11 @@
 #!/bin/bash
 
+AGENT_PORT="7777"
+AGENT_URL="http://127.0.0.1:$AGENT_PORT"
+
+SCHEDULER_PORT="4444"
+SCHEDULER_URL="http://127.0.0.1:$SCHEDULER_PORT"
+
 set -e
 cd $(dirname $0)
 
@@ -14,10 +20,13 @@ type nsinit &>/dev/null || {
 nsinit=$(which nsinit)
 rootfs=/tmp/rootfs
 
-echo "run: creating rootfs at $rootfs"
-[ ! -d $rootfs ] && {
-  make_rootfs $rootfs || abort "run: unable to create rootfs"
+[ -d $rootfs ] && {
+  echo "run: removing previous rootfs at $rootfs"
+  sudo rm -rf $rootfs || abort "run: unable to remove pevious rootfs"
 }
+
+echo "run: creating rootfs at $rootfs"
+make_rootfs $rootfs || abort "run: unable to create rootfs"
 
 install -D $(which svlogd) $rootfs/bin/
 
@@ -42,10 +51,11 @@ echo "run: create test artifact"
 }
 
 logfile=$PWD/agent.log
-echo "run: starting agent at localhost:7777"
+
+echo "run: starting agent at localhost:${AGENT_PORT}"
 {
   pushd $rootfs >/dev/null
-  sudo $nsinit exec -- /srv/harpoon/bin/harpoon-agent -addr ":7777" > $logfile 2>&1  & AGENT_PID=$!
+  sudo $nsinit exec -- /srv/harpoon/bin/harpoon-agent -addr ":${AGENT_PORT}" > $logfile 2>&1  & AGENT_PID=$!
   popd >/dev/null
 } || abort "unable to start harpoon-agent"
 trap "shutdown $AGENT_PID" EXIT
@@ -53,7 +63,7 @@ trap "shutdown $AGENT_PID" EXIT
 echo "run: waiting for agent to start"
 for i in {1..5}
 do
-  if curl -s http://localhost:7777/containers >/dev/null; then
+  if curl -s ${AGENT_URL}/api/v0/containers > /dev/null 2>&1 ; then
     break
   elif [ "$i" -eq "5" ]; then
     abort "run: agent not responsive"
@@ -62,18 +72,30 @@ do
   fi
 done
 
-go test -v agent-test-basic/basic_test.go
+go test -v agent-test-basic/basic_test.go -integ.agent.url=${AGENT_URL}
 
 logfile=$PWD/scheduler.log
 
-echo "run: starting scheduler at localhost:4444"
+echo "run: starting scheduler at localhost:${SCHEDULER_PORT}"
 {
   pushd $rootfs >/dev/null
-  sudo $nsinit exec -- /srv/harpoon/bin/harpoon-scheduler -agent=http://127.0.0.1:7777 > $logfile 2>&1  & SCHEDULER_PID=$!
+  sudo $nsinit exec -- /srv/harpoon/bin/harpoon-scheduler -listen=":${SCHEDULER_PORT}" -agent=${AGENT_URL} > $logfile 2>&1  & SCHEDULER_PID=$!
   popd >/dev/null
 } || abort "unable to start harpoon-scheduler"
 trap "shutdown $SCHEDULER_PID & shutdown $AGENT_PID" EXIT
 
-go test -v scheduler-test-basic/basic_test.go
+echo "run: waiting for scheduler to start"
+for i in {1..5}
+do
+  if curl -s ${SCHEDULER_URL}/ > /dev/null 2>&1 ; then
+    break
+  elif [ "$i" -eq "5" ]; then
+    abort "run: scheduler not responsive"
+  else
+    sleep 1
+  fi
+done
+
+go test -v scheduler-test-basic/basic_test.go -integ.scheduler.url=${SCHEDULER_URL} -integ.agent.url=${AGENT_URL}
 
 echo $logfile
