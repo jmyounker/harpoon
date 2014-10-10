@@ -17,8 +17,9 @@ import (
 )
 
 type supervisor struct {
-	ID     string
-	rundir string
+	ID               string
+	rundir           string
+	telemetryAddress string
 
 	exitc        chan chan error
 	stopc        chan time.Duration
@@ -29,23 +30,29 @@ type supervisor struct {
 	exited chan struct{}
 }
 
-func newSupervisor(id string, rundir string) *supervisor {
+func newSupervisor(id string, rundir string, telemetryAddress string) *supervisor {
 	return &supervisor{
-		ID:           id,
-		rundir:       rundir,
-		exitc:        make(chan chan error),
-		stopc:        make(chan time.Duration),
-		subscribec:   make(chan chan<- agent.ContainerProcessState),
-		unsubscribec: make(chan chan<- agent.ContainerProcessState),
-		statec:       make(chan agent.ContainerProcessState),
-		exited:       make(chan struct{}),
+		ID:               id,
+		rundir:           rundir,
+		telemetryAddress: telemetryAddress,
+		exitc:            make(chan chan error),
+		stopc:            make(chan time.Duration),
+		subscribec:       make(chan chan<- agent.ContainerProcessState),
+		unsubscribec:     make(chan chan<- agent.ContainerProcessState),
+		statec:           make(chan agent.ContainerProcessState),
+		exited:           make(chan struct{}),
 	}
 }
 
 // Start starts the supervisor and connects to its control socket. If an error
 // is returned, the supervisor was not started.
 func (s *supervisor) Start(config agent.ContainerConfig, stdout, stderr io.Writer) error {
-	args := []string{"--hostname", hostname, "--id", s.ID}
+	args := []string{
+		"--hostname", hostname,
+		"--id", s.ID,
+		"-telemetry.address", s.telemetryAddress,
+		"-telemetry.label", fmt.Sprintf("%s=%s", "id", s.ID),
+	}
 	args = append(args, "--")
 	args = append(args, config.Command.Exec...)
 

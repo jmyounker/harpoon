@@ -236,7 +236,7 @@ func (c *realContainer) Recover() error {
 	// ensure we don't hold on to the logger
 	defer logPipe.Close()
 
-	c.supervisor = newSupervisor(c.ID, rundir)
+	c.supervisor = newSupervisor(c.ID, rundir, c.nextTelemetryAddress())
 
 	_, err = os.Stat(filepath.Join(rundir, "control"))
 	if err == syscall.ENOENT || err == syscall.ENOTDIR {
@@ -460,7 +460,7 @@ func (c *realContainer) start() error {
 	// ensure we don't hold on to the logger
 	defer logPipe.Close()
 
-	s := newSupervisor(c.ID, rundir)
+	s := newSupervisor(c.ID, rundir, c.nextTelemetryAddress())
 
 	if err := s.Start(c.ContainerConfig, logPipe, supervisorLog); err != nil {
 		return err
@@ -490,6 +490,10 @@ func (c *realContainer) updateStatus(status agent.ContainerStatus) {
 	for subc := range c.subscribers {
 		subc <- c.ContainerInstance
 	}
+}
+
+func (c *realContainer) nextTelemetryAddress() string {
+	return fmt.Sprintf("%s:%d", hostAddress, c.portRange.nextPort())
 }
 
 type containerAction string

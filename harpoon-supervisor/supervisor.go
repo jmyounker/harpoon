@@ -117,6 +117,7 @@ func (s *supervisor) Run(metricsTick <-chan time.Time, restartTimer func() <-cha
 	for {
 		select {
 		case <-restart:
+			incContainerRestart(1)
 			if err := s.container.Start(); err != nil {
 				state.Err = err.Error()
 				state.Restarting = false
@@ -137,6 +138,7 @@ func (s *supervisor) Run(metricsTick <-chan time.Time, restartTimer func() <-cha
 			state.ContainerExitStatus = exitStatus
 
 			if exitStatus.OOMed {
+				incContainerOom(1)
 				state.OOMs++
 			}
 
@@ -157,6 +159,7 @@ func (s *supervisor) Run(metricsTick <-chan time.Time, restartTimer func() <-cha
 
 		case <-metricsTick:
 			state.ContainerMetrics = s.container.Metrics()
+			updateMetrics(s.container.Metrics())
 			s.broadcast(state)
 
 		case sig := <-s.downc:

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"os"
 	"syscall"
 	"testing"
 	"time"
@@ -9,39 +8,9 @@ import (
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
-type testContainer struct {
-	startc  chan error
-	signalc chan os.Signal
-	waitc   chan agent.ContainerExitStatus
-}
-
-func newTestContainer() *testContainer {
-	return &testContainer{
-		startc:  make(chan error),
-		signalc: make(chan os.Signal, 1),
-		waitc:   make(chan agent.ContainerExitStatus),
-	}
-}
-
-func (c *testContainer) Start() error {
-	return <-c.startc
-}
-
-func (c *testContainer) Wait() agent.ContainerExitStatus {
-	return <-c.waitc
-}
-
-func (c *testContainer) Metrics() agent.ContainerMetrics {
-	return agent.ContainerMetrics{}
-}
-
-func (c *testContainer) Signal(sig os.Signal) {
-	c.signalc <- sig
-}
-
 func TestSupervisor(t *testing.T) {
 	var (
-		container  = newTestContainer()
+		container  = newFakeContainer()
 		supervisor = newSupervisor(container)
 		statec     = make(chan agent.ContainerProcessState)
 
@@ -159,7 +128,7 @@ func TestSupervisor(t *testing.T) {
 
 func TestSupervisorStop(t *testing.T) {
 	var (
-		container  = newTestContainer()
+		container  = newFakeContainer()
 		supervisor = newSupervisor(container)
 		statec     = make(chan agent.ContainerProcessState)
 

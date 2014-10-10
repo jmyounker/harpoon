@@ -18,7 +18,8 @@ var (
 	agentTotalMem uint64
 	agentTotalCPU uint64
 
-	hostname string
+	hostname    string
+	hostAddress string
 
 	logAddr = flag.String("log.addr", ":3334", "address for log communications")
 	debug   = flag.Bool("debug", false, "log verbosely for debugging, and only for debugging")
@@ -38,6 +39,8 @@ func main() {
 	flag.Int64Var(&cpu, "cpu", -1, "available cpu resources (-1 to use all cpus)")
 	flag.Int64Var(&mem, "mem", -1, "available memory resources in MB (-1 to use all)")
 	flag.Var(&configuredVolumes, "v", "repeatable list of available volumes")
+	flag.StringVar(&hostAddress, "addr", "127.0.0.1", "host address the instances can be reached at")
+
 	containerRoot := flag.String("run", "/run/harpoon", "filesytem root for packages")
 	portRangeStart64 := flag.Uint64("ports.start", 30000, "starting of port allocation range")
 	portRangeEnd64 := flag.Uint64("ports.end", 32767, "ending of port allocation range")

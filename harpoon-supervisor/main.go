@@ -4,10 +4,13 @@ import (
 	"flag"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
@@ -23,8 +26,21 @@ func main() {
 	var (
 		hostname = flag.String("hostname", "", "hostname")
 		id       = flag.String("id", "", "container ID")
+
+		telemetryAddr   = flag.String("telemetry.address", "", "address for serving telemetry")
+		telemetryLabels = telemetryLabels{}
 	)
+
+	flag.Var(&telemetryLabels, "telemetry.label", "repeatable list of telemetry labels (K=V)")
 	flag.Parse()
+
+	setupMetrics(prometheus.Labels(telemetryLabels))
+
+	go func() {
+		http.Handle("/metrics", prometheus.Handler())
+		http.ListenAndServe(*telemetryAddr, nil)
+	}()
+
 	if *hostname == "" {
 		log.Fatal("hostname not supplied")
 	}
