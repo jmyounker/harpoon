@@ -42,7 +42,7 @@ type realContainer struct {
 	agent.ContainerInstance
 
 	containerRoot string
-	portRange     *portRange
+	portDB        *portDB
 	logs          *containerLog
 
 	supervisor      *supervisor
@@ -60,7 +60,7 @@ type realContainer struct {
 // Satisfaction guaranteed.
 var _ container = &realContainer{}
 
-func newContainer(id string, containerRoot string, config agent.ContainerConfig, pr *portRange) *realContainer {
+func newContainer(id string, containerRoot string, config agent.ContainerConfig, pdb *portDB) *realContainer {
 	c := &realContainer{
 		ContainerInstance: agent.ContainerInstance{
 			ID:              id,
@@ -69,7 +69,7 @@ func newContainer(id string, containerRoot string, config agent.ContainerConfig,
 		},
 
 		containerRoot: containerRoot,
-		portRange:     pr,
+		portDB:        pdb,
 		logs:          newContainerLog(containerLogRingBufferSize),
 
 		subscribers: map[chan<- agent.ContainerInstance]struct{}{},
@@ -225,8 +225,9 @@ func (c *realContainer) Recover() error {
 		return err
 	}
 
-	for _, port := range c.ContainerConfig.Ports {
-		c.portRange.claimPort(port)
+	err := c.portDB.claimPorts(c.ContainerConfig.Ports)
+	if err != nil {
+		return err
 	}
 
 	logPipe, err := startLogger(c.ID, logdir)
@@ -350,18 +351,11 @@ func (c *realContainer) validateConfig() error {
 // assignPorts assigns any automatic ports, updating the config's port and
 // environment maps.
 func (c *realContainer) assignPorts() error {
+	if err := c.portDB.acquirePorts(c.ContainerConfig.Ports); err != nil {
+		return err
+	}
 	for name, port := range c.ContainerConfig.Ports {
-		if port == 0 {
-			var err error
-			port, err = c.portRange.getPort()
-			if err != nil {
-				return err
-			}
-		}
-
 		portName := fmt.Sprintf("PORT_%s", strings.ToUpper(name))
-
-		c.ContainerConfig.Ports[name] = port
 		c.ContainerConfig.Env[portName] = strconv.Itoa(int(port))
 	}
 	return nil
@@ -380,10 +374,7 @@ func (c *realContainer) destroy() error {
 
 	c.updateStatus(agent.ContainerStatusDeleted)
 
-	// Return assigned ports
-	for _, port := range c.ContainerConfig.Ports {
-		c.portRange.returnPort(port) // doesn't matter if we try to remove unallocated ports
-	}
+	c.portDB.releasePorts(c.ContainerConfig.Ports)
 
 	err := os.RemoveAll(rundir)
 	if err != nil {

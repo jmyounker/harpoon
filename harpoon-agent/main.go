@@ -75,9 +75,9 @@ func main() {
 	}
 
 	r := newRegistry()
-	pr := newPortRange(portRangeStart, portRangeEnd)
-	defer pr.exit()
-	api := newAPI(*containerRoot, r, pr)
+	pdb := newPortDB(portRangeStart, portRangeEnd)
+	defer pdb.exit()
+	api := newAPI(*containerRoot, r, pdb)
 
 	go receiveLogs(r)
 
@@ -85,7 +85,7 @@ func main() {
 
 	go func() {
 		// recover our state from disk
-		recoverContainers(*containerRoot, r, pr)
+		recoverContainers(*containerRoot, r, pdb)
 
 		// begin accepting runner updates
 		r.acceptStateUpdates()
