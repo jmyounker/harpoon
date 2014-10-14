@@ -14,8 +14,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 	"syscall"
+
+	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
 // container is a high level interface to an operating system container. The
@@ -363,6 +364,7 @@ func (c *realContainer) assignPorts() error {
 
 		c.ContainerConfig.Ports[name] = port
 		c.ContainerConfig.Env[portName] = strconv.Itoa(int(port))
+		c.ContainerInstance.TelemetryAddress = c.nextTelemetryAddress()
 	}
 	return nil
 }
@@ -460,7 +462,7 @@ func (c *realContainer) start() error {
 	// ensure we don't hold on to the logger
 	defer logPipe.Close()
 
-	s := newSupervisor(c.ID, rundir, c.nextTelemetryAddress())
+	s := newSupervisor(c.ID, rundir, c.ContainerInstance.TelemetryAddress)
 
 	if err := s.Start(c.ContainerConfig, logPipe, supervisorLog); err != nil {
 		return err

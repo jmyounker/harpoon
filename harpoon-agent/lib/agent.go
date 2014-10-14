@@ -213,9 +213,10 @@ type Stopper interface {
 // container IDs are provided with the PUT/POST, rather than assigned by the
 // agent.
 type ContainerInstance struct {
-	ID              string `json:"container_id"`
-	ContainerStatus `json:"status"`
-	ContainerConfig `json:"config"`
+	ID               string `json:"container_id"`
+	ContainerStatus  `json:"status"`
+	ContainerConfig  `json:"config"`
+	TelemetryAddress string `json:"telemetry_address"`
 }
 
 // ContainerStatus describes the current state of a container in an agent. The
