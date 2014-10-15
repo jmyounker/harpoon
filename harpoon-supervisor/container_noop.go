@@ -28,3 +28,7 @@ func (*container) Signal(os.Signal) {}
 func (*container) Metrics() agent.ContainerMetrics {
 	return agent.ContainerMetrics{}
 }
+
+func (*container) Config() agent.ContainerConfig {
+	return agent.ContainerConfig{}
+}

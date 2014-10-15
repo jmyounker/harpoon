@@ -16,4 +16,6 @@ type Container interface {
 	Signal(sig os.Signal)
 
 	Metrics() agent.ContainerMetrics
+
+	Config() agent.ContainerConfig
 }
