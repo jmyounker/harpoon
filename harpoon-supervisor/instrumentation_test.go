@@ -52,7 +52,7 @@ func TestRestartInstrumentation(t *testing.T) {
 			t.Fatalf("%d: supervisor did not attempt to start container", i)
 		}
 
-		if err := expectCounterEqual("container_restart", i); err != nil {
+		if err := expectCounterEqual("container_restarts_total", i); err != nil {
 			t.Fatalf("%d:%v", i, err)
 		}
 	}
@@ -71,7 +71,7 @@ func TestOOMInstrumentation(t *testing.T) {
 		})
 	}()
 
-	if err := expectCounterEqual("container_ooms", 0); err != nil {
+	if err := expectCounterEqual("container_ooms_total", 0); err != nil {
 		t.Fatal(err)
 	}
 
@@ -89,7 +89,7 @@ func TestOOMInstrumentation(t *testing.T) {
 
 	time.Sleep(time.Millisecond)
 
-	if err := expectCounterEqual("container_ooms", 1); err != nil {
+	if err := expectCounterEqual("container_ooms_total", 1); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -141,8 +141,8 @@ func init() {
 	setupMetrics(prometheus.Labels(telemetryLabels{"key": "value"}))
 
 	expvarToPrometheusCounter = map[string]prometheus.Counter{
-		"container_restart": prometheusContainerRestart,
-		"container_ooms":    prometheusContainerOom,
+		"container_restarts_total": prometheusContainerRestart,
+		"container_ooms_total":     prometheusContainerOom,
 	}
 
 	expvarToPrometheusGauge = map[string]prometheus.Gauge{

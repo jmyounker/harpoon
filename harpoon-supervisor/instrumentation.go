@@ -8,8 +8,8 @@ import (
 )
 
 var (
-	expvarContainerRestart     = expvar.NewInt("container_restart")
-	expvarContainerOom         = expvar.NewInt("container_ooms")
+	expvarContainerRestart     = expvar.NewInt("container_restarts_total")
+	expvarContainerOom         = expvar.NewInt("container_ooms_total")
 	expvarContainerCpuTime     = expvar.NewInt("container_cpu_time_ns")
 	expvarContainerMemoryUsage = expvar.NewInt("container_memory_usage_bytes")
 	expvarContainerMemoryLimit = expvar.NewInt("container_memory_limit_bytes")
@@ -25,7 +25,7 @@ func setupMetrics(labels prometheus.Labels) {
 	prometheusContainerRestart = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace:   "harpoon",
 		Subsystem:   "supervisor",
-		Name:        "container_restart",
+		Name:        "container_restarts_total",
 		Help:        "Counter of restarts for a container.",
 		ConstLabels: labels,
 	})
@@ -34,7 +34,7 @@ func setupMetrics(labels prometheus.Labels) {
 	prometheusContainerOom = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace:   "harpoon",
 		Subsystem:   "supervisor",
-		Name:        "container_ooms",
+		Name:        "container_ooms_total",
 		Help:        "Counter of OOM events for container.",
 		ConstLabels: labels,
 	})
@@ -44,7 +44,7 @@ func setupMetrics(labels prometheus.Labels) {
 		Namespace:   "harpoon",
 		Subsystem:   "supervisor",
 		Name:        "container_cpu_time_ns",
-		Help:        "CPU time of a container (in nanoseconds)",
+		Help:        "CPU time of a container (in nanoseconds).",
 		ConstLabels: labels,
 	})
 	prometheus.MustRegister(prometheusContainerCpuTime)
@@ -62,7 +62,7 @@ func setupMetrics(labels prometheus.Labels) {
 		Namespace:   "harpoon",
 		Subsystem:   "supervisor",
 		Name:        "container_memory_limit_bytes",
-		Help:        "Memory reserved by container in bytes",
+		Help:        "Memory reserved by container in bytes.",
 		ConstLabels: labels,
 	})
 	prometheus.MustRegister(prometheusContainerMemoryLimit)
