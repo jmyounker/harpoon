@@ -7,77 +7,77 @@ import (
 )
 
 var (
-	expvarJobScheduleRequests         = expvar.NewInt("job_schedule_requests")
-	expvarJobMigrateRequests          = expvar.NewInt("job_migrate_requests")
-	expvarJobUnscheduleRequests       = expvar.NewInt("job_unschedule_requests")
-	expvarTaskScheduleRequests        = expvar.NewInt("task_schedule_requests")
-	expvarTaskUnscheduleRequests      = expvar.NewInt("task_unschedule_requests")
-	expvarContainersPlaced            = expvar.NewInt("containers_placed")
-	expvarAgentsLost                  = expvar.NewInt("agents_lost")
-	expvarAgentConnectionsEstablished = expvar.NewInt("agent_connections_established")
-	expvarAgentConnectionsInterrupted = expvar.NewInt("agent_connections_interrupted")
-	expvarContainerEventsReceived     = expvar.NewInt("container_events_received")
+	expvarJobScheduleRequests         = expvar.NewInt("job_schedule_requests_total")
+	expvarJobMigrateRequests          = expvar.NewInt("job_migrate_requests_total")
+	expvarJobUnscheduleRequests       = expvar.NewInt("job_unschedule_requests_total")
+	expvarTaskScheduleRequests        = expvar.NewInt("task_schedule_requests_total")
+	expvarTaskUnscheduleRequests      = expvar.NewInt("task_unschedule_requests_total")
+	expvarContainersPlaced            = expvar.NewInt("containers_placed_total")
+	expvarAgentsLost                  = expvar.NewInt("agents_lost_total")
+	expvarAgentConnectionsEstablished = expvar.NewInt("agent_connections_established_total")
+	expvarAgentConnectionsInterrupted = expvar.NewInt("agent_connections_interrupted_total")
+	expvarContainerEventsReceived     = expvar.NewInt("container_events_received_total")
 )
 
 var (
 	prometheusJobScheduleRequests = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "scheduler",
-		Name:      "job_schedule_requests",
+		Name:      "job_schedule_requests_total",
 		Help:      "Number of job schedule requests received by the scheduler.",
 	})
 	prometheusJobMigrateRequests = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "scheduler",
-		Name:      "job_migrate_requests",
+		Name:      "job_migrate_requests_total",
 		Help:      "Number of job migrate requests received by the scheduler.",
 	})
 	prometheusJobUnscheduleRequests = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "scheduler",
-		Name:      "job_unschedule_requests",
+		Name:      "job_unschedule_requests_total",
 		Help:      "Number of job unschedule requests received by the scheduler.",
 	})
 	prometheusTaskScheduleRequests = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "scheduler",
-		Name:      "task_schedule_requests",
+		Name:      "task_schedule_requests_total",
 		Help:      "Number of task schedule requests received by the transformer.",
 	})
 	prometheusTaskUnscheduleRequests = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "scheduler",
-		Name:      "task_unschedule_requests",
+		Name:      "task_unschedule_requests_total",
 		Help:      "Number of task unschedule requests received by the transformer.",
 	})
 	prometheusContainersPlaced = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "scheduler",
-		Name:      "containers_placed",
+		Name:      "containers_placed_total",
 		Help:      "Number of containers successfully placed by a scheduling algorithm.",
 	})
 	prometheusAgentsLost = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "scheduler",
-		Name:      "agents_lost",
+		Name:      "agents_lost_total",
 		Help:      "Number of agents lost completely from agent discovery.",
 	})
 	prometheusAgentConnectionsEstablished = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "scheduler",
-		Name:      "agent_connections_established",
+		Name:      "agent_connections_established_total",
 		Help:      "Number of event stream connections to remote agents that have been established.",
 	})
 	prometheusAgentConnectionsInterrupted = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "scheduler",
-		Name:      "agent_connections_interrupted",
+		Name:      "agent_connections_interrupted_total",
 		Help:      "Number of event stream connections to remote agents that have been interrupted.",
 	})
 	prometheusContainerEventsReceived = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "scheduler",
-		Name:      "container_events_received",
+		Name:      "container_events_received_total",
 		Help:      "Number of complete events received from remote agents.",
 	})
 )
