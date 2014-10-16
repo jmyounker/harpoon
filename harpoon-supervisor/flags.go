@@ -8,7 +8,8 @@ import (
 // telemetryLabels is a prometheus label set provided as flags.
 type telemetryLabels map[string]string
 
-func (telemetryLabels) String() string { return "" }
+func (labels telemetryLabels) String() string { return "" }
+
 func (labels telemetryLabels) Set(value string) error {
 	parts := strings.SplitN(value, "=", 2)
 
@@ -16,6 +17,6 @@ func (labels telemetryLabels) Set(value string) error {
 		return fmt.Errorf("invalid label %q, should be in the format of K=V", value)
 	}
 
-	labels[parts[0]] = labels[parts[1]]
+	labels[parts[0]] = parts[1]
 	return nil
 }

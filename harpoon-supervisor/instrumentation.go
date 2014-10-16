@@ -9,14 +9,14 @@ import (
 
 var (
 	expvarContainerRestart     = expvar.NewInt("container_restarts_total")
-	expvarContainerOom         = expvar.NewInt("container_ooms_total")
-	expvarContainerCpuTime     = expvar.NewInt("container_cpu_time_ns")
+	expvarContainerOOM         = expvar.NewInt("container_ooms_total")
+	expvarContainerCPUTime     = expvar.NewInt("container_cpu_time_ns")
 	expvarContainerMemoryUsage = expvar.NewInt("container_memory_usage_bytes")
 	expvarContainerMemoryLimit = expvar.NewInt("container_memory_limit_bytes")
 
 	prometheusContainerRestart     prometheus.Counter
-	prometheusContainerOom         prometheus.Counter
-	prometheusContainerCpuTime     prometheus.Gauge
+	prometheusContainerOOM         prometheus.Counter
+	prometheusContainerCPUTime     prometheus.Gauge
 	prometheusContainerMemoryUsage prometheus.Gauge
 	prometheusContainerMemoryLimit prometheus.Gauge
 )
@@ -31,23 +31,23 @@ func setupMetrics(labels prometheus.Labels) {
 	})
 	prometheus.MustRegister(prometheusContainerRestart)
 
-	prometheusContainerOom = prometheus.NewCounter(prometheus.CounterOpts{
+	prometheusContainerOOM = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace:   "harpoon",
 		Subsystem:   "supervisor",
 		Name:        "container_ooms_total",
 		Help:        "Counter of OOM events for container.",
 		ConstLabels: labels,
 	})
-	prometheus.MustRegister(prometheusContainerOom)
+	prometheus.MustRegister(prometheusContainerOOM)
 
-	prometheusContainerCpuTime = prometheus.NewGauge(prometheus.GaugeOpts{
+	prometheusContainerCPUTime = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace:   "harpoon",
 		Subsystem:   "supervisor",
 		Name:        "container_cpu_time_ns",
 		Help:        "CPU time of a container (in nanoseconds).",
 		ConstLabels: labels,
 	})
-	prometheus.MustRegister(prometheusContainerCpuTime)
+	prometheus.MustRegister(prometheusContainerCPUTime)
 
 	prometheusContainerMemoryUsage = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace:   "harpoon",
@@ -73,14 +73,14 @@ func incContainerRestart(n int) {
 	prometheusContainerRestart.Add(float64(n))
 }
 
-func incContainerOom(n int) {
-	expvarContainerOom.Add(int64(n))
-	prometheusContainerOom.Add(float64(n))
+func incContainerOOM(n int) {
+	expvarContainerOOM.Add(int64(n))
+	prometheusContainerOOM.Add(float64(n))
 }
 
 func updateMetrics(m agent.ContainerMetrics) {
-	expvarContainerCpuTime.Set(int64(m.CPUTime))
-	prometheusContainerCpuTime.Set(float64(m.CPUTime))
+	expvarContainerCPUTime.Set(int64(m.CPUTime))
+	prometheusContainerCPUTime.Set(float64(m.CPUTime))
 
 	expvarContainerMemoryUsage.Set(int64(m.MemoryUsage))
 	prometheusContainerMemoryUsage.Set(float64(m.MemoryUsage))

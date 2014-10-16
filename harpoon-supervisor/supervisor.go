@@ -138,7 +138,7 @@ func (s *supervisor) Run(metricsTick <-chan time.Time, restartTimer func() <-cha
 			state.ContainerExitStatus = exitStatus
 
 			if exitStatus.OOMed {
-				incContainerOom(1)
+				incContainerOOM(1)
 				state.OOMs++
 			}
 

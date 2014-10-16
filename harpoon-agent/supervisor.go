@@ -48,8 +48,8 @@ func newSupervisor(id string, rundir string, telemetryAddress string) *superviso
 // is returned, the supervisor was not started.
 func (s *supervisor) Start(config agent.ContainerConfig, stdout, stderr io.Writer) error {
 	args := []string{
-		"--hostname", hostname,
-		"--id", s.ID,
+		"-hostname", hostname,
+		"-id", s.ID,
 		"-telemetry.address", s.telemetryAddress,
 		"-telemetry.label", fmt.Sprintf("%s=%s", "id", s.ID),
 	}
