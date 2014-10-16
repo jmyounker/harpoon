@@ -192,7 +192,7 @@ func (r Restart) Valid() error {
 	case NoRestart, OnFailureRestart, AlwaysRestart:
 	default:
 		return fmt.Errorf(
-			"%q should be between %q , %q and %q",
+			"%q should be between %s , %s and %s",
 			r,
 			NoRestart,
 			OnFailureRestart,
