@@ -2,6 +2,7 @@ package main
 
 import (
 	"expvar"
+	"fmt"
 	"strconv"
 	"testing"
 	"time"
@@ -22,23 +23,23 @@ func TestReceiveLogInstrumentation(t *testing.T) {
 	clearCounters()
 	sendLog("container[123] m1")
 	waitForLogLine(t, linec, 100*time.Millisecond)
-	ExpectCounterEqual(t, "log_received_lines", 1)
-	ExpectCounterEqual(t, "log_unparsable_lines", 0)
-	ExpectCounterEqual(t, "log_unroutable_lines", 0)
+	ExpectCounterEqual(t, "log_received_lines_total", 1)
+	ExpectCounterEqual(t, "log_unparsable_lines_total", 0)
+	ExpectCounterEqual(t, "log_unroutable_lines_total", 0)
 
 	clearCounters()
 	sendLog("container[23] m2")
 	expectNoLogLines(t, linec, 100*time.Millisecond)
-	ExpectCounterEqual(t, "log_received_lines", 1)
-	ExpectCounterEqual(t, "log_unparsable_lines", 0)
-	ExpectCounterEqual(t, "log_unroutable_lines", 1)
+	ExpectCounterEqual(t, "log_received_lines_total", 1)
+	ExpectCounterEqual(t, "log_unparsable_lines_total", 0)
+	ExpectCounterEqual(t, "log_unroutable_lines_total", 1)
 
 	clearCounters()
 	sendLog("ilj;irtr")
 	expectNoLogLines(t, linec, 100*time.Millisecond)
-	ExpectCounterEqual(t, "log_received_lines", 1)
-	ExpectCounterEqual(t, "log_unparsable_lines", 1)
-	ExpectCounterEqual(t, "log_unroutable_lines", 0)
+	ExpectCounterEqual(t, "log_received_lines_total", 1)
+	ExpectCounterEqual(t, "log_unparsable_lines_total", 1)
+	ExpectCounterEqual(t, "log_unroutable_lines_total", 0)
 }
 
 func TestLogInstrumentationNotifyWithoutWatchers(t *testing.T) {
@@ -57,11 +58,11 @@ func TestLogInstrumentationNotifyWithoutWatchers(t *testing.T) {
 	clearCounters()
 	sendLog("container[123] m1")
 	expectNoLogLines(t, nonDestinationLinec, 100*time.Millisecond)
-	ExpectCounterEqual(t, "log_received_lines", 1)
-	ExpectCounterEqual(t, "log_unparsable_lines", 0)
-	ExpectCounterEqual(t, "log_unroutable_lines", 0)
-	ExpectCounterEqual(t, "log_deliverable_lines", 0)
-	ExpectCounterEqual(t, "log_undelivered_lines", 0)
+	ExpectCounterEqual(t, "log_received_lines_total", 1)
+	ExpectCounterEqual(t, "log_unparsable_lines_total", 0)
+	ExpectCounterEqual(t, "log_unroutable_lines_total", 0)
+	ExpectCounterEqual(t, "log_deliverable_lines_total", 0)
+	ExpectCounterEqual(t, "log_undelivered_lines_total", 0)
 }
 
 func TestLogInstrumentationNotifyWatchers(t *testing.T) {
@@ -79,11 +80,11 @@ func TestLogInstrumentationNotifyWatchers(t *testing.T) {
 	sendLog("container[123] m1")
 	waitForLogLine(t, linec1, 100*time.Millisecond)
 	waitForLogLine(t, linec2, 100*time.Millisecond)
-	ExpectCounterEqual(t, "log_received_lines", 1)
-	ExpectCounterEqual(t, "log_unparsable_lines", 0)
-	ExpectCounterEqual(t, "log_unroutable_lines", 0)
-	ExpectCounterEqual(t, "log_deliverable_lines", 2)
-	ExpectCounterEqual(t, "log_undelivered_lines", 0)
+	ExpectCounterEqual(t, "log_received_lines_total", 1)
+	ExpectCounterEqual(t, "log_unparsable_lines_total", 0)
+	ExpectCounterEqual(t, "log_unroutable_lines_total", 0)
+	ExpectCounterEqual(t, "log_deliverable_lines_total", 2)
+	ExpectCounterEqual(t, "log_undelivered_lines_total", 0)
 }
 
 func TestLogInstrumentationNotifyWithBlockedWatcher(t *testing.T) {
@@ -101,11 +102,11 @@ func TestLogInstrumentationNotifyWithBlockedWatcher(t *testing.T) {
 	sendLog("container[123] m1")
 	waitForLogLine(t, linec1, 100*time.Millisecond)
 	expectNoLogLines(t, linec2, 100*time.Millisecond)
-	ExpectCounterEqual(t, "log_received_lines", 1)
-	ExpectCounterEqual(t, "log_unparsable_lines", 0)
-	ExpectCounterEqual(t, "log_unroutable_lines", 0)
-	ExpectCounterEqual(t, "log_deliverable_lines", 1)
-	ExpectCounterEqual(t, "log_undelivered_lines", 1)
+	ExpectCounterEqual(t, "log_received_lines_total", 1)
+	ExpectCounterEqual(t, "log_unparsable_lines_total", 0)
+	ExpectCounterEqual(t, "log_unroutable_lines_total", 0)
+	ExpectCounterEqual(t, "log_deliverable_lines_total", 1)
+	ExpectCounterEqual(t, "log_undelivered_lines_total", 1)
 }
 
 func createReceiveLogsFixture(t *testing.T, r *registry) {
@@ -135,20 +136,24 @@ func readCounter(m prometheus.Counter) float64 {
 
 var (
 	expvarToPrometheusCounter = map[string]prometheus.Counter{
-		"log_received_lines":                     prometheusLogReceivedLines,
-		"log_unparsable_lines":                   prometheusLogUnparsableLines,
-		"log_unroutable_lines":                   prometheusLogUnroutableLines,
-		"log_deliverable_lines":                  prometheusLogDeliverableLines,
-		"log_undelivered_lines":                  prometheusLogUndeliveredLines,
-		"container_status_kill":                  prometheusContainerStatusKilled,
-		"container_status_down_successful":       prometheusContainerStatusDownSuccessful,
-		"container_status_force_down_successful": prometheusContainerStatusForceDownSuccessful,
+		"log_received_lines_total":                     prometheusLogReceivedLines,
+		"log_unparsable_lines_total":                   prometheusLogUnparsableLines,
+		"log_unroutable_lines_total":                   prometheusLogUnroutableLines,
+		"log_deliverable_lines_total":                  prometheusLogDeliverableLines,
+		"log_undelivered_lines_total":                  prometheusLogUndeliveredLines,
+		"container_status_kill_total":                  prometheusContainerStatusKilled,
+		"container_status_down_successful_total":       prometheusContainerStatusDownSuccessful,
+		"container_status_force_down_successful_total": prometheusContainerStatusForceDownSuccessful,
 	}
 )
 
 func clearCounters() {
 	for name, prometheusCounter := range expvarToPrometheusCounter {
-		expvar.Get(name).(*expvar.Int).Set(0)
+		v := expvar.Get(name)
+		if v == nil {
+			panic(fmt.Sprintf("invalid name %q", name))
+		}
+		v.(*expvar.Int).Set(0)
 		prometheusCounter.Set(0)
 	}
 }

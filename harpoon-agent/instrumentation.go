@@ -21,21 +21,21 @@ import (
 //   - delivered count + undelivered count = deliverable
 //
 var (
-	expvarLogReceivedLines                   = expvar.NewInt("log_received_lines")
-	expvarLogUnparsableLines                 = expvar.NewInt("log_unparsable_lines")
-	expvarLogUnroutableLines                 = expvar.NewInt("log_unroutable_lines")
-	expvarLogDeliverableLines                = expvar.NewInt("log_deliverable_lines")
-	expvarLogUndeliveredLines                = expvar.NewInt("log_undelivered_lines")
-	expvarContainerCreate                    = expvar.NewInt("container_create")
-	expvarContainerCreateFailure             = expvar.NewInt("container_create_failure")
+	expvarLogReceivedLines                   = expvar.NewInt("log_received_lines_total")
+	expvarLogUnparsableLines                 = expvar.NewInt("log_unparsable_lines_total")
+	expvarLogUnroutableLines                 = expvar.NewInt("log_unroutable_lines_total")
+	expvarLogDeliverableLines                = expvar.NewInt("log_deliverable_lines_total")
+	expvarLogUndeliveredLines                = expvar.NewInt("log_undelivered_lines_total")
+	expvarContainerCreate                    = expvar.NewInt("container_creates_total")
+	expvarContainerCreateFailures            = expvar.NewInt("container_create_failures_total")
 	expvarContainerRecoveryAttempts          = expvar.NewInt("container_recovery_attempts_total")
-	expvarContainerDestroy                   = expvar.NewInt("container_destroy")
-	expvarContainerStart                     = expvar.NewInt("container_start")
-	expvarContainerStartFailure              = expvar.NewInt("container_start_failure")
-	expvarContainerStop                      = expvar.NewInt("container_stop")
-	expvarContainerStatusKilled              = expvar.NewInt("container_status_kill")
-	expvarContainerStatusDownSuccessful      = expvar.NewInt("container_status_down_successful")
-	expvarContainerStatusForceDownSuccessful = expvar.NewInt("container_status_force_down_successful")
+	expvarContainerDestroy                   = expvar.NewInt("container_destroys_total")
+	expvarContainerStart                     = expvar.NewInt("container_start_total")
+	expvarContainerStartFailures             = expvar.NewInt("container_start_failures_total")
+	expvarContainerStop                      = expvar.NewInt("container_stops_total")
+	expvarContainerStatusKilled              = expvar.NewInt("container_status_kill_total")
+	expvarContainerStatusDownSuccessful      = expvar.NewInt("container_status_down_successful_total")
+	expvarContainerStatusForceDownSuccessful = expvar.NewInt("container_status_force_down_successful_total")
 )
 
 // Derivable metrics:
@@ -46,43 +46,43 @@ var (
 	prometheusLogReceivedLines = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "agent",
-		Name:      "log_received_lines",
+		Name:      "log_received_lines_total",
 		Help:      "Number of log lines received from external sources.",
 	})
 	prometheusLogUnparsableLines = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "agent",
-		Name:      "log_unparsable_lines",
+		Name:      "log_unparsable_lines_total",
 		Help:      "Number of log lines which could not be routed to a container.",
 	})
 	prometheusLogUnroutableLines = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "agent",
-		Name:      "log_unroutable_lines",
+		Name:      "log_unroutable_lines_total",
 		Help:      "Number of log lines which could not be routed to a container.",
 	})
 	prometheusLogDeliverableLines = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "agent",
-		Name:      "log_deliverable_lines",
+		Name:      "log_deliverable_lines_total",
 		Help:      "Number of accepted log lines not written because of a blocked listener.",
 	})
 	prometheusLogUndeliveredLines = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "agent",
-		Name:      "log_undelivered_lines",
+		Name:      "log_undelivered_lines_total",
 		Help:      "Number of accepted log lines written to listeners.",
 	})
 	prometheusContainerCreate = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "agent",
-		Name:      "container_create",
+		Name:      "container_creates_total",
 		Help:      "Number of times the agent has created a container.",
 	})
-	prometheusContainerCreateFailure = prometheus.NewCounter(prometheus.CounterOpts{
+	prometheusContainerCreateFailures = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "agent",
-		Name:      "container_create_failure",
+		Name:      "container_create_failures_total",
 		Help:      "Number of times that the container create operation failed.",
 	})
 	prometheusContainerRecoveryAttempts = prometheus.NewCounter(prometheus.CounterOpts{
@@ -94,43 +94,43 @@ var (
 	prometheusContainerDestroy = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "agent",
-		Name:      "container_destroy",
+		Name:      "container_destroys_total",
 		Help:      "Number of times agent has attempted to destroy a container.",
 	})
 	prometheusContainerStart = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "agent",
-		Name:      "container_start",
+		Name:      "container_starts_total",
 		Help:      "Number of times an agent start command was sent to a container.",
 	})
-	prometheusContainerStartFailure = prometheus.NewCounter(prometheus.CounterOpts{
+	prometheusContainerStartFailures = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "agent",
-		Name:      "container_start_failure",
+		Name:      "container_start_failures_total",
 		Help:      "Number of times a container start operation has failed.",
 	})
 	prometheusContainerStop = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "agent",
-		Name:      "container_stop",
+		Name:      "container_stops_total",
 		Help:      "Number of times the agent attempted stop a container.",
 	})
 	prometheusContainerStatusKilled = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "agent",
-		Name:      "container_status_killed",
+		Name:      "container_status_killed_total",
 		Help:      "Number of times that a container had to be killed forcibly.",
 	})
 	prometheusContainerStatusDownSuccessful = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "agent",
-		Name:      "container_status_down_successful",
+		Name:      "container_status_down_successful_total",
 		Help:      "Number of times that a container was successfully shut down.",
 	})
 	prometheusContainerStatusForceDownSuccessful = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "agent",
-		Name:      "container_status_force_down_successful",
+		Name:      "container_status_force_down_successful_total",
 		Help:      "Number of times that a container was successfully forced down.",
 	})
 )
@@ -166,8 +166,8 @@ func incContainerStart(n int) {
 }
 
 func incContainerStartFailure(n int) {
-	expvarContainerStartFailure.Add(int64(n))
-	prometheusContainerStartFailure.Add(float64(n))
+	expvarContainerStartFailures.Add(int64(n))
+	prometheusContainerStartFailures.Add(float64(n))
 }
 
 func incContainerRecoveryAttempts(n int) {
@@ -186,8 +186,8 @@ func incContainerCreate(n int) {
 }
 
 func incContainerCreateFailure(n int) {
-	expvarContainerCreateFailure.Add(int64(n))
-	prometheusContainerCreateFailure.Add(float64(n))
+	expvarContainerCreateFailures.Add(int64(n))
+	prometheusContainerCreateFailures.Add(float64(n))
 }
 
 func incContainerStop(n int) {
