@@ -142,11 +142,11 @@ func init() {
 
 	expvarToPrometheusCounter = map[string]prometheus.Counter{
 		"container_restarts_total": prometheusContainerRestart,
-		"container_ooms_total":     prometheusContainerOom,
+		"container_ooms_total":     prometheusContainerOOM,
 	}
 
 	expvarToPrometheusGauge = map[string]prometheus.Gauge{
-		"container_cpu_time_ns":        prometheusContainerCpuTime,
+		"container_cpu_time_ns":        prometheusContainerCPUTime,
 		"container_memory_usage_bytes": prometheusContainerMemoryUsage,
 		"container_memory_limit_bytes": prometheusContainerMemoryLimit,
 	}

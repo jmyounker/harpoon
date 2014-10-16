@@ -238,7 +238,13 @@ func (c *realContainer) Recover() error {
 	// ensure we don't hold on to the logger
 	defer logPipe.Close()
 
-	c.supervisor = newSupervisor(c.ID, rundir, c.nextTelemetryAddress())
+	telemetryAddress, err := c.nextTelemetryAddress()
+	if err != nil {
+		return err
+	}
+	c.ContainerInstance.TelemetryAddress = telemetryAddress
+
+	c.supervisor = newSupervisor(c.ID, rundir, c.ContainerInstance.TelemetryAddress)
 
 	_, err = os.Stat(filepath.Join(rundir, "control"))
 	if err == syscall.ENOENT || err == syscall.ENOTDIR {
@@ -355,12 +361,28 @@ func (c *realContainer) assignPorts() error {
 	if err := c.portDB.acquirePorts(c.ContainerConfig.Ports); err != nil {
 		return err
 	}
+
+	telemetryAddress, err := c.nextTelemetryAddress()
+	if err != nil {
+		return err
+	}
+	c.ContainerInstance.TelemetryAddress = telemetryAddress
+
 	for name, port := range c.ContainerConfig.Ports {
 		portName := fmt.Sprintf("PORT_%s", strings.ToUpper(name))
 		c.ContainerConfig.Env[portName] = strconv.Itoa(int(port))
-		c.ContainerInstance.TelemetryAddress = c.nextTelemetryAddress()
 	}
 	return nil
+}
+
+func (c *realContainer) nextTelemetryAddress() (string, error) {
+	telemetryPort := map[string]uint16{"telemetry": 0}
+
+	if err := c.portDB.acquirePorts(telemetryPort); err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("%s:%d", hostAddress, telemetryPort["telemetry"]), nil
 }
 
 func (c *realContainer) destroy() error {
@@ -483,10 +505,6 @@ func (c *realContainer) updateStatus(status agent.ContainerStatus) {
 	for subc := range c.subscribers {
 		subc <- c.ContainerInstance
 	}
-}
-
-func (c *realContainer) nextTelemetryAddress() string {
-	return fmt.Sprintf("%s:%d", hostAddress, c.portRange.nextPort())
 }
 
 type containerAction string
