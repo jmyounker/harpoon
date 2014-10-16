@@ -29,12 +29,12 @@ func TestContainerList(t *testing.T) {
 
 	var (
 		registry = newRegistry()
-		pr       = newPortRange(lowTestPort, highTestPort)
-		api      = newAPI(fixtureContainerRoot, registry, pr)
+		pdb      = newPortDB(lowTestPort, highTestPort)
+		api      = newAPI(fixtureContainerRoot, registry, pdb)
 		server   = httptest.NewServer(api)
 	)
 
-	defer pr.exit()
+	defer pdb.exit()
 	defer server.Close()
 
 	req, _ := http.NewRequest("GET", server.URL+"/api/v0/containers", nil)
@@ -116,11 +116,11 @@ func TestLogAPICanTailLogs(t *testing.T) {
 
 	var (
 		registry = newRegistry()
-		pr       = newPortRange(lowTestPort, highTestPort)
-		api      = newAPI(fixtureContainerRoot, registry, pr)
+		pdb      = newPortDB(lowTestPort, highTestPort)
+		api      = newAPI(fixtureContainerRoot, registry, pdb)
 		server   = httptest.NewServer(api)
 	)
-	defer pr.exit()
+	defer pdb.exit()
 	defer server.Close()
 
 	createReceiveLogsFixture(t, registry)
@@ -189,11 +189,11 @@ func TestLogAPICanRetrieveLastLines(t *testing.T) {
 
 	var (
 		registry = newRegistry()
-		pr       = newPortRange(lowTestPort, highTestPort)
-		api      = newAPI(fixtureContainerRoot, registry, pr)
+		pdb      = newPortDB(lowTestPort, highTestPort)
+		api      = newAPI(fixtureContainerRoot, registry, pdb)
 		server   = httptest.NewServer(api)
 	)
-	defer pr.exit()
+	defer pdb.exit()
 	defer server.Close()
 
 	createReceiveLogsFixture(t, registry)
