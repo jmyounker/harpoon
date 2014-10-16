@@ -26,13 +26,13 @@ var (
 	expvarLogUnroutableLines                 = expvar.NewInt("log_unroutable_lines_total")
 	expvarLogDeliverableLines                = expvar.NewInt("log_deliverable_lines_total")
 	expvarLogUndeliveredLines                = expvar.NewInt("log_undelivered_lines_total")
-	expvarContainerCreate                    = expvar.NewInt("container_create_total")
+	expvarContainerCreate                    = expvar.NewInt("container_creates_total")
 	expvarContainerCreateFailures            = expvar.NewInt("container_create_failures_total")
 	expvarContainerRecoveryAttempts          = expvar.NewInt("container_recovery_attempts_total")
-	expvarContainerDestroy                   = expvar.NewInt("container_destroy_total")
+	expvarContainerDestroy                   = expvar.NewInt("container_destroys_total")
 	expvarContainerStart                     = expvar.NewInt("container_start_total")
 	expvarContainerStartFailures             = expvar.NewInt("container_start_failures_total")
-	expvarContainerStop                      = expvar.NewInt("container_stop_total")
+	expvarContainerStop                      = expvar.NewInt("container_stops_total")
 	expvarContainerStatusKilled              = expvar.NewInt("container_status_kill_total")
 	expvarContainerStatusDownSuccessful      = expvar.NewInt("container_status_down_successful_total")
 	expvarContainerStatusForceDownSuccessful = expvar.NewInt("container_status_force_down_successful_total")
@@ -76,7 +76,7 @@ var (
 	prometheusContainerCreate = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "agent",
-		Name:      "container_create_total",
+		Name:      "container_creates_total",
 		Help:      "Number of times the agent has created a container.",
 	})
 	prometheusContainerCreateFailures = prometheus.NewCounter(prometheus.CounterOpts{
@@ -94,13 +94,13 @@ var (
 	prometheusContainerDestroy = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "agent",
-		Name:      "container_destroy_total",
+		Name:      "container_destroys_total",
 		Help:      "Number of times agent has attempted to destroy a container.",
 	})
 	prometheusContainerStart = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "agent",
-		Name:      "container_start_total",
+		Name:      "container_starts_total",
 		Help:      "Number of times an agent start command was sent to a container.",
 	})
 	prometheusContainerStartFailures = prometheus.NewCounter(prometheus.CounterOpts{
@@ -112,7 +112,7 @@ var (
 	prometheusContainerStop = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "agent",
-		Name:      "container_stop_total",
+		Name:      "container_stops_total",
 		Help:      "Number of times the agent attempted stop a container.",
 	})
 	prometheusContainerStatusKilled = prometheus.NewCounter(prometheus.CounterOpts{
