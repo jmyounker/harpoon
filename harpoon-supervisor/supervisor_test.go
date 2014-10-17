@@ -1,7 +1,7 @@
 package main
 
 import (
-	"os"
+	"fmt"
 	"syscall"
 	"testing"
 	"time"
@@ -9,39 +9,9 @@ import (
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
-type testContainer struct {
-	startc  chan error
-	signalc chan os.Signal
-	waitc   chan agent.ContainerExitStatus
-}
-
-func newTestContainer() *testContainer {
-	return &testContainer{
-		startc:  make(chan error),
-		signalc: make(chan os.Signal, 1),
-		waitc:   make(chan agent.ContainerExitStatus),
-	}
-}
-
-func (c *testContainer) Start() error {
-	return <-c.startc
-}
-
-func (c *testContainer) Wait() agent.ContainerExitStatus {
-	return <-c.waitc
-}
-
-func (c *testContainer) Metrics() agent.ContainerMetrics {
-	return agent.ContainerMetrics{}
-}
-
-func (c *testContainer) Signal(sig os.Signal) {
-	c.signalc <- sig
-}
-
 func TestSupervisor(t *testing.T) {
 	var (
-		container  = newTestContainer()
+		container  = newFakeContainer(agent.OnFailureRestart)
 		supervisor = newSupervisor(container)
 		statec     = make(chan agent.ContainerProcessState)
 
@@ -96,22 +66,9 @@ func TestSupervisor(t *testing.T) {
 		t.Fatal("expected 1 oom")
 	}
 
-	select {
-	case restartTimer <- time.Now():
-	case <-time.After(time.Millisecond):
-		panic("supervisor did not consume restart message")
-	}
-
-	select {
-	case container.startc <- nil:
-	case <-time.After(time.Millisecond):
-		panic("supervisor did not attempt to start container")
-	}
-
-	select {
-	case state = <-statec:
-	case <-time.After(time.Millisecond):
-		panic("supervisor did not sent state update after restart")
+	state, err := waitRestart(restartTimer, container, statec, state.ExitStatus)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	if state.Up != true {
@@ -159,7 +116,7 @@ func TestSupervisor(t *testing.T) {
 
 func TestSupervisorStop(t *testing.T) {
 	var (
-		container  = newTestContainer()
+		container  = newFakeContainer(agent.OnFailureRestart)
 		supervisor = newSupervisor(container)
 		statec     = make(chan agent.ContainerProcessState)
 
@@ -219,4 +176,246 @@ func TestSupervisorStop(t *testing.T) {
 	case <-time.After(time.Millisecond):
 		panic("supervisor did not terminate after exit")
 	}
+}
+
+func TestAlwaysRestartPolicy(t *testing.T) {
+	for exitStatus := 0; exitStatus < 2; exitStatus++ {
+		var (
+			container    = newFakeContainer(agent.AlwaysRestart)
+			supervisor   = newSupervisor(container)
+			statec       = make(chan agent.ContainerProcessState)
+			restartTimer = make(chan time.Time)
+			done         = make(chan struct{}, 1)
+		)
+
+		go func() {
+			supervisor.Run(nil, func() <-chan time.Time {
+				return restartTimer
+			})
+			done <- struct{}{}
+		}()
+
+		select {
+		case container.startc <- nil:
+		case <-time.After(time.Millisecond):
+			panic("supervisor did not attempt to start container")
+		}
+
+		supervisor.Subscribe(statec)
+		defer supervisor.Unsubscribe(statec)
+
+		select {
+		case <-statec:
+		case <-time.After(time.Millisecond):
+			panic("supervisor did not send a state update")
+		}
+
+		select {
+		case container.waitc <- agent.ContainerExitStatus{Exited: true, ExitStatus: exitStatus}:
+		case <-time.After(time.Millisecond):
+			panic("unable to send exit status")
+		}
+
+		select {
+		case state := <-statec:
+			if !state.Restarting {
+				t.Fatalf("container exited with %d status should be in restarting state", exitStatus)
+			}
+		case <-time.After(time.Millisecond):
+			panic("supervisor did not send a state update")
+		}
+
+		if _, err := waitRestart(restartTimer, container, statec, exitStatus); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := stopSupervisor(supervisor, container, statec); err != nil {
+			t.Fatal(err)
+		}
+
+		select {
+		case <-done:
+		case <-time.After(time.Millisecond):
+			panic("supervisor did not terminate after exit")
+		}
+	}
+}
+
+func TestNoRestartPolicy(t *testing.T) {
+	for exitStatus := 0; exitStatus < 2; exitStatus++ {
+		var (
+			container    = newFakeContainer(agent.NoRestart)
+			supervisor   = newSupervisor(container)
+			statec       = make(chan agent.ContainerProcessState)
+			restartTimer = make(chan time.Time)
+			done         = make(chan struct{}, 1)
+		)
+
+		go func() {
+			supervisor.Run(nil, func() <-chan time.Time {
+				return restartTimer
+			})
+			done <- struct{}{}
+		}()
+
+		select {
+		case container.startc <- nil:
+		case <-time.After(time.Millisecond):
+			panic("supervisor did not attempt to start container")
+		}
+
+		supervisor.Subscribe(statec)
+		defer supervisor.Unsubscribe(statec)
+
+		select {
+		case <-statec:
+		case <-time.After(time.Millisecond):
+			panic("supervisor did not send a state update")
+		}
+
+		select {
+		case container.waitc <- agent.ContainerExitStatus{Exited: true, ExitStatus: exitStatus}:
+		case <-time.After(time.Millisecond):
+			panic("unable to send exit status")
+		}
+
+		select {
+		case state := <-statec:
+			if state.Restarting {
+				t.Fatalf("container exited with %d status should not be in restarting state", exitStatus)
+			}
+		case <-time.After(time.Millisecond):
+			panic("supervisor did not send a state update")
+		}
+
+		if err := supervisor.Exit(); err != nil {
+			t.Fatalf("expected supervisor to exit, got %v", err)
+		}
+
+		select {
+		case <-done:
+		case <-time.After(time.Millisecond):
+			panic("supervisor did not terminate after exit")
+		}
+	}
+}
+
+func TestOnFailureRestartPolicy(t *testing.T) {
+	for exitStatus := 0; exitStatus < 2; exitStatus++ {
+		var (
+			container    = newFakeContainer(agent.OnFailureRestart)
+			supervisor   = newSupervisor(container)
+			statec       = make(chan agent.ContainerProcessState)
+			restartTimer = make(chan time.Time)
+			done         = make(chan struct{}, 1)
+		)
+
+		go func() {
+			supervisor.Run(nil, func() <-chan time.Time {
+				return restartTimer
+			})
+			done <- struct{}{}
+		}()
+
+		select {
+		case container.startc <- nil:
+		case <-time.After(time.Millisecond):
+			panic("supervisor did not attempt to start container")
+		}
+
+		supervisor.Subscribe(statec)
+		defer supervisor.Unsubscribe(statec)
+
+		select {
+		case <-statec:
+		case <-time.After(time.Millisecond):
+			panic("supervisor did not send a state update")
+		}
+
+		select {
+		case container.waitc <- agent.ContainerExitStatus{Exited: true, ExitStatus: exitStatus}:
+		case <-time.After(time.Millisecond):
+			panic("unable to send exit status")
+		}
+
+		select {
+		case state := <-statec:
+			if state.Restarting && exitStatus == 0 {
+				t.Fatalf("container exited with %d status should not be in restarting state", exitStatus)
+			}
+		case <-time.After(time.Millisecond):
+			panic("supervisor did not send a state update")
+		}
+
+		if exitStatus == 0 {
+			if err := supervisor.Exit(); err != nil {
+				t.Fatalf("expected supervisor to exit, got %v", err)
+			}
+		} else {
+			if _, err := waitRestart(restartTimer, container, statec, exitStatus); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := stopSupervisor(supervisor, container, statec); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		select {
+		case <-done:
+		case <-time.After(time.Millisecond):
+			panic("supervisor did not terminate after exit")
+		}
+	}
+}
+
+func stopSupervisor(supervisor Supervisor, container *fakeContainer, statec chan agent.ContainerProcessState) error {
+	supervisor.Stop(syscall.SIGTERM)
+	select {
+	case <-container.signalc:
+	case <-time.After(time.Second):
+		return fmt.Errorf("supervisor did not send SIGTERM signal to container")
+	}
+
+	select {
+	case container.waitc <- agent.ContainerExitStatus{}:
+	case <-time.After(time.Millisecond):
+		return fmt.Errorf("unable to send exit status")
+	}
+
+	select {
+	case <-statec:
+	case <-time.After(time.Millisecond):
+		return fmt.Errorf("supervisor did not send a state update")
+	}
+
+	if err := supervisor.Exit(); err != nil {
+		return fmt.Errorf("expected supervisor to exit, got %v", err)
+	}
+
+	return nil
+}
+
+func waitRestart(restartTimer chan time.Time, container *fakeContainer, statec chan agent.ContainerProcessState, exitStatus int) (agent.ContainerProcessState, error) {
+	var state = agent.ContainerProcessState{}
+
+	select {
+	case restartTimer <- time.Now():
+	case <-time.After(time.Millisecond):
+		return state, fmt.Errorf("supervisor did not consume restart message after exiting with status %d", exitStatus)
+	}
+
+	select {
+	case container.startc <- nil:
+	case <-time.After(time.Millisecond):
+		return state, fmt.Errorf("supervisor did not attempt to start container after exiting with status %d", exitStatus)
+	}
+
+	select {
+	case state = <-statec:
+	case <-time.After(time.Millisecond):
+		return state, fmt.Errorf("supervisor did not send a state update")
+	}
+
+	return state, nil
 }

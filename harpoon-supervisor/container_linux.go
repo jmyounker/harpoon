@@ -225,6 +225,10 @@ func (c *container) Metrics() agent.ContainerMetrics {
 	}
 }
 
+func (c *container) Config() agent.ContainerConfig {
+	return c.agentConfig
+}
+
 // libcontainerConfig builds a complete libcontainer.Config from an
 // agent.ContainerConfig.
 func (c *container) libcontainerConfig() *libcontainer.Config {

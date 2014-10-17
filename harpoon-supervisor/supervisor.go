@@ -140,9 +140,17 @@ func (s *supervisor) Run(metricsTick <-chan time.Time, restartTimer func() <-cha
 				state.OOMs++
 			}
 
-			if exitStatus.Exited && exitStatus.ExitStatus == 0 {
-				state.Up = false
-				state.Restarting = false
+			if exitStatus.Exited {
+				switch s.container.Config().Restart {
+				case agent.NoRestart:
+					state.Restarting = false
+				case agent.AlwaysRestart:
+					state.Restarting = true
+				case agent.OnFailureRestart:
+					state.Restarting = exitStatus.ExitStatus != 0
+				default:
+					panic("invalid restart policy")
+				}
 			}
 
 			if !state.Restarting {

@@ -36,6 +36,7 @@ type ContainerConfig struct {
 	Resources   `json:"resources"`
 	Storage     `json:"storage"`
 	Grace       `json:"grace"`
+	Restart     `json:"restart"`
 }
 
 // Valid performs a validation check, to ensure invalid structures may be
@@ -61,6 +62,10 @@ func (c ContainerConfig) Valid() error {
 
 	if err := c.Grace.Valid(); err != nil {
 		errs = append(errs, fmt.Sprintf("grace periods invalid: %s", err))
+	}
+
+	if err := c.Restart.Valid(); err != nil {
+		errs = append(errs, fmt.Sprintf("restart policy invalid: %s", err))
 	}
 
 	if len(errs) > 0 {
@@ -156,6 +161,43 @@ func (g Grace) Valid() error {
 
 	if len(errs) > 0 {
 		return fmt.Errorf(strings.Join(errs, "; "))
+	}
+
+	return nil
+}
+
+// Restart describes the restart policy of a container in an agent.
+//
+// Docker provides some inspiration here.
+// http://blog.docker.com/2014/08/announcing-docker-1-2-0/
+type Restart string
+
+const (
+	// NoRestart indicates that the container won't be restarted if it dies
+	NoRestart Restart = "no"
+
+	// OnFailureRestart indicates that the container will be restarted
+	// only if it exits with a non-zero status
+	OnFailureRestart = "on-failure"
+
+	// AlwaysRestart indicates that the container will be restarted
+	// no matter what exit code is returned
+	AlwaysRestart = "always"
+)
+
+// Valid performs a validation check, to ensure invalid structures may be
+// detected as early as possible.
+func (r Restart) Valid() error {
+	switch r {
+	case NoRestart, OnFailureRestart, AlwaysRestart:
+	default:
+		return fmt.Errorf(
+			"%q should be %s, %s or %s",
+			r,
+			NoRestart,
+			OnFailureRestart,
+			AlwaysRestart,
+		)
 	}
 
 	return nil
