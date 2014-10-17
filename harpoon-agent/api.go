@@ -275,25 +275,39 @@ func (a *api) handleLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h := container.Logs().last(history)
+
 	if isStreamAccept(r.Header.Get("Accept")) {
 		eventsource.Handler(func(_ string, enc *eventsource.Encoder, stop <-chan bool) {
-			a.streamLog(container.Logs(), enc, stop)
+			a.streamLog(h, container.Logs(), enc, stop)
 		}).ServeHTTP(w, r)
 		return
 	}
 
-	json.NewEncoder(w).Encode(container.Logs().last(history))
+	json.NewEncoder(w).Encode(h)
 }
 
-func (a *api) streamLog(logs *containerLog, enc *eventsource.Encoder, stop <-chan bool) {
+func (a *api) streamLog(history []string, current *containerLog, enc *eventsource.Encoder, stop <-chan bool) {
 	// logs.Notify does not write to blocked channels, so the channel has to
 	// be buffered. The capacity is chosen so that a burst of log lines won't
 	// immediately result in a loss of data during large surge of incoming log
 	// lines.
 	linec := make(chan string, logBufferSize)
 
-	logs.notify(linec)
-	defer logs.stop(linec)
+	current.notify(linec)
+	defer current.stop(linec)
+
+	if len(history) > 0 {
+		b, err := json.Marshal(history)
+		if err != nil {
+			log.Printf("log stream: fatal error: %s", err)
+			return
+		}
+
+		if err = enc.Encode(eventsource.Event{Data: b}); err != nil {
+			log.Printf("log stream: non-fatal error: %s", err)
+		}
+	}
 
 	for {
 		select {

@@ -138,6 +138,81 @@ func TestLogAPICanTailLogs(t *testing.T) {
 	sendLog("container[123] m1")
 	waitForLogLine(t, linec, time.Second)
 
+	// history=0 forces logging to ignore all previous history
+	req, err := http.NewRequest("GET", server.URL+"/api/v0/containers/123/log?history=0", nil)
+	if err != nil {
+		t.Fatalf("unable to get log history: %s", err)
+	}
+	es := eventsource.New(req, time.Second)
+	defer es.Close()
+
+	// A tailing reader only receives events sent after it connects, so the test must
+	// connect before the test sends the log messages.  Therefore the reader must run
+	// concurrently.
+	readStepc := make(chan struct{})
+	readResultc := make(chan []string)
+
+	// This function performs a read each time it receives a write on the channel readStepc.
+	// It writes the results to readResultc.  The goroutine terminates when readStepc
+	// closes.  Any error causes test failure.
+	go func() {
+		for _ = range readStepc {
+			ev, err := es.Read()
+			if err != nil {
+				t.Fatal(err)
+			}
+			var logLines []string
+			if err := json.Unmarshal(ev.Data, &logLines); err != nil {
+				t.Fatalf("unable to load containers json: %s", err)
+			}
+			readResultc <- logLines
+		}
+	}()
+	defer close(readStepc)
+
+	readStepc <- struct{}{} // Initial read causes a connection.
+
+	// Horrible, horrible hack to ensure that the eventstream.Read() has time to connect.
+	time.Sleep(time.Second)
+
+	sendLog("container[123] m2")
+	sendLog("container[123] m3")
+
+	logLines := <-readResultc
+	ExpectArraysEqual(t, logLines, []string{"container[123] m2"})
+
+	readStepc <- struct{}{}
+	logLines = <-readResultc
+	ExpectArraysEqual(t, logLines, []string{"container[123] m3"})
+}
+
+func TestLogAPILogTailIncludesHistory(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+
+	var (
+		registry = newRegistry()
+		pdb      = newPortDB(lowTestPort, highTestPort)
+		api      = newAPI(fixtureContainerRoot, registry, pdb)
+		server   = httptest.NewServer(api)
+	)
+	defer pdb.exit()
+	defer server.Close()
+
+	createReceiveLogsFixture(t, registry)
+
+	c := newFakeContainer("123")
+	registry.register(c)
+
+	// UDP has some weirdness with processing, so we use the container log's subscription
+	// mechanism to ensure that we don't run the test until all the messages have been
+	// processed.
+	linec := make(chan string, 10) // Plenty of room before anything gets dropped
+	c.Logs().notify(linec)
+
+	// Send a log line that will be lost
+	sendLog("container[123] m1")
+	waitForLogLine(t, linec, time.Second)
+
 	req, err := http.NewRequest("GET", server.URL+"/api/v0/containers/123/log", nil)
 	if err != nil {
 		t.Fatalf("unable to get log history: %s", err)
@@ -170,13 +245,17 @@ func TestLogAPICanTailLogs(t *testing.T) {
 	defer close(readStepc)
 
 	readStepc <- struct{}{} // Initial read causes a connection.
-	// Horrible, horrible hack to get ensure that the eventstream.Read() has time to connect.
+	// Horrible, horrible hack to ensure that the eventstream.Read() has time to connect.
 	time.Sleep(time.Second)
 
 	sendLog("container[123] m2")
 	sendLog("container[123] m3")
 
 	logLines := <-readResultc
+	ExpectArraysEqual(t, logLines, []string{"container[123] m1"})
+
+	readStepc <- struct{}{}
+	logLines = <-readResultc
 	ExpectArraysEqual(t, logLines, []string{"container[123] m2"})
 
 	readStepc <- struct{}{}
