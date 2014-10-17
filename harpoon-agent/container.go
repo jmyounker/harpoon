@@ -13,9 +13,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
-	"syscall"
 )
 
 // container is a high level interface to an operating system container. The
@@ -182,6 +182,7 @@ func (c *realContainer) loop() {
 			c.subscribers[ch] = struct{}{}
 
 		case state := <-c.containerStatec:
+			c.ContainerInstance.ContainerProcessState = state
 			if state.Up {
 				c.updateStatus(agent.ContainerStatusRunning)
 			}
