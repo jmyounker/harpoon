@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -19,12 +20,27 @@ const (
 	containerInitName = "harpoon-container-init"
 )
 
+// Override at link stage (see Makefile)
+var (
+	Version                string
+	CommitID               string
+	ExternalReleaseVersion string
+)
+
 func main() {
 	var (
+		showVersion = flag.Bool("version", false, "print version")
+
 		hostname = flag.String("hostname", "", "hostname")
 		id       = flag.String("id", "", "container ID")
 	)
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("version %s (%s) %s\n", Version, CommitID, ExternalReleaseVersion)
+		os.Exit(0)
+	}
+
 	if *hostname == "" {
 		log.Fatal("hostname not supplied")
 	}

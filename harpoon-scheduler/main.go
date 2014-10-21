@@ -14,9 +14,16 @@ import (
 )
 
 var (
+	showVersion = flag.Bool("version", false, "print version")
+
 	now   = time.Now
 	after = time.After
 	tick  = time.Tick
+
+	// Override at link stage (see Makefile)
+	Version                string
+	CommitID               string
+	ExternalReleaseVersion string
 )
 
 func main() {
@@ -28,6 +35,11 @@ func main() {
 	)
 	flag.Var(&agents, "agent", "repeatable list of agent endpoints")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("version %s (%s) %s\n", Version, CommitID, ExternalReleaseVersion)
+		os.Exit(0)
+	}
 
 	var (
 		discovery   = staticAgentDiscovery(agents.slice())

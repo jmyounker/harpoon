@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -12,6 +13,11 @@ import (
 var (
 	clusterPath    = filepath.Join(os.Getenv("HOME"), ".harpoonctl", "cluster")
 	defaultCluster = filepath.Join(clusterPath, "default")
+
+	// Override at link stage (see Makefile)
+	Version                string
+	CommitID               string
+	ExternalReleaseVersion string
 )
 
 func main() {
@@ -27,7 +33,7 @@ func main() {
 
 Commands default to communicating with a local harpoon agent, unless a default
 cluster (` + defaultCluster + `) is defined.`,
-		Version: "0.0.1",
+		Version: fmt.Sprintf("%s (%s) %s", Version, CommitID, ExternalReleaseVersion),
 
 		Action: cli.ShowAppHelp,
 

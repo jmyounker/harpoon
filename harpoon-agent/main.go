@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"math"
 	"net/http"
@@ -10,6 +11,8 @@ import (
 )
 
 var (
+	showVersion = flag.Bool("version", false, "print version")
+
 	heartbeatInterval = 3 * time.Second
 
 	addr              = flag.String("addr", ":3333", "address to listen on")
@@ -22,6 +25,11 @@ var (
 
 	logAddr = flag.String("log.addr", ":3334", "address for log communications")
 	debug   = flag.Bool("debug", false, "log verbosely for debugging, and only for debugging")
+
+	// Override at link stage (see Makefile)
+	Version                string
+	CommitID               string
+	ExternalReleaseVersion string
 )
 
 func init() {
@@ -43,6 +51,11 @@ func main() {
 	portRangeEnd64 := flag.Uint64("ports.end", 32767, "ending of port allocation range")
 
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("version %s (%s) %s\n", Version, CommitID, ExternalReleaseVersion)
+		os.Exit(0)
+	}
 
 	if *portRangeStart64 > math.MaxUint16 {
 		log.Fatalf("port range start must be between 0 and %d", math.MaxUint16)
