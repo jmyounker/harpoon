@@ -17,17 +17,28 @@ var (
 	now   = time.Now
 	after = time.After
 	tick  = time.Tick
+
+	// Override at link stage (see Makefile)
+	Version                string
+	CommitID               string
+	ExternalReleaseVersion string
 )
 
 func main() {
 	var (
-		listen  = flag.String("listen", ":4444", "HTTP listen address")
-		persist = flag.String("persist", "scheduler-registry.json", "filename to persist registry state")
-		agents  = multiagent{}
-		timeout = flag.Duration("timeout", time.Second, "timeout to set (un)scheduled job request as failed")
+		showVersion = flag.Bool("version", false, "print version")
+		listen      = flag.String("listen", ":4444", "HTTP listen address")
+		persist     = flag.String("persist", "scheduler-registry.json", "filename to persist registry state")
+		agents      = multiagent{}
+		timeout     = flag.Duration("timeout", time.Second, "timeout to set (un)scheduled job request as failed")
 	)
 	flag.Var(&agents, "agent", "repeatable list of agent endpoints")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("version %s (%s) %s\n", Version, CommitID, ExternalReleaseVersion)
+		os.Exit(0)
+	}
 
 	var (
 		discovery   = staticAgentDiscovery(agents.slice())

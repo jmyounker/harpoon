@@ -1,5 +1,9 @@
 .PHONY: default clean build test archive dep
 
+VERSION := 0.0.6
+REV := $(shell git rev-parse --short HEAD)
+EXTRELVER ?= open-source
+
 ifeq ($(origin GOROOT), undefined)
   GO=go
 else
@@ -19,6 +23,10 @@ GODEP := $(GOBIN)/godep
 ARCHIVE := harpoon-latest.$(GOOS)-$(GOARCH).tar.gz
 DISTDIR ?= $(CURDIR)/dist/$(GOOS)-$(GOARCH)
 
+LDFLAGS    := -X main.Version $(VERSION)\
+              -X main.CommitID $(REV) \
+              -X main.ExternalReleaseVersion $(EXTRELVER)
+
 default:
 
 clean:
@@ -34,12 +42,11 @@ dep: $(GODEP)
 build: $(DISTDIR)/harpoon-agent $(DISTDIR)/harpoon-supervisor $(DISTDIR)/harpoon-scheduler $(DISTDIR)/harpoonctl
 
 $(DISTDIR)/%: $(GODEP)
-	GOOS=$(GOOS) GOARCH=$(GOARCH) $(GODEP) go build -o $(DISTDIR)/$* ./$*
+	GOOS=$(GOOS) GOARCH=$(GOARCH) $(GODEP) go build -ldflags "$(LDFLAGS)" -o $(DISTDIR)/$* ./$*
 
 test: $(GODEP)
 	GOOS=$(GOOS) GOARCH=$(GOARCH) $(GODEP) go test ./...
 
 archive: build test
 	tar -C $(DISTDIR) -czvf dist/$(ARCHIVE) .
-
 
