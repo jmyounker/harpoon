@@ -1,6 +1,6 @@
 .PHONY: default clean build test archive dep
 
-VERSION := 0.6.0
+VERSION := 0.0.6
 REV := $(shell git rev-parse --short HEAD)
 EXTRELVER ?= open-source
 

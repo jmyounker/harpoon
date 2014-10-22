@@ -30,9 +30,8 @@ var (
 func main() {
 	var (
 		showVersion = flag.Bool("version", false, "print version")
-
-		hostname = flag.String("hostname", "", "hostname")
-		id       = flag.String("id", "", "container ID")
+		hostname    = flag.String("hostname", "", "hostname")
+		id          = flag.String("id", "", "container ID")
 	)
 	flag.Parse()
 
