@@ -13,6 +13,7 @@ import (
 // as a stream. Clients are expected to stop the stream after enough log lines
 // have been received.
 type Agent interface {
+	Endpoint() string
 	Put(containerID string, containerConfig ContainerConfig) error                                                  // PUT /containers/{id}
 	Get(containerID string) (ContainerInstance, error)                                                              // GET /containers/{id}
 	Start(containerID string) error                                                                                 // POST /containers/{id}/start
@@ -278,23 +279,23 @@ const (
 	// ContainerStatusRunning indicates the container is succesfully running
 	// from the perspective of the agent. It implies nothing about the
 	// healthiness of the process.
-	ContainerStatusRunning = "running"
+	ContainerStatusRunning ContainerStatus = "running"
 
 	// ContainerStatusFailed indicates the container has exited with a nonzero
 	// return code. In most cases, this is a very short-lived state, as the
 	// agent will restart the container.
-	ContainerStatusFailed = "failed"
+	ContainerStatusFailed ContainerStatus = "failed"
 
 	// ContainerStatusFinished indicates the container has exited successfully
 	// with a zero return code. In most cases, this will be a long-lived
 	// state, as the agent will not restart the container. (We should probably
 	// think about if and how to reap finished containers.)
-	ContainerStatusFinished = "finished"
+	ContainerStatusFinished ContainerStatus = "finished"
 
 	// ContainerStatusDeleted is a special meta-state used only in event
 	// signaling. It's sent to event stream subscribers when a container is
 	// successfully deleted. It should never be stored, only part of an event.
-	ContainerStatusDeleted = "deleted"
+	ContainerStatusDeleted ContainerStatus = "deleted"
 )
 
 // JSONDuration allows specification of time.Duration as strings in JSON-

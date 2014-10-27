@@ -1,87 +1,92 @@
 # harpoon-scheduler
 
-A general-purpose scheduling component in the harpoon ecosystem.
+A general-purpose, monolithic scheduler for the Harpoon platform.
 
 ## Architecture
 
 ```
-+------------------+
-|       API        |
-+------------------+
-  |              ^
-  v              |
-+----------+     |
-| Registry |     |
-+----------+     |
-  |              |
-  v              |
-+-------------+  |
-| Transformer |  |
-+-------------+  |
-  ^ |            |
-  | v            |
-+------------------+
-|     Shepherd     |
-+------------------+
-        | ^
-        v |
- +----------------+
- | State machines |
- +----------------+
++-----+   +----------+   +-------------+   +-------+    +------+
+| API |-->| Registry |-->| Transformer |<--| Proxy |<-->| Repr |<-----> Agent
+|     |   +----------+   +-------------+   |       |    +------+
+|     |                         '--------->|       |    +------+
+|     |<-----------------------------------|       |<-->| Repr |<-----> Agent
++-----+                                    +-------+    +------+
 ```
-
-### Scheduler
-
-The scheduler receives user domain requests, executes the scheduling algorithm
-(when necessary), and writes actionable information into the registry. User
-domain requests may include
-
-1. Schedule (start) a job
-2. Migrate a scheduled (running) job to a new configuration
-3. Unschedule (stop) a job
 
 ### API
 
-The API converts REST-y HTTP actions into mutations on the registry. It also
-provides a view on the state of the scheduling domain, by subscribing to
-actual-state updates from the shepherd.
+[Package api](https://github.com/soundcloud/harpoon/tree/master/harpoon-scheduler/api)
+implements the public-facing scheduler HTTP API. All
+
+- `POST /api/v0/schedule` with JSON-encoded [JobConfig][] in the request body.
+   Writes the job to the registry, and returns HTTP 202 Accepted.
+
+- `POST /api/v0/unschedule` with JSON-encoded [JobConfig][] in the request body.
+  Removes the job from the registry, and returns HTTP 202 Accepted.
+
+[JobConfig]: https://godoc.org/github.com/soundcloud/harpoon/harpoon-configstore/lib#JobConfig
 
 ### Registry
 
-The registry is a plain data store. It has two roles. It's a job scheduler,
-meaning it receives requests to schedule and unschedule jobs. It's also a
-desired-state broadcaster, which means other components can subscribe to it,
-to receive the current desired-state of the scheduling domain.
+[Package registry](https://github.com/soundcloud/harpoon/tree/master/harpoon-scheduler/registry)
+implements a simple, persistent data store. The registry accepts writes from
+clients, and emits state changes to subscribers. The registry represents the
+desired state of the scheduling domain.
 
-The registry is a distinct component between the scheduler and transformer
-for two reasons:
-
-1. We can easily serialize and persist its state. (Corollary: the scheduler
-   and transformer may therefore be mostly stateless.)
-2. It decouples intent from action, which allows us to more easily reason
-   about each individual part of the scheduling workflow.
-
-Note that the registry represents only what the scheduler is responsible for,
-and not necessarily the complete state of the candidate agents.
+The registry persists unassigned jobs. The transformer is responsible for
+invoking the scheduling algorithm, and mapping tasks to agents.
 
 ### Transformer
 
-The transformer is an intermediary between our desired/logical state
-(represented by the registry) and the actual/physical state (represented by
-the shepherd). The transformer subscribes to updates from the registry and the
-shepherd, and whenever anything changes, it determines if it needs to emit
-task-schedule events to the shepherd.
+[Package xf](https://github.com/soundcloud/harpoon/tree/master/harpoon-scheduler/xf)
+implements the transformer, a component that subscribes to updates from the
+desired state (registry) and actual state (proxy) of the scheduling domain.
+The transformer continuously diffs desired v. actual, invokes the scheduling
+algorithm to place unassigned containers, and emits mutations to agents, via
+the proxy.
 
-### Shepherd
+### Scheduling algorithms
 
-The shepherd simply provides a single interface point for all state machines.
-It's an actual-state broadcaster, so interested components can subscribe and
-get an up-to-date view of the scheduling domain. It also accepts task-schedule
-commands, from the transformer.
+[Package algo](https://github.com/soundcloud/harpoon/tree/master/harpoon-scheduler/algo)
+implements scheduling algorithms, which are modeled as functions with perfect
+knowledge of the scheduling domain. Scheduling algorithms are parameterized on
+the set of containers that should be scheduled (including their resource
+requirements), and all agents available in the scheduling domain (including
+their resource availability). Different scheduling algorithms can implement
+different biases and preferences.
 
-### State machines
+### Proxy
 
-A state machine represents a remote harpoon-agent. It contains all the code to
-make and maintain an event stream connection. State machines are created and
-updated by an agent discovery component, which (right now) only has a static
-list implementation.
+[Package reprproxy](https://github.com/soundcloud/harpoon/tree/master/harpoon-scheduler/reprproxy)
+implements a proxy (aggregator) for remote agent representations. It presents
+a unified interface for other components to interact with any agent in the
+scheduling domain.
+
+The reprproxy is a bit complex. Please see the package README for more info.
+
+### Representation
+
+[Package agentrepr](https://github.com/soundcloud/harpoon/tree/master/harpoon-scheduler/agentrepr)
+implements a local representation of a remote Harpoon agent. It's modeled as a
+[CQRS](http://martinfowler.com/bliki/CQRS.html)
+system. The repr connects to the remote agent's event stream, and treats that
+stream as the sole, authoritative source of information about the agent. Each
+incoming event acts as a transition applied to a per-container state machine.
+Commands, i.e. schedule and unschedule requests, are fired asynchronously
+toward the agent. Success or failure is an emergent property of the stream.
+
+The agentrepr is complex. Please see the package README for more info.
+
+### Misc
+
+[Package metrics](https://github.com/soundcloud/harpoon/tree/master/harpoon-scheduler/metrics)
+implements instrumentation for the scheduler, exposed via
+[expvar](http://golang.org/pkg/expvar)
+and
+[Prometheus](http://github.com/prometheus)
+endpoints.
+
+[Package xtime](https://github.com/soundcloud/harpoon/tree/master/harpoon-scheduler/xtime)
+wraps some
+[time](http://golang.org/pkg/time)
+functions, to make the components easier to test in timing-based scenarios.

@@ -92,6 +92,8 @@ func MustNewClient(endpoint string) Agent {
 	return agent
 }
 
+func (c client) Endpoint() string { return c.URL.String() }
+
 // Containers implements the Agent interface.
 func (c client) Containers() (map[string]ContainerInstance, error) {
 	c.URL.Path = APIVersionPrefix + APIListContainersPath

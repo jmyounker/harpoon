@@ -1,33 +1,24 @@
-// Agent discovery allows components to find out about the remote agents
-// available in a scheduling domain.
-package main
+package reprproxy_test
 
 import "sync"
 
-type agentDiscovery interface {
-	subscribe(chan<- []string)
-	unsubscribe(chan<- []string)
-}
-
-type staticAgentDiscovery []string
-
-func (d staticAgentDiscovery) subscribe(c chan<- []string) { go func() { c <- d }() }
-func (d staticAgentDiscovery) unsubscribe(chan<- []string) { return }
-
+// manualAgentDiscovery encodes a set of endpoints which can be manually
+// manipulated. TODO(pb): move to the _test package.
 type manualAgentDiscovery struct {
 	sync.Mutex
 	endpoints     []string // slice, to get deterministic order for tests
 	subscriptions map[chan<- []string]struct{}
 }
 
-func newManualAgentDiscovery(endpoints []string) *manualAgentDiscovery {
+func newManualAgentDiscovery(endpoints ...string) *manualAgentDiscovery {
 	return &manualAgentDiscovery{
 		endpoints:     endpoints,
 		subscriptions: map[chan<- []string]struct{}{},
 	}
 }
 
-func (d *manualAgentDiscovery) subscribe(c chan<- []string) {
+// Subscribe satisfies the AgentDiscovery interface.
+func (d *manualAgentDiscovery) Subscribe(c chan<- []string) {
 	d.Lock()
 	defer d.Unlock()
 
@@ -35,7 +26,8 @@ func (d *manualAgentDiscovery) subscribe(c chan<- []string) {
 	go func() { c <- d.endpoints }()
 }
 
-func (d *manualAgentDiscovery) unsubscribe(c chan<- []string) {
+// Unsubscribe satisfies the AgentDiscovery interface.
+func (d *manualAgentDiscovery) Unsubscribe(c chan<- []string) {
 	d.Lock()
 	defer d.Unlock()
 

@@ -21,12 +21,11 @@ type ConfigStore interface {
 // config store. JobConfigs are maintained and persisted by the scheduler when
 // they're scheduled.
 type JobConfig struct {
-	Job          string            `json:"job"`         // goku-activity, stream-api, dispatcher-web, etc.
-	Environment  string            `json:"environment"` // dev, staging, prod
-	Product      string            `json:"product"`     // search, stream, revdev, etc.
-	Scale        int               `json:"scale"`
-	Env          map[string]string `json:"env"`
-	HealthChecks []HealthCheck     `json:"health_checks"`
+	Job          string        `json:"job"`         // goku-activity, stream-api, dispatcher-web, etc.
+	Environment  string        `json:"environment"` // dev, staging, prod
+	Product      string        `json:"product"`     // search, stream, revdev, etc.
+	Scale        int           `json:"scale"`
+	HealthChecks []HealthCheck `json:"health_checks"`
 
 	agent.ContainerConfig
 }

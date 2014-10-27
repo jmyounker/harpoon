@@ -1,0 +1,283 @@
+package xf
+
+import (
+	"io/ioutil"
+	"log"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/soundcloud/harpoon/harpoon-agent/lib"
+	"github.com/soundcloud/harpoon/harpoon-configstore/lib"
+	"github.com/soundcloud/harpoon/harpoon-scheduler/xtime"
+)
+
+func TestRemoveDuplicates(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+
+	jobConfig := configstore.JobConfig{
+		Job:   "a",
+		Scale: 1,
+	}
+
+	state := agent.StateEvent{
+		Containers: map[string]agent.ContainerInstance{
+			makeContainerID(jobConfig, 0): agent.ContainerInstance{ContainerStatus: agent.ContainerStatusRunning},
+		},
+	}
+
+	want := map[string]configstore.JobConfig{
+		"a": jobConfig,
+	}
+
+	have := map[string]agent.StateEvent{
+		"agent-one": state,
+		"agent-two": state,
+	}
+
+	target := &mockTaskScheduler{}
+
+	transform(want, have, target, map[string]pendingTask{})
+
+	if want, have := int32(0), atomic.LoadInt32(&target.schedules); want != have {
+		t.Errorf("want %d schedules, have %d", want, have)
+	}
+
+	if want, have := int32(1), atomic.LoadInt32(&target.unschedules); want != have {
+		t.Errorf("want %d unschedules, have %d", want, have)
+	}
+}
+
+func TestRespectPending(t *testing.T) {
+	jobConfig := configstore.JobConfig{
+		Job:   "a",
+		Scale: 2,
+	}
+
+	want := map[string]configstore.JobConfig{
+		"a": jobConfig,
+	}
+
+	have := map[string]agent.StateEvent{
+		"agent-one": agent.StateEvent{
+			Containers: map[string]agent.ContainerInstance{
+				makeContainerID(jobConfig, 0): agent.ContainerInstance{ContainerStatus: agent.ContainerStatusRunning},
+			},
+		},
+		"agent-two": agent.StateEvent{
+			Containers: map[string]agent.ContainerInstance{
+				makeContainerID(jobConfig, 1): agent.ContainerInstance{ContainerStatus: agent.ContainerStatusCreated}, // starting...
+			},
+		},
+	}
+
+	target := &mockTaskScheduler{}
+
+	pending := map[string]pendingTask{
+		makeContainerID(jobConfig, 1): pendingTask{true, xtime.Now().Add(10 * time.Second)},
+	}
+
+	pending = transform(want, have, target, pending)
+
+	if want, have := int32(0), atomic.LoadInt32(&target.schedules); want != have {
+		t.Errorf("want %d schedules, have %d", want, have)
+	}
+
+	if want, have := int32(0), atomic.LoadInt32(&target.unschedules); want != have {
+		t.Errorf("want %d unschedules, have %d", want, have)
+	}
+}
+
+func TestPendingExpiration(t *testing.T) {
+	// Debugf = t.Logf
+
+	jobConfig := configstore.JobConfig{
+		Job:   "a",
+		Scale: 2,
+	}
+
+	want := map[string]configstore.JobConfig{
+		"a": jobConfig,
+	}
+
+	have := map[string]agent.StateEvent{
+		"agent-one": agent.StateEvent{
+			Containers: map[string]agent.ContainerInstance{
+				makeContainerID(jobConfig, 0): agent.ContainerInstance{ContainerStatus: agent.ContainerStatusRunning},
+			},
+		},
+		"agent-two": agent.StateEvent{
+			Containers: map[string]agent.ContainerInstance{
+				makeContainerID(jobConfig, 1): agent.ContainerInstance{ContainerStatus: agent.ContainerStatusFailed},
+			},
+		},
+	}
+
+	fakeNow := time.Now()
+	xtime.Now = func() time.Time { return fakeNow }
+
+	target := &mockTaskScheduler{}
+
+	deadline := fakeNow.Add(time.Second)
+	pending := map[string]pendingTask{
+		makeContainerID(jobConfig, 1): pendingTask{true, deadline},
+	}
+
+	// The first transform should detect the container as pending, and not
+	// issue any mutations.
+
+	pending = transform(want, have, target, pending)
+
+	if want, have := 1, len(pending); want != have {
+		t.Errorf("want %d pending, have %d", want, have)
+	}
+
+	if want, have := int32(0), atomic.LoadInt32(&target.schedules); want != have {
+		t.Errorf("want %d schedules, have %d", want, have)
+	}
+
+	if want, have := int32(0), atomic.LoadInt32(&target.unschedules); want != have {
+		t.Errorf("want %d unschedules, have %d", want, have)
+	}
+
+	// Advance past our pendingTask deadline.
+
+	fakeNow = deadline.Add(time.Millisecond)
+
+	// The next transform should detect the pendingTask as expired and delete
+	// it. And because the container is StatusFailed, it should emit a
+	// schedule mutation. That has the side effect of re-adding it to the
+	// pending map :)
+
+	pending = transform(want, have, target, pending)
+
+	if want, have := 1, len(pending); want != have {
+		t.Errorf("want %d pending, have %d", want, have)
+	}
+
+	if want, have := int32(1), atomic.LoadInt32(&target.schedules); want != have {
+		t.Errorf("want %d schedules, have %d", want, have)
+	}
+
+	if want, have := int32(0), atomic.LoadInt32(&target.unschedules); want != have {
+		t.Errorf("want %d unschedules, have %d", want, have)
+	}
+}
+
+func TestRetryingMutation(t *testing.T) {
+	jobConfig := configstore.JobConfig{
+		Job:   "a",
+		Scale: 1,
+	}
+
+	state := agent.StateEvent{
+		Containers: map[string]agent.ContainerInstance{
+			makeContainerID(jobConfig, 0): agent.ContainerInstance{ContainerStatus: agent.ContainerStatusRunning},
+		},
+	}
+
+	// want an empty state
+	want := map[string]configstore.JobConfig{} // we want an empty state
+
+	// have one container running
+	have := map[string]agent.StateEvent{"the-agent": state}
+
+	target := &mockTaskScheduler{}
+
+	fakeNow := time.Now()
+	xtime.Now = func() time.Time { return fakeNow }
+
+	// the container has a pending unschedule mutation
+	pending := map[string]pendingTask{
+		makeContainerID(jobConfig, 0): pendingTask{false, fakeNow.Add(time.Second)},
+	}
+
+	// In the first transform, we have a running container that's ostensibly
+	// pending-unschedule. The pending map should be unchanged.
+
+	pending = transform(want, have, target, pending)
+
+	if want, have := 1, len(pending); want != have {
+		t.Errorf("want %d pending, have %d", want, have)
+	}
+
+	if want, have := int32(0), atomic.LoadInt32(&target.schedules); want != have {
+		t.Errorf("want %d schedules, have %d", want, have)
+	}
+
+	if want, have := int32(0), atomic.LoadInt32(&target.unschedules); want != have {
+		t.Errorf("want %d unschedules, have %d", want, have)
+	}
+
+	// Advance our time past the deadline, and try again. We should delete the
+	// original pending task, emit an unschedule mutation, and add a new
+	// pending task.
+
+	fakeNow = fakeNow.Add(Tolerance + time.Millisecond)
+	pending = transform(want, have, target, pending)
+
+	if want, have := 1, len(pending); want != have {
+		t.Errorf("want %d pending, have %d", want, have)
+	}
+
+	if want, have := int32(0), atomic.LoadInt32(&target.schedules); want != have {
+		t.Errorf("want %d schedules, have %d", want, have)
+	}
+
+	if want, have := int32(1), atomic.LoadInt32(&target.unschedules); want != have {
+		t.Errorf("want %d unschedules, have %d", want, have)
+	}
+
+	// Do it again. Since the "have" map isn't changing, we should observe the
+	// same effect.
+
+	fakeNow = fakeNow.Add(Tolerance + time.Millisecond)
+	pending = transform(want, have, target, pending)
+
+	if want, have := 1, len(pending); want != have {
+		t.Errorf("want %d pending, have %d", want, have)
+	}
+
+	if want, have := int32(0), atomic.LoadInt32(&target.schedules); want != have {
+		t.Errorf("want %d schedules, have %d", want, have)
+	}
+
+	if want, have := int32(2), atomic.LoadInt32(&target.unschedules); want != have {
+		t.Errorf("want %d unschedules, have %d", want, have)
+	}
+
+	// Unschedule the container manually, and do another transform. We should
+	// remove the entry from the pending map, and issue no further mutations.
+
+	have["the-agent"] = agent.StateEvent{} // no containers
+
+	fakeNow = fakeNow.Add(Tolerance + time.Millisecond)
+	pending = transform(want, have, target, pending)
+
+	if want, have := 0, len(pending); want != have {
+		t.Errorf("want %d pending, have %d", want, have)
+	}
+
+	if want, have := int32(0), atomic.LoadInt32(&target.schedules); want != have {
+		t.Errorf("want %d schedules, have %d", want, have)
+	}
+
+	if want, have := int32(2), atomic.LoadInt32(&target.unschedules); want != have {
+		t.Errorf("want %d unschedules, have %d", want, have)
+	}
+}
+
+type mockTaskScheduler struct {
+	schedules   int32
+	unschedules int32
+}
+
+func (s *mockTaskScheduler) Schedule(endpoint, id string, _ agent.ContainerConfig) error {
+	atomic.AddInt32(&s.schedules, 1)
+	return nil
+}
+
+func (s *mockTaskScheduler) Unschedule(endpoint, id string) error {
+	atomic.AddInt32(&s.unschedules, 1)
+	return nil
+}

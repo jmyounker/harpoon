@@ -1,4 +1,4 @@
-package main
+package registry_test
 
 import (
 	"encoding/json"
@@ -8,16 +8,17 @@ import (
 	"testing"
 
 	"github.com/soundcloud/harpoon/harpoon-configstore/lib"
+	"github.com/soundcloud/harpoon/harpoon-scheduler/registry"
 )
 
 func TestRegistryStartStop(t *testing.T) {
 	var (
-		registry = newRealRegistry("")
+		registry = registry.New("")
 		updatec  = make(chan map[string]configstore.JobConfig)
 		requestc = make(chan map[string]configstore.JobConfig)
 	)
 
-	defer registry.quit()
+	defer registry.Quit()
 
 	go func() {
 		scheduled, ok := <-updatec
@@ -36,16 +37,16 @@ func TestRegistryStartStop(t *testing.T) {
 		}
 	}()
 
-	registry.subscribe(updatec)
+	registry.Subscribe(updatec)
 	defer close(updatec)
-	defer registry.unsubscribe(updatec)
+	defer registry.Unsubscribe(updatec)
 
 	var (
 		job1 = configstore.JobConfig{Job: "table"}
 		job2 = configstore.JobConfig{Job: "chair"}
 	)
 
-	if err := registry.schedule(job1); err != nil {
+	if err := registry.Schedule(job1); err != nil {
 		t.Fatal(err)
 	}
 
@@ -55,7 +56,7 @@ func TestRegistryStartStop(t *testing.T) {
 		t.Fatalf("want %v, have %v", want, have)
 	}
 
-	if err := registry.schedule(job2); err != nil {
+	if err := registry.Schedule(job2); err != nil {
 		t.Fatal(err)
 	}
 
@@ -66,7 +67,7 @@ func TestRegistryStartStop(t *testing.T) {
 		t.Fatalf("want %v, have %v", want, have)
 	}
 
-	if err := registry.unschedule(job1); err != nil {
+	if err := registry.Unschedule(job1); err != nil {
 		t.Fatal(err)
 	}
 
@@ -76,7 +77,7 @@ func TestRegistryStartStop(t *testing.T) {
 		t.Fatalf("want %v, have %v", want, have)
 	}
 
-	if err := registry.unschedule(job2); err != nil {
+	if err := registry.Unschedule(job2); err != nil {
 		t.Fatal(err)
 	}
 
@@ -88,17 +89,17 @@ func TestRegistryStartStop(t *testing.T) {
 func TestRegistrySaveLoad(t *testing.T) {
 	var (
 		filename  = "registry-test-save-load.json"
-		registry1 = newRealRegistry(filename)
+		registry1 = registry.New(filename)
 		job       = configstore.JobConfig{Job: "π"}
 	)
 
 	defer os.Remove(filename)
 
-	defer registry1.quit()
+	defer registry1.Quit()
 
 	// Schedule a thing.
 
-	if err := registry1.schedule(job); err != nil {
+	if err := registry1.Schedule(job); err != nil {
 		t.Fatal(err)
 	}
 
@@ -115,8 +116,8 @@ func TestRegistrySaveLoad(t *testing.T) {
 	}
 
 	check1c := make(chan map[string]configstore.JobConfig)
-	registry1.subscribe(check1c)
-	defer registry1.unsubscribe(check1c)
+	registry1.Subscribe(check1c)
+	defer registry1.Unsubscribe(check1c)
 
 	if want, have := <-check1c, fromDisk; !reflect.DeepEqual(want, have) {
 		t.Fatalf("want %v, have %v", want, have)
@@ -125,14 +126,14 @@ func TestRegistrySaveLoad(t *testing.T) {
 	// Boot up another registry on top of the same file. Just for the test.
 	// You'd never do this in real life. Race conditions everywhere.
 
-	registry2 := newRealRegistry(filename)
-	defer registry2.quit()
+	registry2 := registry.New(filename)
+	defer registry2.Quit()
 
 	// Verify it loaded the previously-persisted state.
 
 	check2c := make(chan map[string]configstore.JobConfig)
-	registry2.subscribe(check2c)
-	defer registry2.unsubscribe(check2c)
+	registry2.Subscribe(check2c)
+	defer registry2.Unsubscribe(check2c)
 
 	if want, have := fromDisk, <-check2c; !reflect.DeepEqual(want, have) {
 		t.Fatalf("want %v, have %v", want, have)

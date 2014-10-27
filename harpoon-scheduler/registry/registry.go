@@ -1,4 +1,6 @@
-package main
+// Package registry deals with storing and persisting the expressed desired
+// state of the scheduling domain.
+package registry
 
 import (
 	"encoding/json"
@@ -8,46 +10,34 @@ import (
 	"path/filepath"
 
 	"github.com/soundcloud/harpoon/harpoon-configstore/lib"
+	"github.com/soundcloud/harpoon/harpoon-scheduler/metrics"
 )
 
-type desiredBroadcaster interface {
-	subscribe(chan<- map[string]configstore.JobConfig)
-	unsubscribe(chan<- map[string]configstore.JobConfig)
-	snapshot() map[string]configstore.JobConfig
-}
-
-type jobScheduler interface {
-	schedule(configstore.JobConfig) error
-	unschedule(configstore.JobConfig) error
-}
-
-type registry interface {
-	desiredBroadcaster
-	jobScheduler
-}
-
-type realRegistry struct {
+// Registry accepts job schedule and unschedule requests, and persists them to
+// storage. It also broadcasts all updates to any subscribers who care to
+// listen.
+type Registry struct {
 	subc      chan chan<- map[string]configstore.JobConfig
 	unsubc    chan chan<- map[string]configstore.JobConfig
-	schedc    chan schedJobReq
-	unschedc  chan schedJobReq
+	schedc    chan scheduleRequest
+	unschedc  chan scheduleRequest
 	snapshotc chan map[string]configstore.JobConfig
 	quitc     chan chan struct{}
 }
 
-var _ registry = &realRegistry{}
-
-func newRealRegistry(filename string) *realRegistry {
+// New constructs a new Registry. It will restore state from the passed
+// filename, if it exists, and persist all mutations there.
+func New(filename string) *Registry {
 	scheduled, err := load(filename)
 	if err != nil {
 		panic(err)
 	}
 
-	r := &realRegistry{
+	r := &Registry{
 		subc:      make(chan chan<- map[string]configstore.JobConfig),
 		unsubc:    make(chan chan<- map[string]configstore.JobConfig),
-		schedc:    make(chan schedJobReq),
-		unschedc:  make(chan schedJobReq),
+		schedc:    make(chan scheduleRequest),
+		unschedc:  make(chan scheduleRequest),
 		snapshotc: make(chan map[string]configstore.JobConfig),
 		quitc:     make(chan chan struct{}),
 	}
@@ -57,37 +47,54 @@ func newRealRegistry(filename string) *realRegistry {
 	return r
 }
 
-func (r *realRegistry) subscribe(c chan<- map[string]configstore.JobConfig) {
+// Subscribe implements xf.DesireBroadcaster.
+func (r *Registry) Subscribe(c chan<- map[string]configstore.JobConfig) {
 	r.subc <- c
 }
 
-func (r *realRegistry) unsubscribe(c chan<- map[string]configstore.JobConfig) {
+// Unsubscribe implements xf.DesireBroadcaster.
+func (r *Registry) Unsubscribe(c chan<- map[string]configstore.JobConfig) {
 	r.unsubc <- c
 }
 
-func (r *realRegistry) schedule(cfg configstore.JobConfig) error {
-	req := schedJobReq{cfg, make(chan error)}
+// Schedule implements api.JobScheduler.
+func (r *Registry) Schedule(config configstore.JobConfig) error {
+	req := scheduleRequest{
+		JobConfig: config,
+		err:       make(chan error),
+	}
 	r.schedc <- req
 	return <-req.err
 }
 
-func (r *realRegistry) unschedule(cfg configstore.JobConfig) error {
-	req := schedJobReq{cfg, make(chan error)}
+// Unschedule implements api.JobScheduler.
+func (r *Registry) Unschedule(config configstore.JobConfig) error {
+	req := scheduleRequest{
+		JobConfig: config,
+		err:       make(chan error),
+	}
 	r.unschedc <- req
 	return <-req.err
 }
 
-func (r *realRegistry) snapshot() map[string]configstore.JobConfig {
+// Snapshot returns the current state of the registry. It's not part of any
+// interface; it's just used by the API.
+func (r *Registry) Snapshot() map[string]configstore.JobConfig {
 	return <-r.snapshotc
 }
 
-func (r *realRegistry) quit() {
+// Quit terminates the Registry.
+func (r *Registry) Quit() {
 	q := make(chan struct{})
 	r.quitc <- q
 	<-q
 }
 
-func (r *realRegistry) loop(filename string, scheduled map[string]configstore.JobConfig) {
+func (r *Registry) loop(filename string, scheduled map[string]configstore.JobConfig) {
+	var (
+		subs = map[chan<- map[string]configstore.JobConfig]struct{}{}
+	)
+
 	cp := func() map[string]configstore.JobConfig {
 		out := make(map[string]configstore.JobConfig, len(scheduled))
 
@@ -98,20 +105,20 @@ func (r *realRegistry) loop(filename string, scheduled map[string]configstore.Jo
 		return out
 	}
 
-	schedule := func(cfg configstore.JobConfig) error {
-		hash := cfg.Hash()
+	schedule := func(config configstore.JobConfig) error {
+		hash := config.Hash()
 
 		if _, ok := scheduled[hash]; ok {
 			return fmt.Errorf("%s already scheduled", hash)
 		}
 
-		scheduled[hash] = cfg
+		scheduled[hash] = config
 
 		return nil
 	}
 
-	unschedule := func(cfg configstore.JobConfig) error {
-		hash := cfg.Hash()
+	unschedule := func(config configstore.JobConfig) error {
+		hash := config.Hash()
 
 		if _, ok := scheduled[hash]; !ok {
 			return fmt.Errorf("%s not scheduled", hash)
@@ -128,13 +135,9 @@ func (r *realRegistry) loop(filename string, scheduled map[string]configstore.Jo
 		}
 	}
 
-	var (
-		subscriptions = map[chan<- map[string]configstore.JobConfig]struct{}{}
-	)
-
 	broadcast := func() {
 		m := cp()
-		for c := range subscriptions {
+		for c := range subs {
 			c <- m
 		}
 	}
@@ -142,14 +145,14 @@ func (r *realRegistry) loop(filename string, scheduled map[string]configstore.Jo
 	for {
 		select {
 		case c := <-r.subc:
-			subscriptions[c] = struct{}{}
+			subs[c] = struct{}{}
 			go func(m map[string]configstore.JobConfig) { c <- m }(cp())
 
 		case c := <-r.unsubc:
-			delete(subscriptions, c)
+			delete(subs, c)
 
 		case req := <-r.schedc:
-			incTaskScheduleRequests(1)
+			metrics.IncJobScheduleRequests(1)
 
 			err := schedule(req.JobConfig)
 			if err == nil {
@@ -160,7 +163,7 @@ func (r *realRegistry) loop(filename string, scheduled map[string]configstore.Jo
 			req.err <- err
 
 		case req := <-r.unschedc:
-			incTaskUnscheduleRequests(1)
+			metrics.IncJobUnscheduleRequests(1)
 
 			err := unschedule(req.JobConfig)
 			if err == nil {
@@ -226,7 +229,7 @@ func load(filename string) (map[string]configstore.JobConfig, error) {
 	return scheduled, nil
 }
 
-type schedJobReq struct {
+type scheduleRequest struct {
 	configstore.JobConfig
 	err chan error
 }
