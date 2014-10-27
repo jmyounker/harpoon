@@ -20,9 +20,14 @@ import (
 )
 
 var (
-	// Override at link stage (see Makefile)
-	Version                string
-	CommitID               string
+	// Version is a state variable, written at the link stage. See Makefile.
+	Version string
+
+	// CommitID is a state variable, written at the link stage. See Makefile.
+	CommitID string
+
+	// ExternalReleaseVersion is a state variable, written at the link stage.
+	// See Makefile.
 	ExternalReleaseVersion string
 )
 
