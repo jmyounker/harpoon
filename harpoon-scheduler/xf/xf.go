@@ -98,7 +98,7 @@ func Transform(
 	// transforming will get picked up on the next trigger.
 	var (
 		semaphore    = make(chan bool, 1)
-		tryTransform = func() {
+		tryTransform = func(want map[string]configstore.JobConfig, have map[string]agent.StateEvent) {
 			select {
 			case semaphore <- true:
 				Debugf("tryTransform success")
@@ -117,15 +117,15 @@ func Transform(
 		select {
 		case want = <-desirec:
 			Debugf("actual state change")
-			go tryTransform()
+			go tryTransform(want, have)
 
 		case have = <-actualc:
 			Debugf("desire state change")
-			go tryTransform()
+			go tryTransform(want, have)
 
 		case <-tick:
 			Debugf("tick")
-			go tryTransform()
+			go tryTransform(want, have)
 		}
 	}
 }
