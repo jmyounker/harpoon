@@ -29,17 +29,18 @@ var testAgents = map[string]agent.StateEvent{
 }
 
 func TestRandomFit(t *testing.T) {
-	testRandomFit(t, agent.ContainerConfig{Resources: agent.Resources{Memory: 2048}}, "beefy.net")
-	testRandomFit(t, agent.ContainerConfig{Resources: agent.Resources{Memory: 99999}})
-	testRandomFit(t, agent.ContainerConfig{Storage: agent.Storage{Volumes: map[string]string{"/container/path": "/data/wimpy"}}}, "wimpy.net")
-	testRandomFit(t, agent.ContainerConfig{Storage: agent.Storage{Volumes: map[string]string{"/container/path": "/data/beefy"}}}, "beefy.net")
-	testRandomFit(t, agent.ContainerConfig{Storage: agent.Storage{Volumes: map[string]string{"/b": "/data/beefy", "/w": "/data/wimpy"}}})
+	testRandomFit(t, agent.ContainerConfig{Resources: agent.Resources{Memory: 2048}}, map[string]algo.PendingTask{}, "beefy.net")
+	testRandomFit(t, agent.ContainerConfig{Resources: agent.Resources{Memory: 99999}}, map[string]algo.PendingTask{})
+	testRandomFit(t, agent.ContainerConfig{Storage: agent.Storage{Volumes: map[string]string{"/container/path": "/data/wimpy"}}}, map[string]algo.PendingTask{}, "wimpy.net")
+	testRandomFit(t, agent.ContainerConfig{Storage: agent.Storage{Volumes: map[string]string{"/container/path": "/data/beefy"}}}, map[string]algo.PendingTask{}, "beefy.net")
+	testRandomFit(t, agent.ContainerConfig{Storage: agent.Storage{Volumes: map[string]string{"/b": "/data/beefy", "/w": "/data/wimpy"}}}, map[string]algo.PendingTask{})
+	testRandomFit(t, agent.ContainerConfig{Resources: agent.Resources{CPUs: 2}}, map[string]algo.PendingTask{"": algo.PendingTask{Schedule: true, Endpoint: "beefy.net", Config: agent.ContainerConfig{Resources: agent.Resources{CPUs: 30}}}})
 }
 
-func testRandomFit(t *testing.T, c agent.ContainerConfig, want ...string) {
+func testRandomFit(t *testing.T, c agent.ContainerConfig, pending map[string]algo.PendingTask, want ...string) {
 	sort.StringSlice(want).Sort()
 
-	matched, _ := algo.RandomFit(map[string]agent.ContainerConfig{"foo": c}, testAgents)
+	matched, _ := algo.RandomFit(map[string]agent.ContainerConfig{"foo": c}, testAgents, pending)
 	if len(want) != len(matched) {
 		t.Errorf("want %d, have %d", len(want), len(matched))
 	}
