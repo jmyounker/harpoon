@@ -125,24 +125,24 @@ func LeastUsed(
 	failed = map[string]agent.ContainerConfig{}
 
 	var (
-		resources                = map[string]agent.HostResources{}
-		endpoint2containersCount = map[string]int{}
-		strategy                 = LeastUsedSort(endpoint2containersCount)
+		resources = map[string]agent.HostResources{}
+		e2c       = map[string]int{} // endpoint to container's count
+		strategy  = leastUsed{e2c: e2c}
 	)
 
 	for id, state := range have {
 		resources[id] = state.Resources
-		endpoint2containersCount[id] = len(state.Containers)
+		e2c[id] = len(state.Containers)
 	}
 
 	for _, task := range pending {
 		if task.Schedule {
-			resource := resources[task.Endpoint]
-			resource.CPUs.Reserved += task.ContainerConfig.CPUs
-			resource.Memory.Reserved += task.ContainerConfig.Memory
-			resources[task.Endpoint] = resource
+			r := resources[task.Endpoint]
+			r.CPUs.Reserved += task.ContainerConfig.CPUs
+			r.Memory.Reserved += task.ContainerConfig.Memory
+			resources[task.Endpoint] = r
 		}
-		endpoint2containersCount[task.Endpoint]++
+		e2c[task.Endpoint]++
 	}
 
 	for id, config := range want {
@@ -153,7 +153,7 @@ func LeastUsed(
 			continue
 		}
 
-		strategy.Sort(valid)
+		strategy.sort(valid)
 
 		// Select a least used candidate
 		chosen := valid[0]
@@ -172,7 +172,7 @@ func LeastUsed(
 		r.Memory.Reserved += config.Memory
 		resources[chosen] = r
 
-		endpoint2containersCount[chosen]++
+		e2c[chosen]++
 	}
 
 	return mapped, failed

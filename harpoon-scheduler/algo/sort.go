@@ -5,32 +5,20 @@ import (
 	"sort"
 )
 
-// SortStrategy implements sorting of endpoints
-type SortStrategy interface {
-	Sort(endpoints []string)
-}
-
-// LeastUsedSort returns a SortStrategy ordering endpoints by containers count
-func LeastUsedSort(endpoint2containersCount map[string]int) SortStrategy {
-	return leastUsed{
-		endpoint2containersCount: endpoint2containersCount,
-	}
-}
-
 type leastUsed struct {
-	endpoint2containersCount map[string]int
-	endpoints                []string
+	e2c       map[string]int // endpoint to container's count
+	endpoints []string
 }
 
-func (s leastUsed) Sort(endpoints []string) {
+func (s leastUsed) sort(endpoints []string) {
 	s.endpoints = endpoints
 	sort.Sort(s)
 }
 
 func (s leastUsed) Less(i, j int) bool {
 	var (
-		iContainersCount = s.endpoint2containersCount[s.endpoints[i]]
-		jContainersCount = s.endpoint2containersCount[s.endpoints[j]]
+		iContainersCount = s.e2c[s.endpoints[i]]
+		jContainersCount = s.e2c[s.endpoints[j]]
 	)
 
 	return iContainersCount < jContainersCount

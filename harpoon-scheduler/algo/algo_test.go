@@ -71,12 +71,12 @@ func TestLeastUsed(t *testing.T) {
 		t.Errorf("want %d, have %d", len(testAgents), len(matched))
 	}
 
-	if want, instances := 2, matched["beefy.net"]; len(instances) != want {
-		t.Errorf("incorrect spreading of configs over agent want %d, have %d", want, len(instances))
+	if want, have := 2, len(matched["beefy.net"]); want != have {
+		t.Errorf("incorrect spreading of configs over agent want %d, have %d", want, have)
 	}
 
-	if want, instances := 2, matched["wimpy.net"]; len(instances) != want {
-		t.Errorf("incorrect spreading of configs over agent want %d, have %d", want, len(instances))
+	if want, have := 2, len(matched["wimpy.net"]); want != have {
+		t.Errorf("incorrect spreading of configs over agent want %d, have %d", want, have)
 	}
 
 	if want, have := 1.0, testAgents["beefy.net"].Resources.CPUs.Reserved; want != have {
