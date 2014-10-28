@@ -34,7 +34,7 @@ func TestRandomFit(t *testing.T) {
 	testRandomFit(t, agent.ContainerConfig{Storage: agent.Storage{Volumes: map[string]string{"/container/path": "/data/wimpy"}}}, map[string]algo.PendingTask{}, "wimpy.net")
 	testRandomFit(t, agent.ContainerConfig{Storage: agent.Storage{Volumes: map[string]string{"/container/path": "/data/beefy"}}}, map[string]algo.PendingTask{}, "beefy.net")
 	testRandomFit(t, agent.ContainerConfig{Storage: agent.Storage{Volumes: map[string]string{"/b": "/data/beefy", "/w": "/data/wimpy"}}}, map[string]algo.PendingTask{})
-	testRandomFit(t, agent.ContainerConfig{Resources: agent.Resources{CPUs: 2}}, map[string]algo.PendingTask{"": algo.PendingTask{Schedule: true, Endpoint: "beefy.net", Config: agent.ContainerConfig{Resources: agent.Resources{CPUs: 30}}}})
+	testRandomFit(t, agent.ContainerConfig{Resources: agent.Resources{CPUs: 2}}, map[string]algo.PendingTask{"": algo.PendingTask{Schedule: true, Endpoint: "beefy.net", ContainerConfig: agent.ContainerConfig{Resources: agent.Resources{CPUs: 30}}}})
 }
 
 func testRandomFit(t *testing.T, c agent.ContainerConfig, pending map[string]algo.PendingTask, want ...string) {

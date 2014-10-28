@@ -266,10 +266,10 @@ func transform(
 
 			Debugf("%s schedule %q now pending", endpoint, id)
 			pending[id] = algo.PendingTask{
-				Schedule: true,
-				Deadline: xtime.Now().Add(Tolerance),
-				Endpoint: endpoint,
-				Config:   config,
+				Schedule:        true,
+				Deadline:        xtime.Now().Add(Tolerance),
+				Endpoint:        endpoint,
+				ContainerConfig: config,
 			} // we issued the mutation
 		}
 	}

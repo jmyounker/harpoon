@@ -14,7 +14,8 @@ type PendingTask struct {
 	Schedule bool // true = pending schedule; false = pending unschedule
 	Deadline time.Time
 	Endpoint string
-	Config   agent.ContainerConfig
+
+	agent.ContainerConfig
 }
 
 // RandomChoice implements a demo scheduling algorithm. It's intended to be a
@@ -75,10 +76,10 @@ func RandomFit(
 
 	for _, task := range pending {
 		if task.Schedule {
-			resource := resources[task.Endpoint]
-			resource.CPUs.Reserved += task.Config.CPUs
-			resource.Memory.Reserved += task.Config.Memory
-			resources[task.Endpoint] = resource
+			r := resources[task.Endpoint]
+			r.CPUs.Reserved += task.ContainerConfig.CPUs
+			r.Memory.Reserved += task.ContainerConfig.Memory
+			resources[task.Endpoint] = r
 		}
 	}
 
@@ -102,10 +103,10 @@ func RandomFit(
 		mapped[chosen] = target
 
 		// Adjust the resources
-		resource := resources[chosen]
-		resource.CPUs.Reserved += config.CPUs
-		resource.Memory.Reserved += config.Memory
-		resources[chosen] = resource
+		r := resources[chosen]
+		r.CPUs.Reserved += config.CPUs
+		r.Memory.Reserved += config.Memory
+		resources[chosen] = r
 	}
 
 	return mapped, failed
@@ -114,8 +115,8 @@ func RandomFit(
 func filter(have map[string]agent.HostResources, c agent.ContainerConfig) []string {
 	valid := make([]string, 0, len(have))
 
-	for endpoint, resources := range have {
-		if !match(c, resources) {
+	for endpoint, r := range have {
+		if !match(c, r) {
 			continue
 		}
 
