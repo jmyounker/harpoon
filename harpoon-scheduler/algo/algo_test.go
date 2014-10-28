@@ -17,6 +17,7 @@ var testAgents = map[string]agent.StateEvent{
 			Storage: agent.TotalReserved{Total: 250 * 1e10, Reserved: 0}, // 250GB total, 0 bytes reserved
 			Volumes: []string{"/data/shared", "/data/beefy"},
 		},
+		Containers: map[string]agent.ContainerInstance{},
 	},
 	"wimpy.net": agent.StateEvent{
 		Resources: agent.HostResources{
@@ -25,6 +26,7 @@ var testAgents = map[string]agent.StateEvent{
 			Storage: agent.TotalReserved{Total: 100 * 1e10, Reserved: 70 * 1e10}, // 100GB total, 70GB reserved
 			Volumes: []string{"/data/shared", "/data/wimpy"},
 		},
+		Containers: map[string]agent.ContainerInstance{},
 	},
 }
 
@@ -53,5 +55,31 @@ func testRandomFit(t *testing.T, c agent.ContainerConfig, pending map[string]alg
 
 	if fmt.Sprint(want) != fmt.Sprint(have) {
 		t.Errorf("%v/%v: want %v, have %v", c.Resources, c.Storage.Volumes, want, have)
+	}
+}
+
+func TestLeastUsed(t *testing.T) {
+	cfgs := map[string]agent.ContainerConfig{
+		"cfg-0": agent.ContainerConfig{Resources: agent.Resources{CPUs: 0.5}},
+		"cfg-1": agent.ContainerConfig{Resources: agent.Resources{CPUs: 0.5}},
+		"cfg-2": agent.ContainerConfig{Resources: agent.Resources{CPUs: 0.5}},
+		"cfg-3": agent.ContainerConfig{Resources: agent.Resources{CPUs: 0.5}},
+	}
+
+	matched, _ := algo.LeastUsed(cfgs, testAgents, map[string]algo.PendingTask{})
+	if len(testAgents) != len(matched) {
+		t.Errorf("want %d, have %d", len(testAgents), len(matched))
+	}
+
+	if want, instances := 2, matched["beefy.net"]; len(instances) != want {
+		t.Errorf("incorrect spreading of configs over agent want %d, have %d", want, len(instances))
+	}
+
+	if want, instances := 2, matched["wimpy.net"]; len(instances) != want {
+		t.Errorf("incorrect spreading of configs over agent want %d, have %d", want, len(instances))
+	}
+
+	if want, have := 1.0, testAgents["beefy.net"].Resources.CPUs.Reserved; want != have {
+		t.Errorf("agent resources should not be changed want %f , have %f", want, have)
 	}
 }

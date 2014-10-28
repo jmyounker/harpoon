@@ -1,4 +1,3 @@
-// Package algo implements scheduling algorithms.
 package algo
 
 import (
@@ -107,6 +106,73 @@ func RandomFit(
 		r.CPUs.Reserved += config.CPUs
 		r.Memory.Reserved += config.Memory
 		resources[chosen] = r
+	}
+
+	return mapped, failed
+}
+
+// LeastUsed implements a minimum viable scheduling algorithm. Containers are
+// placed on a agent that meets their constraints and runs least number of containers.
+func LeastUsed(
+	want map[string]agent.ContainerConfig,
+	have map[string]agent.StateEvent,
+	pending map[string]PendingTask,
+) (
+	mapped map[string]map[string]agent.ContainerConfig,
+	failed map[string]agent.ContainerConfig,
+) {
+	mapped = map[string]map[string]agent.ContainerConfig{}
+	failed = map[string]agent.ContainerConfig{}
+
+	var (
+		resources                = map[string]agent.HostResources{}
+		endpoint2containersCount = map[string]int{}
+		strategy                 = LeastUsedSort(endpoint2containersCount)
+	)
+
+	for id, state := range have {
+		resources[id] = state.Resources
+		endpoint2containersCount[id] = len(state.Containers)
+	}
+
+	for _, task := range pending {
+		if task.Schedule {
+			resource := resources[task.Endpoint]
+			resource.CPUs.Reserved += task.ContainerConfig.CPUs
+			resource.Memory.Reserved += task.ContainerConfig.Memory
+			resources[task.Endpoint] = resource
+		}
+		endpoint2containersCount[task.Endpoint]++
+	}
+
+	for id, config := range want {
+		// Find all candidates
+		valid := filter(resources, config)
+		if len(valid) <= 0 {
+			failed[id] = config
+			continue
+		}
+
+		strategy.Sort(valid)
+
+		// Select a least used candidate
+		chosen := valid[0]
+
+		// Place the container
+		target, ok := mapped[chosen]
+		if !ok {
+			target = map[string]agent.ContainerConfig{}
+		}
+		target[id] = config
+		mapped[chosen] = target
+
+		// Adjust the resources
+		r := resources[chosen]
+		r.CPUs.Reserved += config.CPUs
+		r.Memory.Reserved += config.Memory
+		resources[chosen] = r
+
+		endpoint2containersCount[chosen]++
 	}
 
 	return mapped, failed
