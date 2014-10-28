@@ -3,15 +3,27 @@ package algo
 
 import (
 	"math/rand"
+	"time"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
+
+// PendingTask represents a task that has already been un/scheduled but it's still pending
+// Located here in order to avoid circular dependency with "xf" package.
+type PendingTask struct {
+	Schedule bool // true = pending schedule; false = pending unschedule
+	Deadline time.Time
+	Endpoint string
+
+	agent.ContainerConfig
+}
 
 // RandomChoice implements a demo scheduling algorithm. It's intended to be a
 // demo, and it's not suitable for actual use.
 func RandomChoice(
 	want map[string]agent.ContainerConfig,
 	have map[string]agent.StateEvent,
+	pending map[string]PendingTask,
 ) (
 	mapped map[string]map[string]agent.ContainerConfig,
 	failed map[string]agent.ContainerConfig,
@@ -49,6 +61,7 @@ func RandomChoice(
 func RandomFit(
 	want map[string]agent.ContainerConfig,
 	have map[string]agent.StateEvent,
+	pending map[string]PendingTask,
 ) (
 	mapped map[string]map[string]agent.ContainerConfig,
 	failed map[string]agent.ContainerConfig,
@@ -56,9 +69,23 @@ func RandomFit(
 	mapped = map[string]map[string]agent.ContainerConfig{}
 	failed = map[string]agent.ContainerConfig{}
 
+	var resources = map[string]agent.HostResources{}
+	for id, state := range have {
+		resources[id] = state.Resources
+	}
+
+	for _, task := range pending {
+		if task.Schedule {
+			r := resources[task.Endpoint]
+			r.CPUs.Reserved += task.ContainerConfig.CPUs
+			r.Memory.Reserved += task.ContainerConfig.Memory
+			resources[task.Endpoint] = r
+		}
+	}
+
 	for id, config := range want {
 		// Find all candidates
-		valid := filter(have, config)
+		valid := filter(resources, config)
 		if len(valid) <= 0 {
 			failed[id] = config
 			continue
@@ -76,20 +103,20 @@ func RandomFit(
 		mapped[chosen] = target
 
 		// Adjust the resources
-		s := have[chosen]
-		s.Resources.CPUs.Reserved += config.CPUs
-		s.Resources.Memory.Reserved += config.Memory
-		have[chosen] = s
+		r := resources[chosen]
+		r.CPUs.Reserved += config.CPUs
+		r.Memory.Reserved += config.Memory
+		resources[chosen] = r
 	}
 
 	return mapped, failed
 }
 
-func filter(have map[string]agent.StateEvent, c agent.ContainerConfig) []string {
+func filter(have map[string]agent.HostResources, c agent.ContainerConfig) []string {
 	valid := make([]string, 0, len(have))
 
-	for endpoint, s := range have {
-		if !match(c, s.Resources) {
+	for endpoint, r := range have {
+		if !match(c, r) {
 			continue
 		}
 

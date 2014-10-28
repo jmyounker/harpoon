@@ -69,7 +69,7 @@ func Transform(
 		actualc = make(chan map[string]agent.StateEvent)
 		want    = map[string]configstore.JobConfig{}
 		have    = map[string]agent.StateEvent{}
-		pending = map[string]pendingTask{}
+		pending = map[string]algo.PendingTask{}
 		tick    = time.Tick(tickInterval)
 	)
 
@@ -142,8 +142,8 @@ func transform(
 	want map[string]configstore.JobConfig,
 	have map[string]agent.StateEvent,
 	target TaskScheduler,
-	pending map[string]pendingTask,
-) map[string]pendingTask {
+	pending map[string]algo.PendingTask,
+) map[string]algo.PendingTask {
 	var (
 		wantTasks    = map[string]agent.ContainerConfig{}
 		haveTasks    = map[string]agent.ContainerConfig{}
@@ -197,13 +197,13 @@ func transform(
 	// their mutations. They'll never get purged from the desired state (the
 	// registry).
 	for id, p := range pending {
-		if _, ok := haveTasks[id]; ok && p.schedule {
+		if _, ok := haveTasks[id]; ok && p.Schedule {
 			Debugf("pending task %q successfully scheduled; delete from pending", id)
 			delete(pending, id) // successful schedule
-		} else if !ok && !p.schedule {
+		} else if !ok && !p.Schedule {
 			Debugf("pending task %q successfully unscheduled; delete from pending", id)
 			delete(pending, id) // successful unschedule
-		} else if xtime.Now().After(p.deadline) {
+		} else if xtime.Now().After(p.Deadline) {
 			Debugf("pending task %q expired; delete from pending", id)
 			delete(pending, id) // timeout
 		}
@@ -223,7 +223,7 @@ func transform(
 			delete(haveTasks, id)
 
 			if pendingTask, ok := pending[id]; ok {
-				switch pendingTask.schedule {
+				switch pendingTask.Schedule {
 				case true:
 					delete(pending, id)
 				case false:
@@ -235,7 +235,7 @@ func transform(
 		}
 
 		if pendingTask, ok := pending[id]; ok {
-			switch pendingTask.schedule {
+			switch pendingTask.Schedule {
 			case true:
 				continue // already pending schedule; don't reissue command
 			case false:
@@ -247,7 +247,7 @@ func transform(
 	}
 
 	// Schedule those containers that need it.
-	placed, failed := Algorithm(toSchedule, have)
+	placed, failed := Algorithm(toSchedule, have, pending)
 	if len(failed) > 0 {
 		log.Printf("the scheduling algorithm failed to place %d/%d tasks", len(failed), len(toSchedule))
 	}
@@ -265,7 +265,12 @@ func transform(
 			}
 
 			Debugf("%s schedule %q now pending", endpoint, id)
-			pending[id] = pendingTask{true, xtime.Now().Add(Tolerance)} // we issued the mutation
+			pending[id] = algo.PendingTask{
+				Schedule:        true,
+				Deadline:        xtime.Now().Add(Tolerance),
+				Endpoint:        endpoint,
+				ContainerConfig: config,
+			} // we issued the mutation
 		}
 	}
 
@@ -278,7 +283,7 @@ func transform(
 		}
 
 		if pendingTask, ok := pending[id]; ok {
-			switch pendingTask.schedule {
+			switch pendingTask.Schedule {
 			case true:
 				panic(fmt.Sprintf("strange state in Transform"))
 			case false:
@@ -298,7 +303,10 @@ func transform(
 			}
 
 			Debugf("%s unschedule %q now pending", endpoint, id)
-			pending[id] = pendingTask{false, xtime.Now().Add(Tolerance)} // we issued the mutation
+			pending[id] = algo.PendingTask{
+				Schedule: false,
+				Deadline: xtime.Now().Add(Tolerance),
+			} // we issued the mutation
 		}
 	}
 
@@ -308,9 +316,4 @@ func transform(
 func chooseOne(a []string) (string, []string) {
 	idx := rand.Intn(len(a))
 	return a[idx], append(a[:idx], a[idx+1:]...)
-}
-
-type pendingTask struct {
-	schedule bool // true = pending schedule; false = pending unschedule
-	deadline time.Time
 }
