@@ -156,7 +156,7 @@ func transform(
 	// Expand every wanted Job to its composite tasks.
 	for _, config := range want {
 		for i := 0; i < config.Scale; i++ {
-			wantTasks[makeContainerID(config, i)] = config.ContainerConfig
+			wantTasks[makeContainerID(config.Hash(), i)] = config.ContainerConfig
 		}
 	}
 

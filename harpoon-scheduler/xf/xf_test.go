@@ -23,7 +23,7 @@ func TestRemoveDuplicates(t *testing.T) {
 
 	state := agent.StateEvent{
 		Containers: map[string]agent.ContainerInstance{
-			makeContainerID(jobConfig, 0): agent.ContainerInstance{ContainerStatus: agent.ContainerStatusRunning},
+			makeContainerID(jobConfig.Hash(), 0): agent.ContainerInstance{ContainerStatus: agent.ContainerStatusRunning},
 		},
 	}
 
@@ -62,12 +62,12 @@ func TestRespectPending(t *testing.T) {
 	have := map[string]agent.StateEvent{
 		"agent-one": agent.StateEvent{
 			Containers: map[string]agent.ContainerInstance{
-				makeContainerID(jobConfig, 0): agent.ContainerInstance{ContainerStatus: agent.ContainerStatusRunning},
+				makeContainerID(jobConfig.Hash(), 0): agent.ContainerInstance{ContainerStatus: agent.ContainerStatusRunning},
 			},
 		},
 		"agent-two": agent.StateEvent{
 			Containers: map[string]agent.ContainerInstance{
-				makeContainerID(jobConfig, 1): agent.ContainerInstance{ContainerStatus: agent.ContainerStatusCreated}, // starting...
+				makeContainerID(jobConfig.Hash(), 1): agent.ContainerInstance{ContainerStatus: agent.ContainerStatusCreated}, // starting...
 			},
 		},
 	}
@@ -75,7 +75,7 @@ func TestRespectPending(t *testing.T) {
 	target := &mockTaskScheduler{}
 
 	pending := map[string]algo.PendingTask{
-		makeContainerID(jobConfig, 1): algo.PendingTask{Schedule: true, Deadline: xtime.Now().Add(10 * time.Second)},
+		makeContainerID(jobConfig.Hash(), 1): algo.PendingTask{Schedule: true, Deadline: xtime.Now().Add(10 * time.Second)},
 	}
 
 	pending = transform(want, have, target, pending)
@@ -165,12 +165,12 @@ func TestPendingExpiration(t *testing.T) {
 	have := map[string]agent.StateEvent{
 		"agent-one": agent.StateEvent{
 			Containers: map[string]agent.ContainerInstance{
-				makeContainerID(jobConfig, 0): agent.ContainerInstance{ContainerStatus: agent.ContainerStatusRunning},
+				makeContainerID(jobConfig.Hash(), 0): agent.ContainerInstance{ContainerStatus: agent.ContainerStatusRunning},
 			},
 		},
 		"agent-two": agent.StateEvent{
 			Containers: map[string]agent.ContainerInstance{
-				makeContainerID(jobConfig, 1): agent.ContainerInstance{ContainerStatus: agent.ContainerStatusFailed},
+				makeContainerID(jobConfig.Hash(), 1): agent.ContainerInstance{ContainerStatus: agent.ContainerStatusFailed},
 			},
 		},
 	}
@@ -182,7 +182,7 @@ func TestPendingExpiration(t *testing.T) {
 
 	deadline := fakeNow.Add(time.Second)
 	pending := map[string]algo.PendingTask{
-		makeContainerID(jobConfig, 1): algo.PendingTask{Schedule: true, Deadline: deadline},
+		makeContainerID(jobConfig.Hash(), 1): algo.PendingTask{Schedule: true, Deadline: deadline},
 	}
 
 	// The first transform should detect the container as pending, and not
@@ -234,7 +234,7 @@ func TestRetryingMutation(t *testing.T) {
 
 	state := agent.StateEvent{
 		Containers: map[string]agent.ContainerInstance{
-			makeContainerID(jobConfig, 0): agent.ContainerInstance{ContainerStatus: agent.ContainerStatusRunning},
+			makeContainerID(jobConfig.Hash(), 0): agent.ContainerInstance{ContainerStatus: agent.ContainerStatusRunning},
 		},
 	}
 
@@ -251,7 +251,7 @@ func TestRetryingMutation(t *testing.T) {
 
 	// the container has a pending unschedule mutation
 	pending := map[string]algo.PendingTask{
-		makeContainerID(jobConfig, 0): algo.PendingTask{Schedule: false, Deadline: fakeNow.Add(time.Second)},
+		makeContainerID(jobConfig.Hash(), 0): algo.PendingTask{Schedule: false, Deadline: fakeNow.Add(time.Second)},
 	}
 
 	// In the first transform, we have a running container that's ostensibly

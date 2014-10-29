@@ -1,11 +1,7 @@
 package xf
 
-import (
-	"fmt"
+import "fmt"
 
-	"github.com/soundcloud/harpoon/harpoon-configstore/lib"
-)
-
-func makeContainerID(config configstore.JobConfig, i int) string {
-	return fmt.Sprintf("%s-%d", config.Hash(), i)
+func makeContainerID(jobConfigHash string, i int) string {
+	return fmt.Sprintf("%s-%d", jobConfigHash, i)
 }
