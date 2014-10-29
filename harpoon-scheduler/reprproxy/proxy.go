@@ -107,8 +107,7 @@ func (p *proxy) Unschedule(endpoint, id string) error {
 	return agent.Unschedule(id)
 }
 
-// Snapshot returns the current state of the scheduling domain. It's not part
-// of any interface; it's just used by the API.
+// Snapshot implements the api.Proxy interface.
 func (p *proxy) Snapshot() map[string]agent.StateEvent {
 	return <-p.snapshotc
 }
