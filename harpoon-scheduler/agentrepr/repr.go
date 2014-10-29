@@ -592,22 +592,32 @@ func (o *outstanding) want(id string, s agent.ContainerStatus, successc, failure
 	)
 
 	go func() {
+		received := false
+
 		for {
 			select {
 			case status, ok := <-c:
 				if !ok {
-					failurec <- id
-					return
-				}
-				if status == s {
-					successc <- id
+					if !received {
+						failurec <- id
+					}
+
 					return
 				}
 
+				if status == s {
+					received = true
+					go func() { successc <- id }()
+				}
 			case <-t:
-				failurec <- id
-				return
+				if received {
+					continue
+				}
+
+				received = true
+				go func() { failurec <- id }()
 			}
+
 		}
 	}()
 

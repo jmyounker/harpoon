@@ -3,6 +3,7 @@ package agentrepr_test
 import (
 	"io/ioutil"
 	"log"
+	"os"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 	"github.com/soundcloud/harpoon/harpoon-scheduler/agentrepr"
@@ -84,5 +85,37 @@ func TestUnschedule(t *testing.T) {
 
 	if _, ok := c.Get("bar"); ok {
 		t.Error("container exists")
+	}
+}
+
+func TestNoDeadlockAfterSchedule(t *testing.T) {
+	log.SetOutput(os.Stdout)
+	log.SetFlags(log.Lmicroseconds | log.Lshortfile)
+	agentrepr.Debugf = log.Printf
+
+	var (
+		c = agentrepr.NewFakeClient(t, "foo")
+		r = agentrepr.New(c)
+	)
+
+	time.Sleep(time.Millisecond)
+
+	if err := r.Schedule("bar", agent.ContainerConfig{}); err != nil {
+		t.Error(err)
+	}
+
+	c.Fail("bar")
+
+	snapshotc := make(chan map[string]agent.StateEvent)
+	go func() {
+		snapshotc <- r.Snapshot()
+	}()
+
+	timeout := time.After(time.Second * 2)
+
+	select {
+	case <-snapshotc:
+	case <-timeout:
+		t.Error("Timeout")
 	}
 }

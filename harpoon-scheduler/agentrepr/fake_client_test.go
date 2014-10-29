@@ -204,6 +204,15 @@ func (c *fakeClient) Delete(id string) error {
 	return nil
 }
 
+func (c *fakeClient) Fail(id string) {
+	c.Lock()
+	defer c.Unlock()
+
+	c.instances[id] = agent.ContainerStatusFailed
+
+	c.broadcast(id)
+}
+
 func (c *fakeClient) broadcast(id string) {
 	if _, ok := c.instances[id]; !ok {
 		panic("bad state in fakeClient broadcast")
