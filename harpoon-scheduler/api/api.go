@@ -78,6 +78,11 @@ func (h *handler) handleSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := c.Valid(); err != nil {
+		writeResponse(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
 	if err := h.JobScheduler.Schedule(c); err != nil {
 		writeResponse(w, http.StatusInternalServerError, err.Error())
 		return
@@ -96,6 +101,11 @@ func (h *handler) handleUnschedule(w http.ResponseWriter, r *http.Request) {
 		var c configstore.JobConfig
 		if err := json.NewDecoder(r.Body).Decode(&c); err != nil {
 			writeResponse(w, http.StatusBadRequest, err.Error())
+			return
+		}
+
+		if err := c.Valid(); err != nil {
+			writeResponse(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 
