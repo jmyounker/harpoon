@@ -68,23 +68,23 @@ func RandomFit(
 	mapped = map[string]map[string]agent.ContainerConfig{}
 	failed = map[string]agent.ContainerConfig{}
 
-	var resources = map[string]agent.HostResources{}
+	var states = map[string]agent.StateEvent{}
 	for id, state := range have {
-		resources[id] = state.Resources
+		states[id] = state
 	}
 
 	for _, task := range pending {
 		if task.Schedule {
-			r := resources[task.Endpoint]
-			r.CPUs.Reserved += task.ContainerConfig.CPUs
-			r.Memory.Reserved += task.ContainerConfig.Memory
-			resources[task.Endpoint] = r
+			s := states[task.Endpoint]
+			s.Resources.CPUs.Reserved += task.ContainerConfig.CPUs
+			s.Resources.Memory.Reserved += task.ContainerConfig.Memory
+			states[task.Endpoint] = s
 		}
 	}
 
 	for id, config := range want {
 		// Find all candidates
-		valid := filter(resources, config)
+		valid := filter(states, config)
 		if len(valid) <= 0 {
 			failed[id] = config
 			continue
@@ -102,10 +102,10 @@ func RandomFit(
 		mapped[chosen] = target
 
 		// Adjust the resources
-		r := resources[chosen]
-		r.CPUs.Reserved += config.CPUs
-		r.Memory.Reserved += config.Memory
-		resources[chosen] = r
+		s := states[chosen]
+		s.Resources.CPUs.Reserved += config.CPUs
+		s.Resources.Memory.Reserved += config.Memory
+		states[chosen] = s
 	}
 
 	return mapped, failed
@@ -125,38 +125,36 @@ func LeastUsed(
 	failed = map[string]agent.ContainerConfig{}
 
 	var (
-		resources = map[string]agent.HostResources{}
-		e2c       = map[string]int{} // endpoint to container's count
-		strategy  = leastUsed{e2c: e2c}
+		states   = map[string]agent.StateEvent{}
+		strategy = sortStrategy{}
 	)
 
 	for id, state := range have {
-		resources[id] = state.Resources
-		e2c[id] = len(state.Containers)
+		states[id] = state
 	}
 
-	for _, task := range pending {
+	for id, task := range pending {
 		if task.Schedule {
-			r := resources[task.Endpoint]
-			r.CPUs.Reserved += task.ContainerConfig.CPUs
-			r.Memory.Reserved += task.ContainerConfig.Memory
-			resources[task.Endpoint] = r
+			s := states[task.Endpoint]
+			s.Resources.CPUs.Reserved += task.ContainerConfig.CPUs
+			s.Resources.Memory.Reserved += task.ContainerConfig.Memory
+			states[task.Endpoint] = s
+			states[task.Endpoint].Containers[id] = agent.ContainerInstance{ContainerConfig: task.ContainerConfig}
 		}
-		e2c[task.Endpoint]++
 	}
 
 	for id, config := range want {
 		// Find all candidates
-		valid := filter(resources, config)
+		valid := filter(states, config)
 		if len(valid) <= 0 {
 			failed[id] = config
 			continue
 		}
 
-		strategy.sort(valid)
+		strategy.sort(valid, states)
 
-		// Select a least used candidate
-		chosen := valid[0]
+		// Select a candidate
+		chosen := strategy.best()
 
 		// Place the container
 		target, ok := mapped[chosen]
@@ -167,22 +165,21 @@ func LeastUsed(
 		mapped[chosen] = target
 
 		// Adjust the resources
-		r := resources[chosen]
-		r.CPUs.Reserved += config.CPUs
-		r.Memory.Reserved += config.Memory
-		resources[chosen] = r
-
-		e2c[chosen]++
+		s := states[chosen]
+		s.Resources.CPUs.Reserved += config.CPUs
+		s.Resources.Memory.Reserved += config.Memory
+		s.Containers[id] = agent.ContainerInstance{ContainerConfig: config}
+		states[chosen] = s
 	}
 
 	return mapped, failed
 }
 
-func filter(have map[string]agent.HostResources, c agent.ContainerConfig) []string {
+func filter(have map[string]agent.StateEvent, c agent.ContainerConfig) []string {
 	valid := make([]string, 0, len(have))
 
-	for endpoint, r := range have {
-		if !match(c, r) {
+	for endpoint, s := range have {
+		if !match(c, s.Resources) {
 			continue
 		}
 
