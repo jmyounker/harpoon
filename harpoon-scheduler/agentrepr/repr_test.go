@@ -21,14 +21,18 @@ func TestSubscribeUnsubscribe(t *testing.T) {
 		ch = make(chan map[string]agent.StateEvent, 1)
 	)
 
+	time.Sleep(time.Millisecond) // give time to initialize state in agent repr
+
 	r.Subscribe(ch)
 	<-ch
 
 	c.Put("bar", agent.ContainerConfig{})
 
-	<-ch // I don't know why this duplicate happens
-
 	if want, have := agent.ContainerStatusCreated, (<-ch)["foo"].Containers["bar"].ContainerStatus; want != have {
+		t.Errorf("want %q, have %q", want, have)
+	}
+
+	if want, have := agent.ContainerStatusRunning, (<-ch)["foo"].Containers["bar"].ContainerStatus; want != have {
 		t.Errorf("want %q, have %q", want, have)
 	}
 

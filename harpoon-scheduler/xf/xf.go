@@ -206,12 +206,12 @@ func transform(
 		) {
 			Debugf("pending task %q successfully scheduled; delete from pending", id)
 			delete(pending, id) // successful schedule
-		} else if ok && !p.Schedule && !has(m,
+		} else if !p.Schedule && (!ok || !has(m,
 			agent.ContainerStatusCreated,
 			agent.ContainerStatusRunning,
 			agent.ContainerStatusFinished,
 			agent.ContainerStatusFailed,
-		) {
+		)) {
 			Debugf("pending task %q successfully unscheduled; delete from pending", id)
 			delete(pending, id) // successful unschedule
 		} else if xtime.Now().After(p.Deadline) {

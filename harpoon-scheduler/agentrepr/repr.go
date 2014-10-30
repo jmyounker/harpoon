@@ -170,8 +170,6 @@ func (r *representation) Schedule(id string, c agent.ContainerConfig) error {
 
 	r.instances.advanceOne(id, schedule) // it's OK if running signal gets there first
 
-	r.broadcast()
-
 	metrics.IncTransactionsCreated(1)
 
 	return nil
@@ -192,18 +190,6 @@ func (r *representation) Unschedule(id string) error {
 	default:
 		return err
 	}
-	/*
-		successc := make(chan string)
-		failurec := make(chan string)
-
-		r.outstanding.want(id, agent.ContainerStatusFinished, successc, failurec)
-
-		select {
-		case <-successc:
-		case <-failurec:
-			r.failurec <- id
-			return errConotainerNotStopped
-		}*/
 
 	// (see sched, above)
 
@@ -217,8 +203,6 @@ func (r *representation) Unschedule(id string) error {
 	}
 
 	r.instances.advanceOne(id, unschedule) // it's OK if delete signal gets there first
-
-	r.broadcast()
 
 	metrics.IncTransactionsCreated(1)
 

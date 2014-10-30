@@ -113,7 +113,7 @@ func (c *fakeClient) Events() (<-chan agent.StateEvent, agent.Stopper, error) {
 	return outc, stopper(stopc), nil
 }
 
-func (c *fakeClient) Put(id string, _ agent.ContainerConfig) error {
+func (c *fakeClient) Create(id string, _ agent.ContainerConfig) error {
 	c.Lock()
 	defer c.Unlock()
 
@@ -122,6 +122,25 @@ func (c *fakeClient) Put(id string, _ agent.ContainerConfig) error {
 	}
 
 	c.instances[id] = agent.ContainerStatusCreated
+
+	c.broadcast(id)
+
+	return nil
+}
+
+func (c *fakeClient) Put(id string, _ agent.ContainerConfig) error {
+	c.Lock()
+	defer c.Unlock()
+
+	if status, ok := c.instances[id]; ok && status != agent.ContainerStatusCreated {
+		return agent.ErrContainerAlreadyExists
+	}
+
+	c.instances[id] = agent.ContainerStatusCreated
+
+	c.broadcast(id)
+
+	c.instances[id] = agent.ContainerStatusRunning
 
 	c.broadcast(id)
 
