@@ -30,7 +30,7 @@ var (
 	// PendingOperationTimeout dictates how long a schedule or unschedule
 	// command may stay pending and unrealized before we give up and allow the
 	// client to repeat the command.
-	PendingOperationTimeout = 10 * time.Second //1 * time.Minute
+	PendingOperationTimeout = 20 * time.Second //1 * time.Minute
 
 	errAgentConnectionInterrupted = errors.New("agent connection interrupted")
 	errTransactionPending         = errors.New("transaction already pending for this container")
@@ -192,6 +192,18 @@ func (r *representation) Unschedule(id string) error {
 	default:
 		return err
 	}
+	/*
+		successc := make(chan string)
+		failurec := make(chan string)
+
+		r.outstanding.want(id, agent.ContainerStatusFinished, successc, failurec)
+
+		select {
+		case <-successc:
+		case <-failurec:
+			r.failurec <- id
+			return errConotainerNotStopped
+		}*/
 
 	// (see sched, above)
 
