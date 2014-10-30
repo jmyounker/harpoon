@@ -20,7 +20,7 @@ type Registry struct {
 	subc      chan chan<- map[string]configstore.JobConfig
 	unsubc    chan chan<- map[string]configstore.JobConfig
 	schedc    chan scheduleRequest
-	unschedc  chan scheduleRequest
+	unschedc  chan unscheduleRequest
 	snapshotc chan map[string]configstore.JobConfig
 	quitc     chan chan struct{}
 }
@@ -37,7 +37,7 @@ func New(filename string) *Registry {
 		subc:      make(chan chan<- map[string]configstore.JobConfig),
 		unsubc:    make(chan chan<- map[string]configstore.JobConfig),
 		schedc:    make(chan scheduleRequest),
-		unschedc:  make(chan scheduleRequest),
+		unschedc:  make(chan unscheduleRequest),
 		snapshotc: make(chan map[string]configstore.JobConfig),
 		quitc:     make(chan chan struct{}),
 	}
@@ -58,9 +58,9 @@ func (r *Registry) Unsubscribe(c chan<- map[string]configstore.JobConfig) {
 }
 
 // Schedule implements api.JobScheduler.
-func (r *Registry) Schedule(config configstore.JobConfig) error {
+func (r *Registry) Schedule(c configstore.JobConfig) error {
 	req := scheduleRequest{
-		JobConfig: config,
+		JobConfig: c,
 		err:       make(chan error),
 	}
 	r.schedc <- req
@@ -68,17 +68,16 @@ func (r *Registry) Schedule(config configstore.JobConfig) error {
 }
 
 // Unschedule implements api.JobScheduler.
-func (r *Registry) Unschedule(config configstore.JobConfig) error {
-	req := scheduleRequest{
-		JobConfig: config,
-		err:       make(chan error),
+func (r *Registry) Unschedule(jobConfigHash string) error {
+	req := unscheduleRequest{
+		hash: jobConfigHash,
+		err:  make(chan error),
 	}
 	r.unschedc <- req
 	return <-req.err
 }
 
-// Snapshot returns the current state of the registry. It's not part of any
-// interface; it's just used by the API.
+// Snapshot implements api.JobScheduler.
 func (r *Registry) Snapshot() map[string]configstore.JobConfig {
 	return <-r.snapshotc
 }
@@ -117,9 +116,7 @@ func (r *Registry) loop(filename string, scheduled map[string]configstore.JobCon
 		return nil
 	}
 
-	unschedule := func(config configstore.JobConfig) error {
-		hash := config.Hash()
-
+	unschedule := func(hash string) error {
 		if _, ok := scheduled[hash]; !ok {
 			return fmt.Errorf("%s not scheduled", hash)
 		}
@@ -165,7 +162,7 @@ func (r *Registry) loop(filename string, scheduled map[string]configstore.JobCon
 		case req := <-r.unschedc:
 			metrics.IncJobUnscheduleRequests(1)
 
-			err := unschedule(req.JobConfig)
+			err := unschedule(req.hash)
 			if err == nil {
 				persist()
 				broadcast()
@@ -232,4 +229,9 @@ func load(filename string) (map[string]configstore.JobConfig, error) {
 type scheduleRequest struct {
 	configstore.JobConfig
 	err chan error
+}
+
+type unscheduleRequest struct {
+	hash string
+	err  chan error
 }
