@@ -168,13 +168,6 @@ func (r *representation) Schedule(id string, c agent.ContainerConfig) error {
 
 	r.outstanding.want(id, agent.ContainerStatusRunning, r.successc, r.failurec)
 
-	switch err := r.Client.Start(id); err {
-	case nil:
-	default:
-		r.outstanding.remove(id) // won't happen
-		return err
-	}
-
 	r.instances.advanceOne(id, schedule) // it's OK if running signal gets there first
 
 	r.broadcast()
