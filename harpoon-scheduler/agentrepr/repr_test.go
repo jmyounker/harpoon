@@ -16,7 +16,7 @@ func TestSubscribeUnsubscribe(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 
 	var (
-		c  = agentrepr.NewFakeClient(t, "foo")
+		c  = agentrepr.NewFakeClient(t, "foo", false)
 		r  = agentrepr.New(c)
 		ch = make(chan map[string]agent.StateEvent, 1)
 	)
@@ -45,7 +45,7 @@ func TestSchedule(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 
 	var (
-		c = agentrepr.NewFakeClient(t, "foo")
+		c = agentrepr.NewFakeClient(t, "foo", false)
 		r = agentrepr.New(c)
 	)
 
@@ -66,7 +66,7 @@ func TestSchedule(t *testing.T) {
 
 func TestUnschedule(t *testing.T) {
 	var (
-		c = agentrepr.NewFakeClient(t, "foo")
+		c = agentrepr.NewFakeClient(t, "foo", false)
 		r = agentrepr.New(c)
 	)
 
@@ -99,7 +99,7 @@ func TestNoDeadlockAfterSchedule(t *testing.T) {
 	agentrepr.Debugf = log.Printf
 
 	var (
-		c = agentrepr.NewFakeClient(t, "foo")
+		c = agentrepr.NewFakeClient(t, "foo", true)
 		r = agentrepr.New(c)
 	)
 
@@ -108,8 +108,6 @@ func TestNoDeadlockAfterSchedule(t *testing.T) {
 	if err := r.Schedule("bar", agent.ContainerConfig{}); err != nil {
 		t.Error(err)
 	}
-
-	c.Fail("bar")
 
 	snapshotc := make(chan map[string]agent.StateEvent)
 	go func() {

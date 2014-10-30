@@ -14,7 +14,7 @@ func TestFakeClient(t *testing.T) {
 		id       = "foobar"
 	)
 
-	c := NewFakeClient(t, endpoint)
+	c := NewFakeClient(t, endpoint, false)
 
 	eventc, stopper, err := c.Events()
 	if err != nil {
@@ -63,15 +63,17 @@ type fakeClient struct {
 	inc       chan agent.StateEvent
 	out       map[chan<- agent.StateEvent]struct{}
 	instances map[string]agent.ContainerStatus
+	fail      bool
 }
 
-func NewFakeClient(t *testing.T, endpoint string) *fakeClient {
+func NewFakeClient(t *testing.T, endpoint string, fail bool) *fakeClient {
 	return &fakeClient{
 		t:         t,
 		endpoint:  endpoint,
 		inc:       make(chan agent.StateEvent),
 		out:       map[chan<- agent.StateEvent]struct{}{},
 		instances: map[string]agent.ContainerStatus{},
+		fail:      fail,
 	}
 }
 
@@ -204,28 +206,23 @@ func (c *fakeClient) Delete(id string) error {
 	return nil
 }
 
-func (c *fakeClient) Fail(id string) {
-	c.Lock()
-	defer c.Unlock()
-
-	c.instances[id] = agent.ContainerStatusFailed
-
-	c.broadcast(id)
-}
-
-func (c *fakeClient) broadcast(id string) {
-	if _, ok := c.instances[id]; !ok {
+func (fc *fakeClient) broadcast(id string) {
+	if _, ok := fc.instances[id]; !ok {
 		panic("bad state in fakeClient broadcast")
 	}
 
 	e := agent.StateEvent{
 		Containers: map[string]agent.ContainerInstance{
-			id: agent.ContainerInstance{ContainerStatus: c.instances[id]},
+			id: agent.ContainerInstance{ContainerStatus: fc.instances[id]},
 		},
 	}
 
-	for c := range c.out {
+	for c := range fc.out {
 		c <- e
+
+		if fc.fail {
+			c <- e
+		}
 	}
 }
 
