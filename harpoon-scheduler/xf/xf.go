@@ -116,11 +116,11 @@ func Transform(
 	for {
 		select {
 		case want = <-desirec:
-			Debugf("actual state change")
+			Debugf("desire state change")
 			go tryTransform(want, have)
 
 		case have = <-actualc:
-			Debugf("desire state change")
+			Debugf("actual state change")
 			go tryTransform(want, have)
 
 		case <-tick:
