@@ -88,6 +88,11 @@ func TestUnschedule(t *testing.T) {
 	}
 }
 
+// Receiving an update for a container which is outstanding
+// after receiving the wanted state of a container
+// leads to race condition between the channels "updatec" and "succesc"
+// if updatec runs first there's a deadlock trying to singal outstanding
+// container
 func TestNoDeadlockAfterSchedule(t *testing.T) {
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.Lmicroseconds | log.Lshortfile)
