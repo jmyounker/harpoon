@@ -13,7 +13,7 @@ type sortStrategy struct {
 	containersCount int
 }
 
-func (s sortStrategy) sort(endpoints []string, states map[string]agent.StateEvent) {
+func (s *sortStrategy) sort(endpoints []string, states map[string]agent.StateEvent) {
 	s.endpoints = endpoints
 	s.states = states
 
@@ -25,24 +25,24 @@ func (s sortStrategy) sort(endpoints []string, states map[string]agent.StateEven
 	sort.Sort(s)
 }
 
-func (s sortStrategy) Less(i, j int) bool {
+func (s *sortStrategy) Less(i, j int) bool {
 	return s.score(i) < s.score(j)
 
 }
 
-func (s sortStrategy) Len() int {
+func (s *sortStrategy) Len() int {
 	return len(s.endpoints)
 }
 
-func (s sortStrategy) Swap(i, j int) {
+func (s *sortStrategy) Swap(i, j int) {
 	s.endpoints[i], s.endpoints[j] = s.endpoints[j], s.endpoints[i]
 }
 
-func (s sortStrategy) best() string {
+func (s *sortStrategy) best() string {
 	return s.endpoints[0]
 }
 
-func (s sortStrategy) score(i int) float64 {
+func (s *sortStrategy) score(i int) float64 {
 	var (
 		state       = s.states[s.endpoints[i]]
 		cpuRatio    = state.Resources.CPUs.Reserved / float64(state.Resources.CPUs.Total)

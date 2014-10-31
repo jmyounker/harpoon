@@ -26,7 +26,7 @@ var (
 
 	// Algorithm is the scheduling algorithm we'll use when placing new
 	// containers.
-	Algorithm = algo.RandomFit
+	Algorithm = algo.LeastUsed
 
 	// tickInterval is how often the Transform will attempt to reconcile
 	// desired and actual states, absent a mutation event. Basically, every
