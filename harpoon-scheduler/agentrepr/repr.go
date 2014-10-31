@@ -30,7 +30,7 @@ var (
 	// PendingOperationTimeout dictates how long a schedule or unschedule
 	// command may stay pending and unrealized before we give up and allow the
 	// client to repeat the command.
-	PendingOperationTimeout = 10 * time.Second //1 * time.Minute
+	PendingOperationTimeout = 20 * time.Second //1 * time.Minute
 
 	errAgentConnectionInterrupted = errors.New("agent connection interrupted")
 	errTransactionPending         = errors.New("transaction already pending for this container")
@@ -154,30 +154,20 @@ func (r *representation) Schedule(id string, c agent.ContainerConfig) error {
 		return errTransactionPending
 	}
 
-	switch err := r.Client.Put(id, c); err {
-	case nil, agent.ErrContainerAlreadyExists:
-	default:
-		return err
-	}
-
-	// sched is a command, and commands are processed asynchronously, i.e. out
-	// of the primary requestLoop. Therefore, when we signal Start to the
-	// remote agent, the response event may get to the requestLoop before we
-	// actually return from the method! So, we prepare our "outstanding" ahead
-	// of time, and cancel it if the Start fails.
+	// Schedule is a command, and commands are processed asynchronously, i.e.
+	// out of the primary requestLoop. Therefore, when we signal Put to the
+	// remote agent, the response events (Created, then Running) may get to
+	// the requestLoop before we actually return from the invocation! So, we
+	// register our "outstanding" ahead of time, and cancel if the Put fails.
 
 	r.outstanding.want(id, agent.ContainerStatusRunning, r.successc, r.failurec)
 
-	switch err := r.Client.Start(id); err {
-	case nil:
-	default:
-		r.outstanding.remove(id) // won't happen
+	if err := r.Client.Put(id, c); err != nil {
+		r.outstanding.remove(id)
 		return err
 	}
 
 	r.instances.advanceOne(id, schedule) // it's OK if running signal gets there first
-
-	r.broadcast()
 
 	metrics.IncTransactionsCreated(1)
 
@@ -200,7 +190,8 @@ func (r *representation) Unschedule(id string) error {
 		return err
 	}
 
-	// (see sched, above)
+	// Register the outstanding signal, then issue the Delete. (See comment in
+	// Schedule, above, for reasoning.)
 
 	r.outstanding.want(id, agent.ContainerStatusDeleted, r.successc, r.failurec) // meta-status
 
@@ -212,8 +203,6 @@ func (r *representation) Unschedule(id string) error {
 	}
 
 	r.instances.advanceOne(id, unschedule) // it's OK if delete signal gets there first
-
-	r.broadcast()
 
 	metrics.IncTransactionsCreated(1)
 
@@ -592,22 +581,32 @@ func (o *outstanding) want(id string, s agent.ContainerStatus, successc, failure
 	)
 
 	go func() {
+		sent := false
+
 		for {
 			select {
 			case status, ok := <-c:
 				if !ok {
-					failurec <- id
-					return
-				}
-				if status == s {
-					successc <- id
+					if !sent {
+						failurec <- id
+					}
+
 					return
 				}
 
+				if status == s {
+					sent = true
+					go func() { successc <- id }()
+				}
 			case <-t:
-				failurec <- id
-				return
+				if sent {
+					continue
+				}
+
+				sent = true
+				go func() { failurec <- id }()
 			}
+
 		}
 	}()
 

@@ -5,7 +5,6 @@ package xf
 import (
 	"fmt"
 	"log"
-	"math/rand"
 	"time"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
@@ -116,11 +115,11 @@ func Transform(
 	for {
 		select {
 		case want = <-desirec:
-			Debugf("actual state change")
+			Debugf("desire state change")
 			go tryTransform(want, have)
 
 		case have = <-actualc:
-			Debugf("desire state change")
+			Debugf("actual state change")
 			go tryTransform(want, have)
 
 		case <-tick:
@@ -206,12 +205,12 @@ func transform(
 		) {
 			Debugf("pending task %q successfully scheduled; delete from pending", id)
 			delete(pending, id) // successful schedule
-		} else if ok && !p.Schedule && !has(m,
+		} else if !p.Schedule && (!ok || !has(m,
 			agent.ContainerStatusCreated,
 			agent.ContainerStatusRunning,
 			agent.ContainerStatusFinished,
 			agent.ContainerStatusFailed,
-		) {
+		)) {
 			Debugf("pending task %q successfully unscheduled; delete from pending", id)
 			delete(pending, id) // successful unschedule
 		} else if xtime.Now().After(p.Deadline) {
@@ -410,9 +409,4 @@ func transform(
 	}
 
 	return pending
-}
-
-func chooseOne(a []string) (string, []string) {
-	idx := rand.Intn(len(a))
-	return a[idx], append(a[:idx], a[idx+1:]...)
 }
