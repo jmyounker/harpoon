@@ -23,7 +23,7 @@ func TestRemoveDuplicates(t *testing.T) {
 
 	state := agent.StateEvent{
 		Containers: map[string]agent.ContainerInstance{
-			makeContainerID(jobConfig, 0): agent.ContainerInstance{ContainerStatus: agent.ContainerStatusRunning},
+			makeContainerID(jobConfig.Hash(), 0): agent.ContainerInstance{ContainerStatus: agent.ContainerStatusRunning},
 		},
 	}
 
@@ -41,15 +41,17 @@ func TestRemoveDuplicates(t *testing.T) {
 	transform(want, have, target, map[string]algo.PendingTask{})
 
 	if want, have := int32(0), atomic.LoadInt32(&target.schedules); want != have {
-		t.Errorf("want %d schedules, have %d", want, have)
+		t.Errorf("want %d schedule(s), have %d", want, have)
 	}
 
 	if want, have := int32(1), atomic.LoadInt32(&target.unschedules); want != have {
-		t.Errorf("want %d unschedules, have %d", want, have)
+		t.Errorf("want %d unschedule(s), have %d", want, have)
 	}
 }
 
 func TestRespectPending(t *testing.T) {
+	Debugf = t.Logf
+
 	jobConfig := configstore.JobConfig{
 		Job:   "a",
 		Scale: 2,
@@ -62,12 +64,12 @@ func TestRespectPending(t *testing.T) {
 	have := map[string]agent.StateEvent{
 		"agent-one": agent.StateEvent{
 			Containers: map[string]agent.ContainerInstance{
-				makeContainerID(jobConfig, 0): agent.ContainerInstance{ContainerStatus: agent.ContainerStatusRunning},
+				makeContainerID(jobConfig.Hash(), 0): agent.ContainerInstance{ContainerStatus: agent.ContainerStatusRunning},
 			},
 		},
 		"agent-two": agent.StateEvent{
 			Containers: map[string]agent.ContainerInstance{
-				makeContainerID(jobConfig, 1): agent.ContainerInstance{ContainerStatus: agent.ContainerStatusCreated}, // starting...
+				makeContainerID(jobConfig.Hash(), 1): agent.ContainerInstance{ContainerStatus: agent.ContainerStatusCreated}, // starting...
 			},
 		},
 	}
@@ -75,17 +77,17 @@ func TestRespectPending(t *testing.T) {
 	target := &mockTaskScheduler{}
 
 	pending := map[string]algo.PendingTask{
-		makeContainerID(jobConfig, 1): algo.PendingTask{Schedule: true, Deadline: xtime.Now().Add(10 * time.Second)},
+		makeContainerID(jobConfig.Hash(), 1): algo.PendingTask{Schedule: true, Deadline: xtime.Now().Add(10 * time.Second)},
 	}
 
 	pending = transform(want, have, target, pending)
 
 	if want, have := int32(0), atomic.LoadInt32(&target.schedules); want != have {
-		t.Errorf("want %d schedules, have %d", want, have)
+		t.Errorf("want %d schedule(s), have %d", want, have)
 	}
 
 	if want, have := int32(0), atomic.LoadInt32(&target.unschedules); want != have {
-		t.Errorf("want %d unschedules, have %d", want, have)
+		t.Errorf("want %d unschedule(s), have %d", want, have)
 	}
 }
 
@@ -118,11 +120,11 @@ func TestRespectResourceReservedForPendingTasks(t *testing.T) {
 	pending = transform(want, have, target, pending)
 
 	if want, have := int32(1), atomic.LoadInt32(&target.schedules); want != have {
-		t.Errorf("want %d schedules, have %d", want, have)
+		t.Errorf("want %d schedule(s), have %d", want, have)
 	}
 
 	if want, have := int32(0), atomic.LoadInt32(&target.unschedules); want != have {
-		t.Errorf("want %d unschedules, have %d", want, have)
+		t.Errorf("want %d unschedule(s), have %d", want, have)
 	}
 
 	if want, have := 1, len(pending); want != have {
@@ -138,11 +140,11 @@ func TestRespectResourceReservedForPendingTasks(t *testing.T) {
 	pending = transform(want, have, target, pending)
 
 	if want, have := int32(0), atomic.LoadInt32(&target.schedules); want != have {
-		t.Errorf("want %d schedules, have %d", want, have)
+		t.Errorf("want %d schedule(s), have %d", want, have)
 	}
 
 	if want, have := int32(0), atomic.LoadInt32(&target.unschedules); want != have {
-		t.Errorf("want %d unschedules, have %d", want, have)
+		t.Errorf("want %d unschedule(s), have %d", want, have)
 	}
 
 	if want, have := 1, len(pending); want != have {
@@ -151,7 +153,7 @@ func TestRespectResourceReservedForPendingTasks(t *testing.T) {
 }
 
 func TestPendingExpiration(t *testing.T) {
-	// Debugf = t.Logf
+	Debugf = t.Logf
 
 	jobConfig := configstore.JobConfig{
 		Job:   "a",
@@ -165,13 +167,11 @@ func TestPendingExpiration(t *testing.T) {
 	have := map[string]agent.StateEvent{
 		"agent-one": agent.StateEvent{
 			Containers: map[string]agent.ContainerInstance{
-				makeContainerID(jobConfig, 0): agent.ContainerInstance{ContainerStatus: agent.ContainerStatusRunning},
+				makeContainerID(jobConfig.Hash(), 0): agent.ContainerInstance{ContainerStatus: agent.ContainerStatusRunning},
 			},
 		},
 		"agent-two": agent.StateEvent{
-			Containers: map[string]agent.ContainerInstance{
-				makeContainerID(jobConfig, 1): agent.ContainerInstance{ContainerStatus: agent.ContainerStatusFailed},
-			},
+			Containers: map[string]agent.ContainerInstance{},
 		},
 	}
 
@@ -182,7 +182,7 @@ func TestPendingExpiration(t *testing.T) {
 
 	deadline := fakeNow.Add(time.Second)
 	pending := map[string]algo.PendingTask{
-		makeContainerID(jobConfig, 1): algo.PendingTask{Schedule: true, Deadline: deadline},
+		makeContainerID(jobConfig.Hash(), 1): algo.PendingTask{Schedule: true, Deadline: deadline},
 	}
 
 	// The first transform should detect the container as pending, and not
@@ -195,11 +195,11 @@ func TestPendingExpiration(t *testing.T) {
 	}
 
 	if want, have := int32(0), atomic.LoadInt32(&target.schedules); want != have {
-		t.Errorf("want %d schedules, have %d", want, have)
+		t.Errorf("want %d schedule(s), have %d", want, have)
 	}
 
 	if want, have := int32(0), atomic.LoadInt32(&target.unschedules); want != have {
-		t.Errorf("want %d unschedules, have %d", want, have)
+		t.Errorf("want %d unschedule(s), have %d", want, have)
 	}
 
 	// Advance past our pendingTask deadline.
@@ -207,9 +207,9 @@ func TestPendingExpiration(t *testing.T) {
 	fakeNow = deadline.Add(time.Millisecond)
 
 	// The next transform should detect the pendingTask as expired and delete
-	// it. And because the container is StatusFailed, it should emit a
-	// schedule mutation. That has the side effect of re-adding it to the
-	// pending map :)
+	// it. And because the container is not present, it should emit a schedule
+	// mutation. That has the side effect of re-adding it to the pending map
+	// :)
 
 	pending = transform(want, have, target, pending)
 
@@ -218,15 +218,17 @@ func TestPendingExpiration(t *testing.T) {
 	}
 
 	if want, have := int32(1), atomic.LoadInt32(&target.schedules); want != have {
-		t.Errorf("want %d schedules, have %d", want, have)
+		t.Errorf("want %d schedule(s), have %d", want, have)
 	}
 
 	if want, have := int32(0), atomic.LoadInt32(&target.unschedules); want != have {
-		t.Errorf("want %d unschedules, have %d", want, have)
+		t.Errorf("want %d unschedule(s), have %d", want, have)
 	}
 }
 
 func TestRetryingMutation(t *testing.T) {
+	Debugf = t.Logf
+
 	jobConfig := configstore.JobConfig{
 		Job:   "a",
 		Scale: 1,
@@ -234,12 +236,12 @@ func TestRetryingMutation(t *testing.T) {
 
 	state := agent.StateEvent{
 		Containers: map[string]agent.ContainerInstance{
-			makeContainerID(jobConfig, 0): agent.ContainerInstance{ContainerStatus: agent.ContainerStatusRunning},
+			makeContainerID(jobConfig.Hash(), 0): agent.ContainerInstance{ContainerStatus: agent.ContainerStatusRunning},
 		},
 	}
 
 	// want an empty state
-	want := map[string]configstore.JobConfig{} // we want an empty state
+	want := map[string]configstore.JobConfig{}
 
 	// have one container running
 	have := map[string]agent.StateEvent{"the-agent": state}
@@ -251,7 +253,11 @@ func TestRetryingMutation(t *testing.T) {
 
 	// the container has a pending unschedule mutation
 	pending := map[string]algo.PendingTask{
-		makeContainerID(jobConfig, 0): algo.PendingTask{Schedule: false, Deadline: fakeNow.Add(time.Second)},
+		makeContainerID(jobConfig.Hash(), 0): algo.PendingTask{
+			Schedule: false,
+			Deadline: fakeNow.Add(time.Second),
+			Endpoint: "the-agent",
+		},
 	}
 
 	// In the first transform, we have a running container that's ostensibly
@@ -264,11 +270,11 @@ func TestRetryingMutation(t *testing.T) {
 	}
 
 	if want, have := int32(0), atomic.LoadInt32(&target.schedules); want != have {
-		t.Errorf("want %d schedules, have %d", want, have)
+		t.Errorf("want %d schedule(s), have %d", want, have)
 	}
 
 	if want, have := int32(0), atomic.LoadInt32(&target.unschedules); want != have {
-		t.Errorf("want %d unschedules, have %d", want, have)
+		t.Errorf("want %d unschedule(s), have %d", want, have)
 	}
 
 	// Advance our time past the deadline, and try again. We should delete the
@@ -283,11 +289,11 @@ func TestRetryingMutation(t *testing.T) {
 	}
 
 	if want, have := int32(0), atomic.LoadInt32(&target.schedules); want != have {
-		t.Errorf("want %d schedules, have %d", want, have)
+		t.Errorf("want %d schedule(s), have %d", want, have)
 	}
 
 	if want, have := int32(1), atomic.LoadInt32(&target.unschedules); want != have {
-		t.Errorf("want %d unschedules, have %d", want, have)
+		t.Errorf("want %d unschedule(s), have %d", want, have)
 	}
 
 	// Do it again. Since the "have" map isn't changing, we should observe the
@@ -301,11 +307,11 @@ func TestRetryingMutation(t *testing.T) {
 	}
 
 	if want, have := int32(0), atomic.LoadInt32(&target.schedules); want != have {
-		t.Errorf("want %d schedules, have %d", want, have)
+		t.Errorf("want %d schedule(s), have %d", want, have)
 	}
 
 	if want, have := int32(2), atomic.LoadInt32(&target.unschedules); want != have {
-		t.Errorf("want %d unschedules, have %d", want, have)
+		t.Errorf("want %d unschedule(s), have %d", want, have)
 	}
 
 	// Unschedule the container manually, and do another transform. We should
@@ -321,11 +327,11 @@ func TestRetryingMutation(t *testing.T) {
 	}
 
 	if want, have := int32(0), atomic.LoadInt32(&target.schedules); want != have {
-		t.Errorf("want %d schedules, have %d", want, have)
+		t.Errorf("want %d schedule(s), have %d", want, have)
 	}
 
 	if want, have := int32(2), atomic.LoadInt32(&target.unschedules); want != have {
-		t.Errorf("want %d unschedules, have %d", want, have)
+		t.Errorf("want %d unschedule(s), have %d", want, have)
 	}
 }
 

@@ -67,7 +67,7 @@ func TestRegistryStartStop(t *testing.T) {
 		t.Fatalf("want %v, have %v", want, have)
 	}
 
-	if err := registry.Unschedule(job1); err != nil {
+	if err := registry.Unschedule(job1.Hash()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -77,7 +77,7 @@ func TestRegistryStartStop(t *testing.T) {
 		t.Fatalf("want %v, have %v", want, have)
 	}
 
-	if err := registry.Unschedule(job2); err != nil {
+	if err := registry.Unschedule(job2.Hash()); err != nil {
 		t.Fatal(err)
 	}
 

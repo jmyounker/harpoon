@@ -17,6 +17,7 @@ func TestSubscribeUnsubscribe(t *testing.T) {
 		c = make(chan map[string]agent.StateEvent, 1)
 	)
 
+	defer p.Quit()
 	p.Subscribe(c)
 
 	if want, have := 0, len(<-c); want != have {
@@ -56,6 +57,7 @@ func TestScheduleUnschedule(t *testing.T) {
 		p = reprproxy.New(d)
 	)
 
+	defer p.Quit()
 	time.Sleep(time.Millisecond) // allow agents to be updated
 
 	if err := p.Schedule("unknown-endpoint", "bar", agent.ContainerConfig{}); err == nil {
