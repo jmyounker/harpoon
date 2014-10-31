@@ -30,7 +30,7 @@ var (
 	// PendingOperationTimeout dictates how long a schedule or unschedule
 	// command may stay pending and unrealized before we give up and allow the
 	// client to repeat the command.
-	PendingOperationTimeout = 10 * time.Second //1 * time.Minute
+	PendingOperationTimeout = 20 * time.Second //1 * time.Minute
 
 	errAgentConnectionInterrupted = errors.New("agent connection interrupted")
 	errTransactionPending         = errors.New("transaction already pending for this container")
@@ -168,16 +168,7 @@ func (r *representation) Schedule(id string, c agent.ContainerConfig) error {
 
 	r.outstanding.want(id, agent.ContainerStatusRunning, r.successc, r.failurec)
 
-	switch err := r.Client.Start(id); err {
-	case nil:
-	default:
-		r.outstanding.remove(id) // won't happen
-		return err
-	}
-
 	r.instances.advanceOne(id, schedule) // it's OK if running signal gets there first
-
-	r.broadcast()
 
 	metrics.IncTransactionsCreated(1)
 
@@ -212,8 +203,6 @@ func (r *representation) Unschedule(id string) error {
 	}
 
 	r.instances.advanceOne(id, unschedule) // it's OK if delete signal gets there first
-
-	r.broadcast()
 
 	metrics.IncTransactionsCreated(1)
 
@@ -592,22 +581,32 @@ func (o *outstanding) want(id string, s agent.ContainerStatus, successc, failure
 	)
 
 	go func() {
+		received := false
+
 		for {
 			select {
 			case status, ok := <-c:
 				if !ok {
-					failurec <- id
-					return
-				}
-				if status == s {
-					successc <- id
+					if !received {
+						failurec <- id
+					}
+
 					return
 				}
 
+				if status == s {
+					received = true
+					go func() { successc <- id }()
+				}
 			case <-t:
-				failurec <- id
-				return
+				if received {
+					continue
+				}
+
+				received = true
+				go func() { failurec <- id }()
 			}
+
 		}
 	}()
 

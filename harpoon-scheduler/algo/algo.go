@@ -13,7 +13,6 @@ type PendingTask struct {
 	Schedule bool // true = pending schedule; false = pending unschedule
 	Deadline time.Time
 	Endpoint string
-
 	agent.ContainerConfig
 }
 

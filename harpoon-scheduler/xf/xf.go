@@ -93,7 +93,7 @@ func Transform(
 
 	// We need to execute the transform asynchronously, so that desire and
 	// actual events don't block or deadlock. But, we want at-most-once
-	// execution of transform. So, we use a semaphore, and say that  any
+	// execution of transform. So, we use a semaphore, and say that any
 	// transform-triggering event that happens while we're already
 	// transforming will get picked up on the next trigger.
 	var (
@@ -116,11 +116,11 @@ func Transform(
 	for {
 		select {
 		case want = <-desirec:
-			Debugf("actual state change")
+			Debugf("desire state change")
 			go tryTransform(want, have)
 
 		case have = <-actualc:
-			Debugf("desire state change")
+			Debugf("actual state change")
 			go tryTransform(want, have)
 
 		case <-tick:
@@ -137,7 +137,7 @@ func Transform(
 //
 // This function must return quickly. It only issues mutation commands; it
 // doesn't wait for them to take effect. Consequently, the target
-// taskScheduler's methods must return quickly as well.
+// TaskScheduler's methods must return quickly as well.
 func transform(
 	want map[string]configstore.JobConfig,
 	have map[string]agent.StateEvent,
@@ -145,62 +145,73 @@ func transform(
 	pending map[string]algo.PendingTask,
 ) map[string]algo.PendingTask {
 	var (
-		wantTasks    = map[string]agent.ContainerConfig{}
-		haveTasks    = map[string]agent.ContainerConfig{}
-		id2endpoints = map[string][]string{} // detected
-		id2endpoint  = map[string]string{}   // blessed
-		toSchedule   = map[string]agent.ContainerConfig{}
-		toUnschedule = map[string][]string{}
+		wantTasks    = map[string]agent.ContainerConfig{}              // id: config
+		haveTasks    = map[string]map[string]agent.ContainerInstance{} // id: endpoint: instance
+		toKeep       = map[string]string{}                             // endpoint: id
+		toSchedule   = map[string]agent.ContainerConfig{}              // id: config
+		toStart      = map[string]map[string]agent.ContainerConfig{}   // endpoint: configs
+		toUnschedule = map[string][]string{}                           // endpoint: ids
 	)
 
 	// Expand every wanted Job to its composite tasks.
 	for _, config := range want {
 		for i := 0; i < config.Scale; i++ {
-			wantTasks[makeContainerID(config, i)] = config.ContainerConfig
+			wantTasks[makeContainerID(config.Hash(), i)] = config.ContainerConfig
 		}
 	}
 
-	// Index every running container by its ID.
+	// Index every running container by its ID. It's possible we'll get some
+	// duplicate containers in the overall domain. We'll deal with them later.
 	for endpoint, state := range have {
 		for id, instance := range state.Containers {
-			if instance.ContainerStatus == agent.ContainerStatusRunning {
-				haveTasks[id] = instance.ContainerConfig
-				id2endpoints[id] = append(id2endpoints[id], endpoint)
+			m, ok := haveTasks[id]
+			if !ok {
+				m = map[string]agent.ContainerInstance{}
+			}
+
+			if _, ok = m[endpoint]; ok {
+				panic(fmt.Sprintf("during transform, duplicate container %q on %s", id, endpoint))
+			}
+
+			m[endpoint] = instance
+			haveTasks[id] = m
+		}
+	}
+
+	// Clean up any pending tasks. That means purging those that have already
+	// been satisfied, or reached their deadline. If they're expired, this
+	// just means that we'll re-execute their mutations. They'll never get
+	// purged from the desired state (the registry).
+
+	has := func(m map[string]agent.ContainerInstance, valid ...agent.ContainerStatus) bool {
+		v := map[agent.ContainerStatus]struct{}{}
+		for _, s := range valid {
+			v[s] = struct{}{}
+		}
+
+		for _, i := range m {
+			if _, ok := v[i.ContainerStatus]; ok {
+				return true
 			}
 		}
+
+		return false
 	}
 
-	// It's possible we have the same container ID running on different
-	// endpoints. That's not allowed.
-	for id, endpoints := range id2endpoints {
-		if len(endpoints) == 0 {
-			panic("bad state in transform duplicate detection")
-		}
-
-		if len(endpoints) == 1 {
-			id2endpoint[id] = endpoints[0]
-			continue
-		}
-
-		log.Printf("%s: duplicate detected: %d instance(s) total", id, len(endpoints))
-		blessed, others := chooseOne(endpoints)
-		log.Printf("%s: keeping instance on %s", id, blessed)
-		id2endpoint[id] = blessed
-		for _, endpoint := range others {
-			log.Printf("%s: unscheduling duplicate on %s", id, endpoint)
-			toUnschedule[endpoint] = append(toUnschedule[endpoint], id)
-		}
-	}
-
-	// Purge the pending tasks that have been satisfied, or have reached their
-	// deadline. If they're expired, this just means that we'll re-execute
-	// their mutations. They'll never get purged from the desired state (the
-	// registry).
 	for id, p := range pending {
-		if _, ok := haveTasks[id]; ok && p.Schedule {
+		if m, ok := haveTasks[id]; ok && p.Schedule && has(m,
+			agent.ContainerStatusRunning,
+			agent.ContainerStatusFinished,
+			agent.ContainerStatusFailed,
+		) {
 			Debugf("pending task %q successfully scheduled; delete from pending", id)
 			delete(pending, id) // successful schedule
-		} else if !ok && !p.Schedule {
+		} else if !p.Schedule && (!ok || !has(m,
+			agent.ContainerStatusCreated,
+			agent.ContainerStatusRunning,
+			agent.ContainerStatusFinished,
+			agent.ContainerStatusFailed,
+		)) {
 			Debugf("pending task %q successfully unscheduled; delete from pending", id)
 			delete(pending, id) // successful unschedule
 		} else if xtime.Now().After(p.Deadline) {
@@ -210,41 +221,144 @@ func transform(
 	}
 
 	Debugf(
-		"want %d task(s), have %d task(s), pending %d task(s)",
+		"before scan: want %d task(s), have %d task(s), pending %d task(s)",
 		len(wantTasks),
-		len(haveTasks),
+		len(haveTasks), // maybe includes duplicates
 		len(pending),
 	)
 
-	// Anything we want, but don't have, should be started.
+	// The scheduler issues the initial command(s), but then leaves the
+	// container alone. The restart behavior is parsed only by the agent. As
+	// long as a container exists, in any state, the scheduler considers it
+	// "running".
+	//
+	// So: walk our wantTasks, and try to locate each in our haveTasks. If we
+	// find a running, finished, or failed instance, great: keep it, and
+	// unschedule the rest. If we find a created instance, and it's not
+	// pending-schedule, then we'll assume the Start signal was lost, and
+	// issue another schedule mutation. Otherwise, schedule a new instance.
+
+	// Scan the domain for instances we can keep.
 	for id, config := range wantTasks {
 		if _, ok := haveTasks[id]; ok {
-			delete(wantTasks, id)
-			delete(haveTasks, id)
-
-			if pendingTask, ok := pending[id]; ok {
-				switch pendingTask.Schedule {
-				case true:
-					delete(pending, id)
-				case false:
-					panic(fmt.Sprintf("%q is pending unschedule, but exists in both the registry and the actual state: strange state!", id))
-				}
+			if len(haveTasks[id]) == 0 {
+				panic(fmt.Sprintf("existing task %q runs on 0 agents", id))
 			}
 
+			// This wanted task is already under supervision somewhere, maybe
+			// more than once. Pick one of those instances and use it, rather
+			// than scheduling a new one.
+
+			var (
+				satisfied = false
+			)
+			for endpoint, instance := range haveTasks[id] {
+				if satisfied {
+					// The wanted container has already been satisfied
+					// elsewhere in the domain. Remove this instance.
+					delete(haveTasks[id], endpoint) // accounted-for
+					toUnschedule[endpoint] = append(toUnschedule[endpoint], id)
+					continue
+				}
+
+				var (
+					created         = instance.ContainerStatus == agent.ContainerStatusCreated
+					running         = instance.ContainerStatus == agent.ContainerStatusRunning
+					finished        = instance.ContainerStatus == agent.ContainerStatusFinished
+					failed          = instance.ContainerStatus == agent.ContainerStatusFailed
+					pendingSchedule = func() bool { b, ok := pending[id]; return ok && b.Schedule }()
+				)
+
+				if running || finished || failed {
+					// The container is already being supervised.
+					delete(haveTasks[id], endpoint) // accounted-for
+					toKeep[endpoint] = id
+					satisfied = true
+					continue
+				}
+
+				if created && pendingSchedule {
+					// This instance is apparently in the process of being
+					// started. We'll just wait for it, and unschedule the
+					// others.
+					delete(haveTasks[id], endpoint) // accounted-for
+					toKeep[endpoint] = id
+					satisfied = true
+					continue
+				}
+
+				if created && !pendingSchedule {
+					// The Start signal was lost? I don't know how else it
+					// would stick around in Created state. Keep it, and also
+					// re-emit the scheduling signal.
+					delete(haveTasks[id], endpoint) // accounted-for
+					toKeep[endpoint] = id
+					{
+						m, ok := toStart[endpoint]
+						if !ok {
+							m = map[string]agent.ContainerConfig{}
+						}
+						m[id] = config
+						toStart[endpoint] = m
+					}
+					satisfied = true
+					continue
+				}
+
+				panic("unreachable")
+			}
+
+			if !satisfied {
+				panic(fmt.Sprintf("no extant instance of task %q was marked as satisfactory", id))
+			}
+
+			if n := len(haveTasks[id]); n != 0 {
+				panic(fmt.Sprintf("after scan, %d instance(s) of %q remain unaccounted-for", n, id))
+			}
+
+			delete(wantTasks, id) // accounted-for
 			continue
 		}
 
-		if pendingTask, ok := pending[id]; ok {
-			switch pendingTask.Schedule {
-			case true:
-				continue // already pending schedule; don't reissue command
-			case false:
-				panic(fmt.Sprintf("%q is pending unschedule, but exists in the registry: strange state!", id))
-			}
+		// A new task, so we probably need to schedule. But first, check if
+		// it's not already pending-schedule.
+		if p, ok := pending[id]; ok && p.Schedule {
+			delete(wantTasks, id) // accounted-for
+			continue
+		} else if ok && !p.Schedule {
+			panic(fmt.Sprintf("%q is pending unschedule, but exists in the registry", id))
 		}
 
+		// Good.
+		delete(wantTasks, id)
 		toSchedule[id] = config
 	}
+
+	// Everything left in haveTasks is unrepresented in wantTasks, and
+	// therefore unwanted. And anything we don't want should be unscheduled.
+	for id, endpoints := range haveTasks {
+		for endpoint := range endpoints {
+			if p, ok := pending[id]; ok && !p.Schedule {
+				continue // already pending-unschedule, so that's fine
+			} else if ok && p.Schedule {
+				panic(fmt.Sprintf("%q is pending schedule after scan; strange state", id))
+			}
+
+			toUnschedule[endpoint] = append(toUnschedule[endpoint], id)
+		}
+	}
+
+	var killCount int
+	for _, endpoints := range toUnschedule {
+		killCount += len(endpoints)
+	}
+
+	Debugf(
+		"after scan: %d to keep, %d to schedule, %d to unschedule",
+		len(toKeep),
+		len(toSchedule),
+		killCount,
+	)
 
 	// Schedule those containers that need it.
 	placed, failed := Algorithm(toSchedule, have, pending)
@@ -257,42 +371,26 @@ func transform(
 	metrics.IncContainersFailed(len(failed))
 
 	// Invoke the schedule mutations.
-	for endpoint, configs := range placed {
-		for id, config := range configs {
-			if err := target.Schedule(endpoint, id, config); err != nil {
-				log.Printf("%s schedule %q failed: %s", endpoint, id, err)
-				continue
-			}
+	sched := func(m map[string]map[string]agent.ContainerConfig) {
+		for endpoint, configs := range m {
+			for id, config := range configs {
+				if err := target.Schedule(endpoint, id, config); err != nil {
+					log.Printf("%s schedule %q failed: %s", endpoint, id, err)
+					continue
+				}
 
-			Debugf("%s schedule %q now pending", endpoint, id)
-			pending[id] = algo.PendingTask{
-				Schedule:        true,
-				Deadline:        xtime.Now().Add(Tolerance),
-				Endpoint:        endpoint,
-				ContainerConfig: config,
-			} // we issued the mutation
-		}
-	}
-
-	// Anything we have, but don't want, should be stopped. (Everything left
-	// in haveTasks is unrepresented in wantTasks, and therefore unwanted.)
-	for id := range haveTasks {
-		endpoint, ok := id2endpoint[id]
-		if !ok {
-			panic(fmt.Sprintf("can't reverse-lookup container %q", id))
-		}
-
-		if pendingTask, ok := pending[id]; ok {
-			switch pendingTask.Schedule {
-			case true:
-				panic(fmt.Sprintf("strange state in Transform"))
-			case false:
-				continue // already pending unschedule; don't reissue command
+				Debugf("%s schedule %q now pending", endpoint, id)
+				pending[id] = algo.PendingTask{
+					Schedule:        true,
+					Deadline:        xtime.Now().Add(Tolerance),
+					Endpoint:        endpoint,
+					ContainerConfig: config,
+				} // we issued the mutation
 			}
 		}
-
-		toUnschedule[endpoint] = append(toUnschedule[endpoint], id)
 	}
+	sched(toStart)
+	sched(placed)
 
 	// Invoke the unschedule mutations.
 	for endpoint, ids := range toUnschedule {
@@ -306,6 +404,7 @@ func transform(
 			pending[id] = algo.PendingTask{
 				Schedule: false,
 				Deadline: xtime.Now().Add(Tolerance),
+				Endpoint: endpoint,
 			} // we issued the mutation
 		}
 	}

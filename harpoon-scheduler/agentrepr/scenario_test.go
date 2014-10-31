@@ -10,8 +10,8 @@ import (
 
 func TestCreatedBecomesRunning(t *testing.T) {
 	// A client has a container in state created
-	c := agentrepr.NewFakeClient(t, "foo")
-	c.Put("bar", agent.ContainerConfig{})
+	c := agentrepr.NewFakeClient(t, "foo", false)
+	c.Create("bar", agent.ContainerConfig{})
 
 	// A representation is built for the client
 	r := agentrepr.New(c)
@@ -34,7 +34,7 @@ func TestCreatedBecomesRunning(t *testing.T) {
 
 func TestFailedBecomesCreated(t *testing.T) {
 	// A client has a container in state running
-	c := agentrepr.NewFakeClient(t, "foo")
+	c := agentrepr.NewFakeClient(t, "foo", false)
 	c.Put("bar", agent.ContainerConfig{})
 	c.Start("bar")
 
