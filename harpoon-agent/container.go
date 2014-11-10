@@ -306,7 +306,7 @@ func (c *realContainer) create() error {
 		return err
 	}
 
-	if *debug {
+	if debug {
 		log.Printf("agent file written to: %s", agentJSONPath)
 	}
 	// TODO(pb): it's a problem that this is blocking
@@ -323,7 +323,7 @@ func (c *realContainer) create() error {
 		return fmt.Errorf("symlink log: %s", err)
 	}
 
-	if *debug {
+	if debug {
 		log.Printf("artifact successfully retrieved and unpacked")
 	}
 	return nil

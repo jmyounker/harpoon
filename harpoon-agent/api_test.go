@@ -23,8 +23,8 @@ import (
 const fixtureContainerRoot = "/run/harpoon"
 
 func TestContainerList(t *testing.T) {
-	agentTotalMem = 1000
-	agentTotalCPU = 2
+	agentMem = 1000
+	agentCPU = 2
 	configuredVolumes = map[string]struct{}{"/tmp": struct{}{}}
 
 	var (
@@ -370,7 +370,7 @@ func expectNoLogLines(t *testing.T, c chan string, timeout time.Duration) {
 }
 
 func sendLog(logLine string) error {
-	conn, _ := net.Dial("udp", *logAddr)
+	conn, _ := net.Dial("udp", logAddr)
 	buf := []byte(logLine)
 	_, err := conn.Write(buf)
 	return err
@@ -381,7 +381,7 @@ func setLogAddrRandomly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not locate a random port: %s", err)
 	}
-	*logAddr = "localhost:" + strconv.Itoa(port)
+	logAddr = "localhost:" + strconv.Itoa(port)
 }
 
 func validateEvent(expected agent.HostResources, have agent.StateEvent, containersCount int, status agent.ContainerStatus) error {

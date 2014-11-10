@@ -6,21 +6,30 @@ import (
 	"runtime"
 )
 
-func systemCPUs() uint64 {
-	return uint64(runtime.NumCPU())
+func systemHostname() string {
+	name, err := os.Hostname()
+	if err != nil {
+		panic(err)
+	}
+
+	return name
 }
 
-func systemMemoryMB() (uint64, error) {
+func systemCPU() float64 {
+	return float64(runtime.NumCPU())
+}
+
+func systemMem() int64 {
 	f, err := os.Open("/proc/meminfo")
 	if err != nil {
-		return 0, err
+		panic(err)
 	}
 	defer f.Close()
 
 	var kb uint64
 	if _, err := fmt.Fscanf(f, "MemTotal: %d kB", &kb); err != nil {
-		return 0, err
+		panic(err)
 	}
 
-	return kb / 1024, nil
+	return int64(kb / 1024)
 }

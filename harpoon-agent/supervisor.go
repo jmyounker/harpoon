@@ -45,11 +45,11 @@ func newSupervisor(id string, rundir string) *supervisor {
 // Start starts the supervisor and connects to its control socket. If an error
 // is returned, the supervisor was not started.
 func (s *supervisor) Start(config agent.ContainerConfig, stdout, stderr io.Writer) error {
-	args := []string{"--hostname", hostname, "--id", s.ID}
+	args := []string{"--hostname", systemHostname(), "--id", s.ID}
 	args = append(args, "--")
 	args = append(args, config.Command.Exec...)
 
-	if *debug {
+	if debug {
 		log.Printf("launching harpoon-supervisor with args: %s", args)
 	}
 	cmd := exec.Command("harpoon-supervisor", args...)

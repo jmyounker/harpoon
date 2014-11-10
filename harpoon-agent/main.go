@@ -11,21 +11,6 @@ import (
 )
 
 var (
-	showVersion = flag.Bool("version", false, "print version")
-
-	heartbeatInterval = 3 * time.Second
-
-	addr              = flag.String("addr", ":3333", "address to listen on")
-	configuredVolumes = volumes{}
-
-	agentTotalMem uint64
-	agentTotalCPU uint64
-
-	hostname string
-
-	logAddr = flag.String("log.addr", ":3334", "address for log communications")
-	debug   = flag.Bool("debug", false, "log verbosely for debugging, and only for debugging")
-
 	// Version is a state variable, written at the link stage. See Makefile.
 	Version string
 
@@ -37,23 +22,28 @@ var (
 	ExternalReleaseVersion string
 )
 
-func init() {
-	name, err := os.Hostname()
-	if err != nil {
-		log.Fatal("unable to get hostname: ", err)
-	}
-	hostname = name
-}
+var (
+	heartbeatInterval = 3 * time.Second
+	configuredVolumes = volumes{} // TODO: de-globalize
+	agentCPU          float64     // TODO: de-globalize
+	agentMem          int64       // TODO: de-globalize
+	debug             bool        // TODO: de-globalize
+	logAddr           string      // TODO: de-globalize
+)
 
 func main() {
-	var cpu, mem int64
-
-	flag.Int64Var(&cpu, "cpu", -1, "available cpu resources (-1 to use all cpus)")
-	flag.Int64Var(&mem, "mem", -1, "available memory resources in MB (-1 to use all)")
-	flag.Var(&configuredVolumes, "v", "repeatable list of available volumes")
-	containerRoot := flag.String("run", "/run/harpoon", "filesytem root for packages")
-	portRangeStart64 := flag.Uint64("ports.start", 30000, "starting of port allocation range")
-	portRangeEnd64 := flag.Uint64("ports.end", 32767, "ending of port allocation range")
+	var (
+		showVersion   = flag.Bool("version", false, "print version")
+		containerRoot = flag.String("run", "/run/harpoon", "filesytem root for packages")
+		addr          = flag.String("addr", ":3333", "address to listen on")
+		portsStart    = flag.Uint64("ports.start", 30000, "starting of port allocation range")
+		portsEnd      = flag.Uint64("ports.end", 32767, "ending of port allocation range")
+	)
+	flag.Var(&configuredVolumes, "vol", "repeatable list of available volumes")
+	flag.Float64Var(&agentCPU, "cpu", systemCPU(), "CPU resources to make available")
+	flag.Int64Var(&agentMem, "mem", systemMem(), "memory (MB) resources to make available")
+	flag.BoolVar(&debug, "debug", false, "debug logging")
+	flag.StringVar(&logAddr, "log.addr", ":3334", "address for log communications")
 
 	flag.Parse()
 
@@ -62,38 +52,22 @@ func main() {
 		os.Exit(0)
 	}
 
-	if *portRangeStart64 > math.MaxUint16 {
+	if *portsStart > math.MaxUint16 {
 		log.Fatalf("port range start must be between 0 and %d", math.MaxUint16)
 	}
-	portRangeStart := uint16(*portRangeStart64)
+	portsStart16 := uint16(*portsStart)
 
-	if *portRangeEnd64 > math.MaxUint16 {
+	if *portsEnd > math.MaxUint16 {
 		log.Fatalf("port range end must be between 0 and %d", math.MaxUint16)
 	}
-	portRangeEnd := uint16(*portRangeEnd64)
+	portsEnd16 := uint16(*portsEnd)
 
-	if portRangeStart >= portRangeEnd {
+	if portsStart16 >= portsEnd16 {
 		log.Fatal("port range start must be before port range end")
 	}
 
-	if cpu == -1 {
-		agentTotalCPU = systemCPUs()
-	} else {
-		agentTotalCPU = uint64(cpu)
-	}
-
-	if mem == -1 {
-		memory, err := systemMemoryMB()
-		if err != nil {
-			log.Fatal("unable to get available memory: ", err)
-		}
-		agentTotalMem = memory
-	} else {
-		agentTotalMem = uint64(mem)
-	}
-
 	r := newRegistry()
-	pdb := newPortDB(portRangeStart, portRangeEnd)
+	pdb := newPortDB(portsStart16, portsEnd16)
 	defer pdb.exit()
 	api := newAPI(*containerRoot, r, pdb)
 
@@ -102,15 +76,12 @@ func main() {
 	http.Handle("/", api)
 
 	go func() {
-		// recover our state from disk
 		recoverContainers(*containerRoot, r, pdb)
 
-		// begin accepting runner updates
 		r.acceptStateUpdates()
 
 		if r.len() > 0 {
-			// wait for runners to check in
-			time.Sleep(3 * heartbeatInterval)
+			time.Sleep(3 * heartbeatInterval) // wait for runners to check in
 		}
 
 		api.enable()

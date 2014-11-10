@@ -353,11 +353,11 @@ func resources(instances map[string]agent.ContainerInstance) agent.HostResources
 
 	return agent.HostResources{
 		Mem: agent.TotalReservedInt{
-			Total:    agentTotalMem,
+			Total:    uint64(agentMem),
 			Reserved: reservedMem,
 		},
 		CPU: agent.TotalReserved{
-			Total:    float64(agentTotalCPU),
+			Total:    float64(agentCPU),
 			Reserved: reservedCPU,
 		},
 		Volumes: volumes,
