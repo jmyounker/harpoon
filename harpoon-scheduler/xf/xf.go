@@ -304,7 +304,7 @@ func transform(
 					continue
 				}
 
-				panic("unreachable")
+				panic(fmt.Sprintf("unreachable: Status %q pendingSchedule %v", instance.ContainerStatus, pendingSchedule))
 			}
 
 			if !satisfied {

@@ -141,6 +141,8 @@ func writeResponse(w http.ResponseWriter, code int, msg string) {
 	w.WriteHeader(code)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status_code": code,
-		"msg":         msg,
+		"msg":         quoteReplacer.Replace(msg),
 	})
 }
+
+var quoteReplacer = strings.NewReplacer(`"`, `'`)
