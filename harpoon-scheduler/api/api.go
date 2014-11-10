@@ -79,7 +79,7 @@ func (h *handler) handleSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := c.Valid(); err != nil {
-		writeResponse(w, http.StatusInternalServerError, err.Error())
+		writeResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -105,7 +105,7 @@ func (h *handler) handleUnschedule(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if err := c.Valid(); err != nil {
-			writeResponse(w, http.StatusInternalServerError, err.Error())
+			writeResponse(w, http.StatusBadRequest, err.Error())
 			return
 		}
 
