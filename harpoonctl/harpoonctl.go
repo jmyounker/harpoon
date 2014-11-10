@@ -95,10 +95,10 @@ func (c *harpoonctl) resources(ctx *cli.Context) {
 			c,
 			"%s	%d	%d	%f	%f	%s\n",
 			a,
-			int(r.Memory.Total),
-			int(r.Memory.Reserved),
-			r.CPUs.Total,
-			r.CPUs.Reserved,
+			int(r.Mem.Total),
+			int(r.Mem.Reserved),
+			r.CPU.Total,
+			r.CPU.Reserved,
 			"-", // TODO: list volumes
 		)
 	}
@@ -218,10 +218,10 @@ func (c *harpoonctl) choose() agent.Agent {
 			"%d)	%s	%d	%d	%f	%f	%s\n",
 			i,
 			a,
-			int(r.Memory.Total),
-			int(r.Memory.Reserved),
-			r.CPUs.Total,
-			r.CPUs.Reserved,
+			int(r.Mem.Total),
+			int(r.Mem.Reserved),
+			r.CPU.Total,
+			r.CPU.Reserved,
 			"-", // TODO: list volumes
 		)
 	}

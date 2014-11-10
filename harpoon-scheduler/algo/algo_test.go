@@ -12,8 +12,8 @@ import (
 var testAgents = map[string]agent.StateEvent{
 	"beefy.net": agent.StateEvent{
 		Resources: agent.HostResources{
-			Memory:  agent.TotalReservedInt{Total: 32000, Reserved: 128}, // 32GB total, 128MB reserved
-			CPUs:    agent.TotalReserved{Total: 32.0, Reserved: 1.0},     // 32 CPUs total, 1 CPU reserved
+			Mem:     agent.TotalReservedInt{Total: 32000, Reserved: 128}, // 32GB total, 128MB reserved
+			CPU:     agent.TotalReserved{Total: 32.0, Reserved: 1.0},     // 32 CPU total, 1 CPU reserved
 			Storage: agent.TotalReserved{Total: 250 * 1e10, Reserved: 0}, // 250GB total, 0 bytes reserved
 			Volumes: []string{"/data/shared", "/data/beefy"},
 		},
@@ -21,8 +21,8 @@ var testAgents = map[string]agent.StateEvent{
 	},
 	"wimpy.net": agent.StateEvent{
 		Resources: agent.HostResources{
-			Memory:  agent.TotalReservedInt{Total: 1024, Reserved: 512},          // 1GB total, 512MB reserved
-			CPUs:    agent.TotalReserved{Total: 4.0, Reserved: 3.0},              // 4 CPUs total, 3 CPUs reserved
+			Mem:     agent.TotalReservedInt{Total: 1024, Reserved: 512},          // 1GB total, 512MB reserved
+			CPU:     agent.TotalReserved{Total: 4.0, Reserved: 3.0},              // 4 CPU total, 3 CPU reserved
 			Storage: agent.TotalReserved{Total: 100 * 1e10, Reserved: 70 * 1e10}, // 100GB total, 70GB reserved
 			Volumes: []string{"/data/shared", "/data/wimpy"},
 		},
@@ -31,12 +31,12 @@ var testAgents = map[string]agent.StateEvent{
 }
 
 func TestRandomFit(t *testing.T) {
-	testRandomFit(t, agent.ContainerConfig{Resources: agent.Resources{Memory: 2048}}, map[string]algo.PendingTask{}, "beefy.net")
-	testRandomFit(t, agent.ContainerConfig{Resources: agent.Resources{Memory: 99999}}, map[string]algo.PendingTask{})
+	testRandomFit(t, agent.ContainerConfig{Resources: agent.Resources{Mem: 2048}}, map[string]algo.PendingTask{}, "beefy.net")
+	testRandomFit(t, agent.ContainerConfig{Resources: agent.Resources{Mem: 99999}}, map[string]algo.PendingTask{})
 	testRandomFit(t, agent.ContainerConfig{Storage: agent.Storage{Volumes: map[string]string{"/container/path": "/data/wimpy"}}}, map[string]algo.PendingTask{}, "wimpy.net")
 	testRandomFit(t, agent.ContainerConfig{Storage: agent.Storage{Volumes: map[string]string{"/container/path": "/data/beefy"}}}, map[string]algo.PendingTask{}, "beefy.net")
 	testRandomFit(t, agent.ContainerConfig{Storage: agent.Storage{Volumes: map[string]string{"/b": "/data/beefy", "/w": "/data/wimpy"}}}, map[string]algo.PendingTask{})
-	testRandomFit(t, agent.ContainerConfig{Resources: agent.Resources{CPUs: 2}}, map[string]algo.PendingTask{"": algo.PendingTask{Schedule: true, Endpoint: "beefy.net", ContainerConfig: agent.ContainerConfig{Resources: agent.Resources{CPUs: 30}}}})
+	testRandomFit(t, agent.ContainerConfig{Resources: agent.Resources{CPU: 2}}, map[string]algo.PendingTask{"": algo.PendingTask{Schedule: true, Endpoint: "beefy.net", ContainerConfig: agent.ContainerConfig{Resources: agent.Resources{CPU: 30}}}})
 }
 
 func testRandomFit(t *testing.T, c agent.ContainerConfig, pending map[string]algo.PendingTask, want ...string) {
@@ -60,10 +60,10 @@ func testRandomFit(t *testing.T, c agent.ContainerConfig, pending map[string]alg
 
 func TestLeastUsed(t *testing.T) {
 	cfgs := map[string]agent.ContainerConfig{
-		"cfg-0": agent.ContainerConfig{Resources: agent.Resources{CPUs: 0.5}},
-		"cfg-1": agent.ContainerConfig{Resources: agent.Resources{CPUs: 0.5}},
-		"cfg-2": agent.ContainerConfig{Resources: agent.Resources{CPUs: 0.5}},
-		"cfg-3": agent.ContainerConfig{Resources: agent.Resources{CPUs: 0.5}},
+		"cfg-0": agent.ContainerConfig{Resources: agent.Resources{CPU: 0.5}},
+		"cfg-1": agent.ContainerConfig{Resources: agent.Resources{CPU: 0.5}},
+		"cfg-2": agent.ContainerConfig{Resources: agent.Resources{CPU: 0.5}},
+		"cfg-3": agent.ContainerConfig{Resources: agent.Resources{CPU: 0.5}},
 	}
 
 	matched, _ := algo.LeastUsed(cfgs, testAgents, map[string]algo.PendingTask{})
@@ -79,7 +79,7 @@ func TestLeastUsed(t *testing.T) {
 		t.Errorf("incorrect spreading of configs over agent want %d, have %d", want, have)
 	}
 
-	if want, have := 1.0, testAgents["beefy.net"].Resources.CPUs.Reserved; want != have {
+	if want, have := 1.0, testAgents["beefy.net"].Resources.CPU.Reserved; want != have {
 		t.Errorf("agent resources should not be changed want %f , have %f", want, have)
 	}
 }

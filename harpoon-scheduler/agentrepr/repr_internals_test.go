@@ -49,22 +49,22 @@ func TestInstances(t *testing.T) {
 func TestResources(t *testing.T) {
 	r := newResources()
 
-	r.set(agent.HostResources{CPUs: agent.TotalReserved{Total: 32.0, Reserved: 16.0}})
+	r.set(agent.HostResources{CPU: agent.TotalReserved{Total: 32.0, Reserved: 16.0}})
 
-	if want, have := 16.0, r.HostResources.CPUs.Reserved; want != have {
+	if want, have := 16.0, r.HostResources.CPU.Reserved; want != have {
 		t.Errorf("want %.2f, have %.2f", want, have)
 	}
 
 	m := r.copy()
-	m.CPUs.Reserved = 17.0
+	m.CPU.Reserved = 17.0
 
-	if want, have := 16.0, r.HostResources.CPUs.Reserved; want != have {
+	if want, have := 16.0, r.HostResources.CPU.Reserved; want != have {
 		t.Errorf("want %.2f, have %.2f", want, have)
 	}
 
 	r.reset()
 
-	if want, have := 0.0, r.HostResources.CPUs.Reserved; want != have {
+	if want, have := 0.0, r.HostResources.CPU.Reserved; want != have {
 		t.Errorf("want %.2f, have %.2f", want, have)
 	}
 }

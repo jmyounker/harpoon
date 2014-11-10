@@ -53,8 +53,8 @@ func TestContainerList(t *testing.T) {
 	}
 
 	expected := agent.HostResources{
-		CPUs:    agent.TotalReserved{Total: 2.0, Reserved: 0.0},
-		Memory:  agent.TotalReservedInt{Total: 1000.0, Reserved: 0.0},
+		CPU:     agent.TotalReserved{Total: 2.0, Reserved: 0.0},
+		Mem:     agent.TotalReservedInt{Total: 1000.0, Reserved: 0.0},
 		Volumes: []string{"/tmp"},
 	}
 
@@ -67,8 +67,8 @@ func TestContainerList(t *testing.T) {
 		"",
 		agent.ContainerConfig{
 			Resources: agent.Resources{
-				Memory: 100,
-				CPUs:   2,
+				Mem: 100,
+				CPU: 2,
 			},
 		},
 		nil)
@@ -85,8 +85,8 @@ func TestContainerList(t *testing.T) {
 		t.Fatal("unable to load containers json:", err)
 	}
 
-	expected.CPUs.Reserved = 2
-	expected.Memory.Reserved = 100
+	expected.CPU.Reserved = 2
+	expected.Mem.Reserved = 100
 	if err := validateEvent(expected, state, 1, agent.ContainerStatusCreated); err != nil {
 		t.Error(err)
 	}
@@ -104,8 +104,8 @@ func TestContainerList(t *testing.T) {
 		t.Fatal("unable to load containers json:", err)
 	}
 
-	expected.CPUs.Reserved = 0
-	expected.Memory.Reserved = 0
+	expected.CPU.Reserved = 0
+	expected.Mem.Reserved = 0
 	if err := validateEvent(expected, state, 1, agent.ContainerStatusDeleted); err != nil {
 		t.Error(err)
 	}
@@ -385,12 +385,12 @@ func setLogAddrRandomly(t *testing.T) {
 }
 
 func validateEvent(expected agent.HostResources, have agent.StateEvent, containersCount int, status agent.ContainerStatus) error {
-	if expected.CPUs != have.Resources.CPUs {
-		return fmt.Errorf("invalid cpu resources: expected %v != have %v", expected.CPUs, have.Resources.CPUs)
+	if expected.CPU != have.Resources.CPU {
+		return fmt.Errorf("invalid cpu resources: expected %v != have %v", expected.CPU, have.Resources.CPU)
 	}
 
-	if expected.Memory != have.Resources.Memory {
-		return fmt.Errorf("invalid memory resources: expected %v != have %v", expected.Memory, have.Resources.Memory)
+	if expected.Mem != have.Resources.Mem {
+		return fmt.Errorf("invalid memory resources: expected %v != have %v", expected.Mem, have.Resources.Mem)
 	}
 
 	if !reflect.DeepEqual(expected.Volumes, have.Resources.Volumes) {

@@ -75,8 +75,8 @@ func RandomFit(
 	for _, task := range pending {
 		if task.Schedule {
 			r := resources[task.Endpoint]
-			r.CPUs.Reserved += task.ContainerConfig.CPUs
-			r.Memory.Reserved += task.ContainerConfig.Memory
+			r.CPU.Reserved += task.ContainerConfig.CPU
+			r.Mem.Reserved += task.ContainerConfig.Mem
 			resources[task.Endpoint] = r
 		}
 	}
@@ -102,8 +102,8 @@ func RandomFit(
 
 		// Adjust the resources
 		r := resources[chosen]
-		r.CPUs.Reserved += config.CPUs
-		r.Memory.Reserved += config.Memory
+		r.CPU.Reserved += config.CPU
+		r.Mem.Reserved += config.Mem
 		resources[chosen] = r
 	}
 
@@ -137,8 +137,8 @@ func LeastUsed(
 	for _, task := range pending {
 		if task.Schedule {
 			r := resources[task.Endpoint]
-			r.CPUs.Reserved += task.ContainerConfig.CPUs
-			r.Memory.Reserved += task.ContainerConfig.Memory
+			r.CPU.Reserved += task.ContainerConfig.CPU
+			r.Mem.Reserved += task.ContainerConfig.Mem
 			resources[task.Endpoint] = r
 		}
 		e2c[task.Endpoint]++
@@ -167,8 +167,8 @@ func LeastUsed(
 
 		// Adjust the resources
 		r := resources[chosen]
-		r.CPUs.Reserved += config.CPUs
-		r.Memory.Reserved += config.Memory
+		r.CPU.Reserved += config.CPU
+		r.Mem.Reserved += config.Mem
 		resources[chosen] = r
 
 		e2c[chosen]++
@@ -192,11 +192,11 @@ func filter(have map[string]agent.HostResources, c agent.ContainerConfig) []stri
 }
 
 func match(c agent.ContainerConfig, r agent.HostResources) bool {
-	if want, have := c.CPUs, r.CPUs.Total-r.CPUs.Reserved; want > have {
+	if want, have := c.CPU, r.CPU.Total-r.CPU.Reserved; want > have {
 		return false
 	}
 
-	if want, have := c.Memory, r.Memory.Total-r.Memory.Reserved; want > have {
+	if want, have := c.Mem, r.Mem.Total-r.Mem.Reserved; want > have {
 		return false
 	}
 

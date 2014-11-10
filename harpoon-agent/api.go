@@ -346,17 +346,17 @@ func resources(instances map[string]agent.ContainerInstance) agent.HostResources
 
 	for _, instance := range instances {
 		if instance.ContainerStatus != agent.ContainerStatusDeleted {
-			reservedMem += instance.ContainerConfig.Resources.Memory
-			reservedCPU += instance.ContainerConfig.Resources.CPUs
+			reservedMem += instance.ContainerConfig.Resources.Mem
+			reservedCPU += instance.ContainerConfig.Resources.CPU
 		}
 	}
 
 	return agent.HostResources{
-		Memory: agent.TotalReservedInt{
+		Mem: agent.TotalReservedInt{
 			Total:    agentTotalMem,
 			Reserved: reservedMem,
 		},
-		CPUs: agent.TotalReserved{
+		CPU: agent.TotalReserved{
 			Total:    float64(agentTotalCPU),
 			Reserved: reservedCPU,
 		},

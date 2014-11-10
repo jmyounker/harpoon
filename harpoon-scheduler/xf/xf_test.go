@@ -95,7 +95,7 @@ func TestRespectResourceReservedForPendingTasks(t *testing.T) {
 	jobConfig := configstore.JobConfig{
 		Job:             "a",
 		Scale:           2,
-		ContainerConfig: agent.ContainerConfig{Resources: agent.Resources{Memory: 512}},
+		ContainerConfig: agent.ContainerConfig{Resources: agent.Resources{Mem: 512}},
 	}
 
 	want := map[string]configstore.JobConfig{
@@ -106,8 +106,8 @@ func TestRespectResourceReservedForPendingTasks(t *testing.T) {
 		"agent-one": agent.StateEvent{
 			Containers: map[string]agent.ContainerInstance{},
 			Resources: agent.HostResources{
-				Memory:  agent.TotalReservedInt{Total: 1024, Reserved: 512},          // 1GB total, 512MB reserved
-				CPUs:    agent.TotalReserved{Total: 4.0, Reserved: 3.0},              // 4 CPUs total, 3 CPUs reserved
+				Mem:     agent.TotalReservedInt{Total: 1024, Reserved: 512},          // 1GB total, 512MB reserved
+				CPU:     agent.TotalReserved{Total: 4.0, Reserved: 3.0},              // 4 CPU total, 3 CPU reserved
 				Storage: agent.TotalReserved{Total: 100 * 1e10, Reserved: 70 * 1e10}, // 100GB total, 70GB reserved
 				Volumes: []string{"/data/shared", "/data/wimpy"},
 			},
@@ -131,7 +131,7 @@ func TestRespectResourceReservedForPendingTasks(t *testing.T) {
 		t.Errorf("want %d pending tasks, have %d", want, have)
 	}
 
-	if have["agent-one"].Resources.Memory.Reserved != 512 {
+	if have["agent-one"].Resources.Mem.Reserved != 512 {
 		t.Errorf("host resources should not be changed")
 	}
 

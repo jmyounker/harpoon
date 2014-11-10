@@ -100,17 +100,17 @@ func (c Command) Valid() error {
 
 // Resources describes resource limits for a container.
 type Resources struct {
-	Memory uint64  `json:"mem"`     // MB
-	CPUs   float64 `json:"cpus"`    // fractional CPUs
-	FDs    uint64  `json:"fdlimit"` // file descriptor hard limit
+	Mem uint64  `json:"mem"` // MB
+	CPU float64 `json:"cpu"` // fractional CPUs
+	FD  uint64  `json:"fd"`  // file descriptor hard limit
 }
 
 // Valid performs a validation check, to ensure invalid structures may be
 // detected as early as possible.
 func (r Resources) Valid() error {
 	var errs []string
-	if r.CPUs <= 0.0 {
-		errs = append(errs, "cpus (floating point fractional CPUs) not specified or zero")
+	if r.CPU <= 0.0 {
+		errs = append(errs, "cpu (floating point fractional CPUs) not specified or zero")
 	}
 	if len(errs) > 0 {
 		return fmt.Errorf(strings.Join(errs, "; "))
@@ -213,8 +213,8 @@ type StateEvent struct {
 
 // HostResources are returned by agents and reflect their current state.
 type HostResources struct {
-	Memory  TotalReservedInt `json:"mem"`     // MB
-	CPUs    TotalReserved    `json:"cpus"`    // whole CPUs
+	Mem     TotalReservedInt `json:"mem"`     // MB
+	CPU     TotalReserved    `json:"cpus"`    // whole CPUs
 	Storage TotalReserved    `json:"storage"` // Bytes
 	Volumes []string         `json:"volumes"`
 }

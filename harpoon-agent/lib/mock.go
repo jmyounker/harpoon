@@ -39,8 +39,8 @@ func NewMock() *Mock {
 		instances:   map[string]ContainerInstance{},
 		subscribers: map[chan<- StateEvent]struct{}{},
 		hostResources: HostResources{
-			Memory:  TotalReservedInt{Total: 32768, Reserved: 0},
-			CPUs:    TotalReserved{Total: 8, Reserved: 0},
+			Mem:     TotalReservedInt{Total: 32768, Reserved: 0},
+			CPU:     TotalReserved{Total: 8, Reserved: 0},
 			Storage: TotalReserved{Total: 322122547200, Reserved: 0},
 			Volumes: []string{"/data/analytics-kibana", "/data/mysql000", "/data/mysql001"},
 		},
@@ -194,8 +194,8 @@ func (m *Mock) createContainer(w http.ResponseWriter, r *http.Request, p httprou
 		m.Lock()
 		defer m.Unlock()
 		m.instances[id] = instance
-		m.hostResources.CPUs.Reserved += instance.CPUs
-		m.hostResources.Memory.Reserved += instance.Memory
+		m.hostResources.CPU.Reserved += instance.CPU
+		m.hostResources.Mem.Reserved += instance.Mem
 		broadcast(m.subscribers, StateEvent{Resources: m.hostResources, Containers: m.instances})
 	}()
 
@@ -245,8 +245,8 @@ func (m *Mock) destroyContainer(w http.ResponseWriter, r *http.Request, p httpro
 	case ContainerStatusFailed, ContainerStatusFinished:
 		instance.ContainerStatus = ContainerStatusDeleted
 		m.instances[id] = instance
-		m.hostResources.CPUs.Reserved -= instance.CPUs
-		m.hostResources.Memory.Reserved -= instance.Memory
+		m.hostResources.CPU.Reserved -= instance.CPU
+		m.hostResources.Mem.Reserved -= instance.Mem
 		broadcast(m.subscribers, StateEvent{Resources: m.hostResources, Containers: m.instances})
 		delete(m.instances, id)
 		w.WriteHeader(http.StatusOK)
