@@ -3,7 +3,6 @@ package agentrepr_test
 import (
 	"io/ioutil"
 	"log"
-	"os"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 	"github.com/soundcloud/harpoon/harpoon-scheduler/agentrepr"
@@ -92,16 +91,34 @@ func TestUnschedule(t *testing.T) {
 	}
 }
 
-// Receiving an update for a container which is outstanding
-// after receiving the wanted state of a container
-// leads to race condition between the channels "updatec" and "succesc"
-// if updatec runs first there's a deadlock trying to singal outstanding
-// container
-func TestNoDeadlockAfterSchedule(t *testing.T) {
-	log.SetOutput(os.Stdout)
-	log.SetFlags(log.Lmicroseconds | log.Lshortfile)
-	agentrepr.Debugf = log.Printf
+func TestUnscheduleFailed(t *testing.T) {
+	var (
+		c = agentrepr.NewFakeClient(t, "foo", false)
+		r = agentrepr.New(c)
+	)
 
+	c.Force("bar", agent.ContainerStatusFailed)
+
+	time.Sleep(time.Millisecond)
+
+	if want, have := agent.ContainerStatusFailed, r.Snapshot()["foo"].Containers["bar"].ContainerStatus; want != have {
+		t.Errorf("want %q, have %q", want, have)
+	}
+
+	if err := r.Unschedule("bar"); err != nil {
+		t.Error(err)
+	}
+
+	if _, ok := c.Get("bar"); ok {
+		t.Error("container exists")
+	}
+}
+
+// Receiving an update for a container which is outstanding after receiving
+// the wanted state of a container leads to race condition between the
+// channels "updatec" and "successc". If updatec runs first, there's a
+// deadlock trying to signal the outstanding container.
+func TestNoDeadlockAfterSchedule(t *testing.T) {
 	var (
 		c = agentrepr.NewFakeClient(t, "foo", true)
 		r = agentrepr.New(c)
