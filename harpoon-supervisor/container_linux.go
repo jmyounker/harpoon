@@ -250,7 +250,7 @@ func (c *container) libcontainerConfig() *libcontainer.Config {
 				Name:   c.id,
 				Parent: "harpoon",
 
-				Memory: int64(c.agentConfig.Resources.Memory * 1024 * 1024),
+				Memory: int64(c.agentConfig.Resources.Mem * 1024 * 1024),
 
 				AllowedDevices: devices.DefaultAllowedDevices,
 			},

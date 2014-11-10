@@ -71,7 +71,7 @@ func init() {
 	}
 
 	// Set file descriptor count.
-	fds := agentConfig.Resources.FDs
+	fds := agentConfig.Resources.FD
 	if fds == 0 {
 		fds = DefaultFDs
 	}
