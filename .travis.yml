@@ -6,7 +6,7 @@ go:
 
 install:
   - make dep
-  - go get golang.org/x/tools/cmd/vet
+  - go get code.google.com/p/go.tools/cmd/vet || go get golang.org/x/tools/cmd/vet
 
 script: ./misc/check-style.sh && go test -v ./...
 
