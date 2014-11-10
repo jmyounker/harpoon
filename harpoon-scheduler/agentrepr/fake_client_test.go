@@ -171,6 +171,15 @@ func (c *fakeClient) Start(id string) error {
 	return nil
 }
 
+func (c *fakeClient) Force(id string, s agent.ContainerStatus) {
+	c.Lock()
+	defer c.Unlock()
+
+	c.instances[id] = s
+
+	c.broadcast(id)
+}
+
 func (c *fakeClient) Get(id string) (agent.ContainerStatus, bool) {
 	c.RLock()
 	defer c.RUnlock()
@@ -225,22 +234,22 @@ func (c *fakeClient) Delete(id string) error {
 	return nil
 }
 
-func (fc *fakeClient) broadcast(id string) {
-	if _, ok := fc.instances[id]; !ok {
+func (c *fakeClient) broadcast(id string) {
+	if _, ok := c.instances[id]; !ok {
 		panic("bad state in fakeClient broadcast")
 	}
 
 	e := agent.StateEvent{
 		Containers: map[string]agent.ContainerInstance{
-			id: agent.ContainerInstance{ContainerStatus: fc.instances[id]},
+			id: agent.ContainerInstance{ContainerStatus: c.instances[id]},
 		},
 	}
 
-	for c := range fc.out {
-		c <- e
+	for ch := range c.out {
+		ch <- e
 
-		if fc.fail {
-			c <- e
+		if c.fail {
+			ch <- e
 		}
 	}
 }

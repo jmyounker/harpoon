@@ -120,7 +120,7 @@ func (a *api) handleStop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if container.Instance().ContainerStatus == agent.ContainerStatusFinished {
+	if container.Instance().ContainerStatus != agent.ContainerStatusRunning {
 		log.Printf("[%s] start: already stopped", id)
 		http.Error(w, "already stopped", http.StatusConflict)
 		return
