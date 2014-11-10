@@ -594,10 +594,11 @@ func (o *outstanding) want(id string, s agent.ContainerStatus, successc, failure
 					return
 				}
 
-				if status == s {
+				if !sent && status == s {
 					sent = true
 					go func() { successc <- id }()
 				}
+
 			case <-t:
 				if sent {
 					continue
@@ -629,6 +630,11 @@ func (o *outstanding) signal(m map[string]agent.ContainerInstance) {
 func (o *outstanding) remove(id string) {
 	o.Lock()
 	defer o.Unlock()
+
+	if c, ok := o.m[id]; ok {
+		close(c)
+	}
+
 	delete(o.m, id)
 }
 
