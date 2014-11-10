@@ -176,6 +176,10 @@ func (c *harpoonctl) run(ctx *cli.Context) {
 		log.Fatal("unable to parse config file: ", err)
 	}
 
+	if err := config.Valid(); err != nil {
+		log.Fatal(err)
+	}
+
 	target := c.choose()
 
 	if err := target.Put(id, config); err != nil {
