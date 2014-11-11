@@ -215,7 +215,7 @@ type StateEvent struct {
 type HostResources struct {
 	Mem     TotalReservedInt `json:"mem"`     // MB
 	CPU     TotalReserved    `json:"cpus"`    // whole CPUs
-	Storage TotalReserved    `json:"storage"` // Bytes
+	Storage TotalReservedInt `json:"storage"` // Bytes
 	Volumes []string         `json:"volumes"`
 }
 

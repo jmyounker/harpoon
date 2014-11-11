@@ -41,7 +41,7 @@ func NewMock() *Mock {
 		hostResources: HostResources{
 			Mem:     TotalReservedInt{Total: 32768, Reserved: 0},
 			CPU:     TotalReserved{Total: 8, Reserved: 0},
-			Storage: TotalReserved{Total: 322122547200, Reserved: 0},
+			Storage: TotalReservedInt{Total: 322122547200, Reserved: 0},
 			Volumes: []string{"/data/analytics-kibana", "/data/mysql000", "/data/mysql001"},
 		},
 	}
