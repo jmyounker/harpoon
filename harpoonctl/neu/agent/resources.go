@@ -9,14 +9,14 @@ import (
 	"text/tabwriter"
 
 	"github.com/codegangsta/cli"
-	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 
+	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 	"github.com/soundcloud/harpoon/harpoonctl/neu/log"
 )
 
 var resourcesCommand = cli.Command{
 	Name:        "resources",
-	Usage:       "Print agent resources",
+	Usage:       "Print agent host resources",
 	Description: "Display instantaneous total and reserved CPU, memory, etc. resources of agent(s).",
 	Action:      resourcesAction,
 	Flags:       []cli.Flag{longFlag},
@@ -36,7 +36,7 @@ func resourcesAction(c *cli.Context) {
 	)
 
 	if l {
-		fmt.Fprint(w, "Agent\tCPU\tTotal\tMem\tTotal\tStorage\tTotal\tVolumes\n")
+		fmt.Fprint(w, "AGENT\tCPU\tTOTAL\tMEM\tTOTAL\tSTORAGE\tTOTAL\tVOLUMES\n")
 		f = func(host string, r agent.HostResources) string {
 			return fmt.Sprintf(
 				"%s\t%.2f\t%.2f\t%d\t%d\t%d\t%d\t%s\n",
@@ -51,7 +51,7 @@ func resourcesAction(c *cli.Context) {
 			)
 		}
 	} else {
-		fmt.Fprint(w, "Agent\tCPU\tTotal\tMem\tTotal\tVolumes\n")
+		fmt.Fprint(w, "AGENT\tCPU\tTOTAL\tMEM\tTOTAL\tVOLUMES\n")
 		f = func(host string, r agent.HostResources) string {
 			return fmt.Sprintf(
 				"%s\t%.2f\t%.2f\t%d\t%d\t%s\n",

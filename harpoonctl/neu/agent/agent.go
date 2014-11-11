@@ -19,7 +19,7 @@ var Command = cli.Command{
 	Name:        "agent",
 	Usage:       "Control Harpoon agents",
 	Description: "Interact with Harpoon agents directly.",
-	Subcommands: []cli.Command{resourcesCommand},
+	Subcommands: []cli.Command{resourcesCommand, psCommand},
 	Flags:       []cli.Flag{endpointFlag, clusterFlag},
 	Before:      parseEndpoints,
 	HideHelp:    true,
@@ -87,10 +87,9 @@ func parseEndpoints(c *cli.Context) error {
 			u.Host = u.Host + ":3333"
 		}
 
+		log.Verbosef("using agent endpoint %s", u.String())
 		endpoints = append(endpoints, u)
 	}
-
-	log.Verbosef("using agent endpoints: %v", endpoints)
 
 	return nil
 }
