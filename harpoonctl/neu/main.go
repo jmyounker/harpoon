@@ -13,6 +13,9 @@ import (
 	"github.com/soundcloud/harpoon/harpoonctl/neu/scheduler"
 )
 
+// http://monkey.org/~marius/unix-tools-hints.html
+// http://www.catb.org/~esr/writings/taouu/html/
+
 func main() {
 	a := &cli.App{
 		Name:                 "harpoonctl",
