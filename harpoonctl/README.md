@@ -48,7 +48,7 @@ OPTIONS:
 
 ### Specifying endpoints
 
-`harpoonctl agent interacts with remote agent(s). Agents can be specified in
+`harpoonctl agent` interacts with remote agent(s). Agents can be specified in
 several ways. In order of increasing priority,
 
 - `localhost:3333`
