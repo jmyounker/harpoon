@@ -11,7 +11,7 @@ import (
 
 	"github.com/codegangsta/cli"
 
-	"github.com/soundcloud/harpoon/harpoonctl/neu/log"
+	"github.com/soundcloud/harpoon/harpoonctl/log"
 )
 
 // Command is the agent subcommand.

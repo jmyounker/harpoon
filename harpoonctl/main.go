@@ -1,106 +1,70 @@
 package main
 
 import (
-	"fmt"
-	"log"
+	"net"
+	"net/http"
 	"os"
-	"path/filepath"
-	"text/tabwriter"
+	"time"
 
 	"github.com/codegangsta/cli"
+
+	"github.com/soundcloud/harpoon/harpoonctl/agent"
+	"github.com/soundcloud/harpoon/harpoonctl/log"
+	"github.com/soundcloud/harpoon/harpoonctl/scheduler"
 )
 
-var (
-	clusterPath    = filepath.Join(os.Getenv("HOME"), ".harpoonctl", "cluster")
-	defaultCluster = filepath.Join(clusterPath, "default")
-
-	// Version is a state variable, written at the link stage. See Makefile.
-	Version string
-
-	// CommitID is a state variable, written at the link stage. See Makefile.
-	CommitID string
-
-	// ExternalReleaseVersion is a state variable, written at the link stage.
-	// See Makefile.
-	ExternalReleaseVersion string
-)
+// http://monkey.org/~marius/unix-tools-hints.html
+// http://www.catb.org/~esr/writings/taouu/html/
 
 func main() {
-	log.SetFlags(0)
+	a := &cli.App{
+		Name:                 "harpoonctl",
+		Usage:                "Interact with Harpoon platform components.",
+		Version:              version(),
+		Commands:             []cli.Command{agent.Command, scheduler.Command},
+		Flags:                []cli.Flag{verboseFlag, timeoutFlag},
+		EnableBashCompletion: false,
+		HideHelp:             true,
+		HideVersion:          true,
+		Before:               before,
+		Action:               cli.ShowAppHelp,
+		CommandNotFound:      func(c *cli.Context, cmd string) { log.Warnf("%s: not found", cmd) },
+		Compiled:             compileTime(),
+		Author:               "Infrastructure Software and Services",
+		Email:                "iss@soundcloud.com",
+	}
+	a.Run(os.Args)
+}
 
-	harpoonctl := &harpoonctl{
-		Writer: tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0),
+var verboseFlag = cli.BoolFlag{
+	Name:  "v, verbose",
+	Usage: "print verbose output",
+}
+
+var timeoutFlag = cli.DurationFlag{
+	Name:  "t, timeout",
+	Value: 3 * time.Second,
+	Usage: "HTTP connection timeout",
+}
+
+func before(c *cli.Context) error {
+	if c.Bool("verbose") {
+		log.Verbose = true
 	}
 
-	app := &cli.App{
-		Name: "harpoonctl",
-		Usage: `control one or more harpoon agents without a central scheduler
-
-Commands default to communicating with a local harpoon agent, unless a default
-cluster (` + defaultCluster + `) is defined.`,
-		Version: fmt.Sprintf("%s (%s) %s", Version, CommitID, ExternalReleaseVersion),
-
-		Action: cli.ShowAppHelp,
-
-		Flags: []cli.Flag{
-			cli.StringFlag{
-				Name:  "c,cluster",
-				Value: "",
-				Usage: "read agent addresses from " + clusterPath + "/NAME",
-			},
-
-			cli.StringSliceFlag{
-				Name:  "a,agent",
-				Value: &cli.StringSlice{},
-				Usage: "agent address (repeatable, overrides -c)",
-			},
-		},
-
-		Before: harpoonctl.setAgents,
-
-		Commands: []cli.Command{
-			{
-				Name:   "run",
-				Usage:  "create and start a new container",
-				Action: harpoonctl.run,
-			},
-			{
-				Name:   "ps",
-				Usage:  "list containers",
-				Action: harpoonctl.ps,
-			},
-			{
-				Name:   "status",
-				Usage:  "return information about a container",
-				Action: harpoonctl.status,
-			},
-			{
-				Name:   "stop",
-				Usage:  "stop a container",
-				Action: harpoonctl.stop,
-			},
-			{
-				Name:   "start",
-				Usage:  "start a (stopped) container",
-				Action: harpoonctl.start,
-			},
-			{
-				Name:   "destroy",
-				Usage:  "destroy a (stopped) container",
-				Action: harpoonctl.destroy,
-			},
-			{
-				Name:   "logs",
-				Usage:  "fetch the logs of a container",
-				Action: harpoonctl.logs,
-			},
-			{
-				Name:   "resources",
-				Usage:  "list agents and their resources",
-				Action: harpoonctl.resources,
-			},
+	http.DefaultClient.Transport = &http.Transport{
+		Dial: func(network, addr string) (net.Conn, error) {
+			return net.DialTimeout(network, addr, c.Duration("timeout"))
 		},
 	}
 
-	app.RunAndExitOnError()
+	return nil
+}
+
+func compileTime() time.Time {
+	info, err := os.Stat(os.Args[0])
+	if err != nil {
+		return time.Now()
+	}
+	return info.ModTime()
 }

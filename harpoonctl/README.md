@@ -1,91 +1,76 @@
 # harpoonctl
 
 ```
-USAGE: harpoonctl [GLOBAL OPTIONS...] <command> [<args>]
+NAME:
+   harpoonctl - Interact with Harpoon platform components.
 
-harpoonctl controls one or more harpoon agents without a central scheduler.
+USAGE:
+   harpoonctl [global options] command [command options] [arguments...]
 
-Commands default to communicating with a local harpoon agent, unless a default
-cluster (~/.harpoonctl/cluster/default) is defined.
+VERSION:
+   development
 
-GLOBAL OPTIONS:
-  -v,--version		print the version
-  -h,--help		show this help
-
-  -a,--agent HOST:PORT  agent address (repeatable, overrides -c)
-  -c,--cluster NAME     read agent addresses from ~/.harpoonctl/cluster/NAME.
+AUTHOR:
+  Infrastructure Software and Services - <iss@soundcloud.com>
 
 COMMANDS:
-   ps		list containers
-   run		create and start a new container
-   status	return information about a container
-   stop		stop a container
-   start	start a (stopped) container
-   destroy	destroy a (stopped) container
-   logs		fetch the logs of one or more containers
-   resources	list agents and their resources
-   help, h	Shows a list of commands or help for one command
+   agent  Control Harpoon agents
+   scheduler  Control a Harpoon agent
+
+GLOBAL OPTIONS:
+   -v, --verbose  print verbose output
+   -t, --timeout '3s' HTTP connection timeout
 ```
 
-## Examples
+## harpoonctl agent
 
 ```
-> harpoonctl resources
-AGENT           MEM   RESERVED  CPU  RESERVED  VOLUMES
-localhost:3333  1024  64        1    0.1       -
+NAME:
+   harpoonctl agent - Interact with Harpoon agents directly.
 
-> harpoonctl run web.config.json
-AGENT           INSTANCE            COMMAND  PORTS       STATUS   CREATED
-localhost:3333  rocket:14816f3256a  ./web    http=31010  running  now
+USAGE:
+   harpoonctl agent command [command options] [arguments...]
 
-> harpoonctl ps
-AGENT           INSTANCE            COMMAND  PORTS       STATUS   CREATED
-localhost:3333  rocket:14816f3256a  ./web    http=31010  running  2 minutes ago
-localhost:3333  rocket:14816f79af0  ./web    http=31009  running  20 minutes ago
+COMMANDS:
+   resources  Print agent host resources
+   ps         Print instances on agent(s)
+   dump       dump <id>
+   log        log <id>
+   create     create <config.json> <id>
+   start      start <id>
+   stop       stop <id>
+   destroy    destroy <id>
 
-> harpoonctl resources
-AGENT           MEM   RESERVED  CPU  RESERVED  VOLUMES
-localhost:3333  1024  128       1    0.2       -
-
-> harpoonctl stop rocket:14816f3256a
-AGENT           INSTANCE            COMMAND  PORTS       STATUS
-localhost:3333  rocket:14816f3256a  ./web    http=31010  stopped
-
-> harpoonctl destroy rocket:14816f3256a
-AGENT           INSTANCE            COMMAND  PORTS       STATUS
-localhost:3333  rocket:14816f3256a  ./web    http=31010  destroyed
+OPTIONS:
+   -e, --endpoint '-e option -e option'  agent endpoint(s) (repeatable, overrides --cluster)
+   -c, --cluster 'default'               read agent endpoint(s) from /Users/peter/.harpoonctl/cluster/default
 ```
 
-### Clusters
+### Specifying endpoints
 
-Passing the addresses of many agents for each invocation would be cumbersome,
-so `harpoonctl` also supports a `cluster` flag for talking to a set of agents:
+`harpoonctl agent interacts with remote agent(s). Agents can be specified in
+several ways. In order of increasing priority,
+
+- `localhost:3333`
+- All endpoints in `$HOME/.harpoonctl/cluster/default`, if it exists
+- All endpoints in `$HOME/.harpoonctl/cluster/name`, if `--cluster name` is given
+- All endpoints given explicitly by `--endpoint foo` (repeatable)
+
+Cluster files live at `$HOME/.harpoonctl/cluster/name` and have one agent
+endpoint per line.
 
 ```
-cat <<-EOF > ~/.harpoonctl/cluster/memcached
-10.70.26.77:3333
-10.70.26.78:3333
+$ cat > $HOME/.harpoonctl/cluster/test <<EOF
+ip-10-70-11-20.eu-west.s-cloud.net:3333
+ip-10-70-27-77.eu-west.s-cloud.net:3333
 EOF
 
-> harpoonctl -c memcached run memcached.config.json
-   AGENT             MEM    RESERVED  CPU  RESERVED  VOLUMES
-1) 10.70.26.78:3333  12228  0         12   0.0       -
-2) 10.70.26.77:3333  12228  4096      12   0.5       -
-
-Select an agent [default: 1]: 2
-AGENT             INSTANCE               COMMAND        PORTS       STATUS
-10.70.26.78:3333  memcached:14816f79af0  ./memcached    tcp=11211  running
-
-> harpoonctl -c memcached ps # list containers running in the memcached cluster
-AGENT             INSTANCE               COMMAND        PORTS      STATUS
-10.70.26.77:3333  memcached:14816f3256a  ./memcached    tcp=11211  running
-10.70.26.78:3333  memcached:14816f79af0  ./memcached    tcp=11211  running
-
-> harpoonctl -c memcached status memcached:14816f79af0
-# ...
-
-> harpoonctl -c memcached resources
-AGENT             MEM    RESERVED  CPU  RESERVED  VOLUMES
-10.70.26.77:3333  12228  4096      12   0.5       -
-10.70.26.78:3333  12228  4096      12   0.5       -
+$ harpoonctl agent -c test resources
+AGENT                                    CPU   TOTAL  MEM  TOTAL  VOLUMES
+ip-10-70-11-20.eu-west.s-cloud.net:3333  0.00  1.00   0    1659   /data/foo, /data/bar
+ip-10-70-27-77.eu-west.s-cloud.net:3333  0.10  1.00   64   1659   /data/prometheus
 ```
+
+## harpoonctl scheduler
+
+TODO

@@ -9,7 +9,7 @@ import (
 	"github.com/codegangsta/cli"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
-	"github.com/soundcloud/harpoon/harpoonctl/neu/log"
+	"github.com/soundcloud/harpoon/harpoonctl/log"
 )
 
 var logCommand = cli.Command{
