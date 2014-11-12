@@ -360,6 +360,10 @@ func resources(instances map[string]agent.ContainerInstance) agent.HostResources
 			Total:    float64(agentCPU),
 			Reserved: reservedCPU,
 		},
+		Storage: agent.TotalReservedInt{
+			Total:    0, // TODO bytes
+			Reserved: 0, // TODO bytes
+		},
 		Volumes: volumes,
 	}
 }

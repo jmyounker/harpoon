@@ -19,7 +19,7 @@ type Agent interface {
 	Start(containerID string) error                                                                                 // POST /containers/{id}/start
 	Stop(containerID string) error                                                                                  // POST /containers/{id}/stop
 	Replace(newContainerID, oldContainerID string) error                                                            // PUT /containers/{newID}?replace={oldID}
-	Delete(containerID string) error                                                                                // DELETE /containers/{id}
+	Destroy(containerID string) error                                                                               // DELETE /containers/{id}
 	Containers() (map[string]ContainerInstance, error)                                                              // GET /containers
 	Events() (<-chan StateEvent, Stopper, error)                                                                    // GET /containers with request header Accept: text/event-stream
 	Log(containerID string, history int) (<-chan string, Stopper, error)                                            // GET /containers/{id}/log?history=10
@@ -215,7 +215,7 @@ type StateEvent struct {
 type HostResources struct {
 	Mem     TotalReservedInt `json:"mem"`     // MB
 	CPU     TotalReserved    `json:"cpus"`    // whole CPUs
-	Storage TotalReserved    `json:"storage"` // Bytes
+	Storage TotalReservedInt `json:"storage"` // Bytes
 	Volumes []string         `json:"volumes"`
 }
 

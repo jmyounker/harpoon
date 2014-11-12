@@ -12,18 +12,18 @@ import (
 var testAgents = map[string]agent.StateEvent{
 	"beefy.net": agent.StateEvent{
 		Resources: agent.HostResources{
-			Mem:     agent.TotalReservedInt{Total: 32000, Reserved: 128}, // 32GB total, 128MB reserved
-			CPU:     agent.TotalReserved{Total: 32.0, Reserved: 1.0},     // 32 CPU total, 1 CPU reserved
-			Storage: agent.TotalReserved{Total: 250 * 1e10, Reserved: 0}, // 250GB total, 0 bytes reserved
+			Mem:     agent.TotalReservedInt{Total: 32000, Reserved: 128},    // 32GB total, 128MB reserved
+			CPU:     agent.TotalReserved{Total: 32.0, Reserved: 1.0},        // 32 CPU total, 1 CPU reserved
+			Storage: agent.TotalReservedInt{Total: 250 * 1e10, Reserved: 0}, // 250GB total, 0 bytes reserved
 			Volumes: []string{"/data/shared", "/data/beefy"},
 		},
 		Containers: map[string]agent.ContainerInstance{},
 	},
 	"wimpy.net": agent.StateEvent{
 		Resources: agent.HostResources{
-			Mem:     agent.TotalReservedInt{Total: 1024, Reserved: 512},          // 1GB total, 512MB reserved
-			CPU:     agent.TotalReserved{Total: 4.0, Reserved: 3.0},              // 4 CPU total, 3 CPU reserved
-			Storage: agent.TotalReserved{Total: 100 * 1e10, Reserved: 70 * 1e10}, // 100GB total, 70GB reserved
+			Mem:     agent.TotalReservedInt{Total: 1024, Reserved: 512},             // 1GB total, 512MB reserved
+			CPU:     agent.TotalReserved{Total: 4.0, Reserved: 3.0},                 // 4 CPU total, 3 CPU reserved
+			Storage: agent.TotalReservedInt{Total: 100 * 1e10, Reserved: 70 * 1e10}, // 100GB total, 70GB reserved
 			Volumes: []string{"/data/shared", "/data/wimpy"},
 		},
 		Containers: map[string]agent.ContainerInstance{},

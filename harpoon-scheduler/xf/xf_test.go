@@ -106,9 +106,9 @@ func TestRespectResourceReservedForPendingTasks(t *testing.T) {
 		"agent-one": agent.StateEvent{
 			Containers: map[string]agent.ContainerInstance{},
 			Resources: agent.HostResources{
-				Mem:     agent.TotalReservedInt{Total: 1024, Reserved: 512},          // 1GB total, 512MB reserved
-				CPU:     agent.TotalReserved{Total: 4.0, Reserved: 3.0},              // 4 CPU total, 3 CPU reserved
-				Storage: agent.TotalReserved{Total: 100 * 1e10, Reserved: 70 * 1e10}, // 100GB total, 70GB reserved
+				Mem:     agent.TotalReservedInt{Total: 1024, Reserved: 512},             // 1GB total, 512MB reserved
+				CPU:     agent.TotalReserved{Total: 4.0, Reserved: 3.0},                 // 4 CPU total, 3 CPU reserved
+				Storage: agent.TotalReservedInt{Total: 100 * 1e10, Reserved: 70 * 1e10}, // 100GB total, 70GB reserved
 				Volumes: []string{"/data/shared", "/data/wimpy"},
 			},
 		},

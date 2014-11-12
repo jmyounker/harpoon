@@ -50,7 +50,7 @@ func TestFakeClient(t *testing.T) {
 		t.Errorf("want %q, have %q", want, have)
 	}
 
-	c.Delete(id)
+	c.Destroy(id)
 	if want, have := agent.ContainerStatusDeleted, next(); want != have {
 		t.Errorf("want %q, have %q", want, have)
 	}
@@ -210,7 +210,7 @@ func (c *fakeClient) Stop(id string) error {
 	return nil
 }
 
-func (c *fakeClient) Delete(id string) error {
+func (c *fakeClient) Destroy(id string) error {
 	c.Lock()
 	defer c.Unlock()
 
