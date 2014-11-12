@@ -19,7 +19,7 @@ var Command = cli.Command{
 	Name:        "agent",
 	Usage:       "Control Harpoon agents",
 	Description: "Interact with Harpoon agents directly.",
-	Subcommands: []cli.Command{resourcesCommand, psCommand},
+	Subcommands: []cli.Command{resourcesCommand, psCommand, createCommand, startCommand, stopCommand, destroyCommand},
 	Flags:       []cli.Flag{endpointFlag, clusterFlag},
 	Before:      parseEndpoints,
 	HideHelp:    true,

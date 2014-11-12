@@ -30,21 +30,22 @@ func psAction(c *cli.Context) {
 	)
 
 	if l {
-		fmt.Fprint(w, "AGENT\tID\tSTATUS\tCPUTIME\tMEM USED\tFDS\tRESTARTS\tOOMS\tCMD\tRC\n")
+		fmt.Fprint(w, "AGENT\tID\tSTATUS\tCPUTIME\tMEM USED\tFDS\tRESTARTS\tOOMS\tCMD\tPORTS\tRC\n")
 		f = func(host string, m map[string]agent.ContainerInstance) []string {
 			a := make([]string, 0, len(m))
 			for id, ci := range m {
 				a = append(a, fmt.Sprintf(
-					"%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%s\t%d\n",
+					"%s\t%s\t%s\t%d\t%dM\t%d\t%d\t%d\t%s\t%+v\t%d\n",
 					host,
 					id,
 					ci.ContainerStatus,
 					ci.ContainerMetrics.CPUTime,
-					ci.ContainerMetrics.MemoryUsage,
+					ci.ContainerMetrics.MemoryUsage/1024/1024,
 					ci.FD,
 					ci.Restarts,
 					ci.OOMs,
 					ci.Command.Exec[0],
+					ci.Ports,
 					ci.ExitStatus,
 				))
 			}
@@ -104,5 +105,8 @@ func psAction(c *cli.Context) {
 		fmt.Fprintf(w, s)
 	}
 
-	w.Flush()
+	// Don't display header if we didn't have any rows.
+	if len(a) > 0 {
+		w.Flush()
+	}
 }

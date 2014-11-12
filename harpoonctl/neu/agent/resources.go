@@ -95,5 +95,8 @@ func resourcesAction(c *cli.Context) {
 		fmt.Fprintf(w, s)
 	}
 
-	w.Flush()
+	// Don't display header if we didn't have any rows.
+	if len(a) > 0 {
+		w.Flush()
+	}
 }
