@@ -19,12 +19,13 @@ import (
 func main() {
 	a := &cli.App{
 		Name:                 "harpoonctl",
-		Usage:                "Control Harpoon components",
+		Usage:                "Interact with Harpoon platform components.",
 		Version:              version(),
 		Commands:             []cli.Command{agent.Command, scheduler.Command},
 		Flags:                []cli.Flag{verboseFlag, timeoutFlag},
 		EnableBashCompletion: false,
 		HideHelp:             true,
+		HideVersion:          true,
 		Before:               before,
 		Action:               cli.ShowAppHelp,
 		CommandNotFound:      func(c *cli.Context, cmd string) { log.Warnf("%s: not found", cmd) },
@@ -36,7 +37,7 @@ func main() {
 }
 
 var verboseFlag = cli.BoolFlag{
-	Name:  "verbose",
+	Name:  "v, verbose",
 	Usage: "print verbose output",
 }
 

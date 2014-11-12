@@ -43,7 +43,7 @@ func stopAction(c *cli.Context) {
 			}
 
 			if err := c.Stop(id); err != nil {
-				log.Warnf("%s: %s", u.Host, err)
+				log.Verbosef("%s: %s", u.Host, err)
 				return
 			}
 
