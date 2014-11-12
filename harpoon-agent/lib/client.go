@@ -285,8 +285,8 @@ func (c client) Get(id string) (ContainerInstance, error) {
 	}
 }
 
-// Delete implements the Agent interface.
-func (c client) Delete(id string) error {
+// Destroy implements the Agent interface.
+func (c client) Destroy(id string) error {
 	c.URL.Path = APIVersionPrefix + APIDestroyContainerPath
 	c.URL.Path = strings.Replace(c.URL.Path, ":id", id, 1)
 

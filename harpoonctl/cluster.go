@@ -85,9 +85,9 @@ func (c cluster) Stop(id string) error {
 	return agent.ErrContainerNotExist
 }
 
-func (c cluster) Delete(id string) error {
+func (c cluster) Destroy(id string) error {
 	for _, a := range c {
-		if err := a.Delete(id); err != nil {
+		if err := a.Destroy(id); err != nil {
 			if err == agent.ErrContainerNotExist {
 				continue
 			}

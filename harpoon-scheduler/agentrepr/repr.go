@@ -89,7 +89,7 @@ type Client interface {
 	Put(string, agent.ContainerConfig) error
 	Start(string) error
 	Stop(string) error
-	Delete(string) error
+	Destroy(string) error
 }
 
 // New returns a new representation.
@@ -195,7 +195,7 @@ func (r *representation) Unschedule(id string) error {
 
 	r.outstanding.want(id, agent.ContainerStatusDeleted, r.successc, r.failurec) // meta-status
 
-	switch err := r.Client.Delete(id); err {
+	switch err := r.Client.Destroy(id); err {
 	case nil:
 	default:
 		r.outstanding.remove(id) // won't happen

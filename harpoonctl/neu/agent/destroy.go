@@ -42,7 +42,7 @@ func destroyAction(c *cli.Context) {
 				return
 			}
 
-			if err := c.Delete(id); err != nil {
+			if err := c.Destroy(id); err != nil {
 				log.Warnf("%s: %s", u.Host, err)
 				return
 			}

@@ -295,7 +295,7 @@ func (c *harpoonctl) destroy(ctx *cli.Context) {
 	}
 	id := args[0]
 
-	if err := c.cluster.Delete(id); err != nil {
+	if err := c.cluster.Destroy(id); err != nil {
 		log.Fatal("unable to destroy container: ", err)
 	}
 }
