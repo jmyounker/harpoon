@@ -18,11 +18,12 @@ type fakeContainer struct {
 // Satisfaction guaranteed.
 var _ container = &fakeContainer{}
 
-func newFakeContainer(id string) *fakeContainer {
+func newFakeContainer(id string, _ string, config agent.ContainerConfig, _ *portDB) container {
 	c := &fakeContainer{
 		ContainerInstance: agent.ContainerInstance{
 			ID:              id,
 			ContainerStatus: agent.ContainerStatusRunning,
+			ContainerConfig: config,
 		},
 		logs:           newContainerLog(containerLogRingBufferSize),
 		subscribers:    map[chan<- agent.ContainerInstance]struct{}{},
@@ -133,14 +134,11 @@ func (c *fakeContainer) create() error {
 
 func (c *fakeContainer) destroy() error {
 	c.updateStatus(agent.ContainerStatusDeleted)
-
 	for subc := range c.subscribers {
 		close(subc)
 	}
 
 	c.subscribers = map[chan<- agent.ContainerInstance]struct{}{}
-
-	c.Exit()
 
 	return nil
 }

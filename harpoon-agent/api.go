@@ -25,6 +25,12 @@ type api struct {
 	sync.RWMutex
 }
 
+var (
+	// newContainer is a factory function for creating containers.
+	// It may be swapped for tests.
+	newContainer = newRealContainer
+)
+
 func newAPI(containerRoot string, r *registry, pdb *portDB) *api {
 	var (
 		mux = pat.New()

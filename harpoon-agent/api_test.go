@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -62,7 +63,7 @@ func TestContainerList(t *testing.T) {
 		t.Error(err)
 	}
 
-	cont := newContainer(
+	cont := newFakeContainer(
 		"123",
 		"",
 		agent.ContainerConfig{
@@ -74,7 +75,7 @@ func TestContainerList(t *testing.T) {
 		nil)
 
 	registry.m["123"] = cont
-	registry.statec <- cont.ContainerInstance
+	registry.statec <- cont.Instance()
 
 	ev, err = es.Read()
 	if err != nil {
@@ -87,13 +88,14 @@ func TestContainerList(t *testing.T) {
 
 	expected.CPU.Reserved = 2
 	expected.Mem.Reserved = 100
-	if err := validateEvent(expected, state, 1, agent.ContainerStatusCreated); err != nil {
+	if err := validateEvent(expected, state, 1, agent.ContainerStatusRunning); err != nil {
 		t.Error(err)
 	}
 
-	delete(registry.m, "123")
-	cont.ContainerStatus = agent.ContainerStatusDeleted
-	registry.statec <- cont.ContainerInstance
+	cont.Destroy()
+	cont.Exit()
+
+	registry.statec <- cont.Instance()
 
 	ev, err = es.Read()
 	if err != nil {
@@ -111,6 +113,81 @@ func TestContainerList(t *testing.T) {
 	}
 }
 
+func TestResources(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+
+	agentMem = 1000
+	agentCPU = 2
+	configuredVolumes = map[string]struct{}{"/tmp": struct{}{}}
+	newContainer = newFakeContainer
+
+	var (
+		registry = newRegistry()
+		pdb      = newPortDB(lowTestPort, highTestPort)
+		api      = newAPI(fixtureContainerRoot, registry, pdb)
+		server   = httptest.NewServer(api)
+	)
+	defer pdb.exit()
+	defer server.Close()
+
+	have, err := getResources(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expected := agent.HostResources{
+		CPU:     agent.TotalReserved{Total: 2.0, Reserved: 0.0},
+		Mem:     agent.TotalReservedInt{Total: 1000.0, Reserved: 0.0},
+		Volumes: []string{"/tmp"},
+	}
+	if err := validateResources(expected, have); err != nil {
+		t.Fatal(err)
+	}
+
+	config := agent.ContainerConfig{
+		Resources: agent.Resources{
+			Mem: 100,
+			CPU: 2,
+		},
+	}
+
+	if err := createContainer(server.URL, config, "containerID"); err != nil {
+		t.Fatal(err)
+	}
+
+	have, err = getResources(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expected = agent.HostResources{
+		CPU:     agent.TotalReserved{Total: 2.0, Reserved: 2.0},
+		Mem:     agent.TotalReservedInt{Total: 1000.0, Reserved: 100.0},
+		Volumes: []string{"/tmp"},
+	}
+	if err := validateResources(expected, have); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := deleteContainer(server.URL, "containerID"); err != nil {
+		t.Fatal(err)
+	}
+
+	have, err = getResources(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expected = agent.HostResources{
+		CPU:     agent.TotalReserved{Total: 2.0, Reserved: 0.0},
+		Mem:     agent.TotalReservedInt{Total: 1000.0, Reserved: 0.0},
+		Volumes: []string{"/tmp"},
+	}
+	if err := validateResources(expected, have); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestLogAPICanTailLogs(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 
@@ -125,7 +202,7 @@ func TestLogAPICanTailLogs(t *testing.T) {
 
 	createReceiveLogsFixture(t, registry)
 
-	c := newFakeContainer("123")
+	c := newFakeContainer("123", "", agent.ContainerConfig{}, nil)
 	registry.register(c)
 
 	// UDP has some weirdness with processing, so we use the container log's subscription
@@ -200,7 +277,7 @@ func TestLogAPILogTailIncludesHistory(t *testing.T) {
 
 	createReceiveLogsFixture(t, registry)
 
-	c := newFakeContainer("123")
+	c := newFakeContainer("123", "", agent.ContainerConfig{}, nil)
 	registry.register(c)
 
 	// UDP has some weirdness with processing, so we use the container log's subscription
@@ -277,7 +354,7 @@ func TestLogAPICanRetrieveLastLines(t *testing.T) {
 
 	createReceiveLogsFixture(t, registry)
 
-	c := newFakeContainer("123")
+	c := newFakeContainer("123", "", agent.ContainerConfig{}, nil)
 	registry.register(c)
 
 	// UDP has some weirdness with processing, so we use the container log's subscription
@@ -313,7 +390,7 @@ func TestMessagesGetWrittenToLogs(t *testing.T) {
 
 	createReceiveLogsFixture(t, registry)
 
-	c := newFakeContainer("123")
+	c := newFakeContainer("123", "", agent.ContainerConfig{}, nil)
 	registry.register(c)
 
 	// UDP has some weirdness with processing, so we use the container log's subscription
@@ -339,7 +416,7 @@ func TestLogRoutingOfDefectiveMessages(t *testing.T) {
 
 	createReceiveLogsFixture(t, registry)
 
-	c := newFakeContainer("123")
+	c := newFakeContainer("123", "", agent.ContainerConfig{}, nil)
 	registry.register(c)
 
 	linec := make(chan string, 10) // Plenty of room before anything gets dropped
@@ -357,14 +434,14 @@ func waitForLogLine(t *testing.T, c chan string, timeout time.Duration) {
 	select {
 	case <-c:
 	case <-time.After(timeout):
-		t.Errorf("Did not receive an item within %s", timeout)
+		t.Errorf("did not receive an item within %s", timeout)
 	}
 }
 
 func expectNoLogLines(t *testing.T, c chan string, timeout time.Duration) {
 	select {
 	case logLine := <-c:
-		t.Errorf("Nothing should have been received, but got: %s", logLine)
+		t.Errorf("nothing should have been received, but got: %s", logLine)
 	case <-time.After(timeout):
 	}
 }
@@ -379,22 +456,14 @@ func sendLog(logLine string) error {
 func setLogAddrRandomly(t *testing.T) {
 	port, err := getRandomUDPPort()
 	if err != nil {
-		t.Fatalf("Could not locate a random port: %s", err)
+		t.Fatalf("could not locate a random port: %s", err)
 	}
 	logAddr = "localhost:" + strconv.Itoa(port)
 }
 
 func validateEvent(expected agent.HostResources, have agent.StateEvent, containersCount int, status agent.ContainerStatus) error {
-	if expected.CPU != have.Resources.CPU {
-		return fmt.Errorf("invalid cpu resources: expected %v != have %v", expected.CPU, have.Resources.CPU)
-	}
-
-	if expected.Mem != have.Resources.Mem {
-		return fmt.Errorf("invalid memory resources: expected %v != have %v", expected.Mem, have.Resources.Mem)
-	}
-
-	if !reflect.DeepEqual(expected.Volumes, have.Resources.Volumes) {
-		return fmt.Errorf("invalid volumes : expected %v != have %v", expected.Volumes, have.Resources.Volumes)
+	if err := validateResources(expected, have.Resources); err != nil {
+		return err
 	}
 
 	if len(have.Containers) != containersCount {
@@ -405,9 +474,80 @@ func validateEvent(expected agent.HostResources, have agent.StateEvent, containe
 		return nil
 	}
 
-	if container, ok := have.Containers["123"]; !ok || container.ContainerStatus != status {
-		return fmt.Errorf("container event invalid")
+	container, ok := have.Containers["123"]
+	if !ok {
+		return fmt.Errorf("container event not received")
 	}
+
+	if container.ContainerStatus != status {
+		return fmt.Errorf("invalid status, expected: %s != %s", status, container.ContainerStatus)
+	}
+
+	return nil
+}
+
+func getResources(url string) (agent.HostResources, error) {
+	resp, err := http.Get(url + "/api/v0/resources")
+	if err != nil {
+		return agent.HostResources{}, fmt.Errorf("unable to get resources: %s", err)
+	}
+	defer resp.Body.Close()
+
+	var resources agent.HostResources
+	if err = json.NewDecoder(resp.Body).Decode(&resources); err != nil {
+		return agent.HostResources{}, fmt.Errorf("unable to read json response: %s", err)
+	}
+
+	return resources, nil
+}
+
+func validateResources(expected agent.HostResources, have agent.HostResources) error {
+	if expected.CPU != have.CPU {
+		return fmt.Errorf("invalid cpu resources: expected %v != have %v", expected.CPU, have.CPU)
+	}
+
+	if expected.Mem != have.Mem {
+		return fmt.Errorf("invalid memory resources: expected %v != have %v", expected.Mem, have.Mem)
+	}
+
+	if !reflect.DeepEqual(expected.Volumes, have.Volumes) {
+		return fmt.Errorf("invalid volumes : expected %v != have %v", expected.Volumes, have.Volumes)
+	}
+
+	return nil
+}
+
+func createContainer(url string, config agent.ContainerConfig, id string) error {
+	var body bytes.Buffer
+	if err := json.NewEncoder(&body).Encode(config); err != nil {
+		return fmt.Errorf("problem encoding container config (%s)", err)
+	}
+
+	req, err := http.NewRequest("PUT", url+"/api/v0/containers/"+id, &body)
+	if err != nil {
+		return fmt.Errorf("problem constructing HTTP request (%s)", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("could not create container")
+	}
+	defer resp.Body.Close()
+
+	return nil
+}
+
+func deleteContainer(url string, id string) error {
+	req, err := http.NewRequest("DELETE", url+"/api/v0/containers/"+id, nil)
+	if err != nil {
+		return fmt.Errorf("problem constructing HTTP request (%s)", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("could not delete container")
+	}
+	defer resp.Body.Close()
 
 	return nil
 }
