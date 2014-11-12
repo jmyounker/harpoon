@@ -17,7 +17,7 @@ import (
 var createCommand = cli.Command{
 	Name:        "create",
 	Usage:       "create <config.json> <id>",
-	Description: "Creates (allocates), but does not start, a container.",
+	Description: "Creates (allocates) and starts a container.",
 	Action:      createAction,
 	Flags:       []cli.Flag{},
 }
