@@ -1,6 +1,6 @@
 {
 	"ImportPath": "github.com/soundcloud/harpoon",
-	"GoVersion": "go1.3",
+	"GoVersion": "go1.3.2",
 	"Packages": [
 		"./..."
 	],
@@ -24,29 +24,8 @@
 			"Rev": "61f43e76957561f52674f48b7dc9a07f53c8f398"
 		},
 		{
-			"ImportPath": "github.com/coreos/go-systemd/dbus",
-			"Comment": "v2-31-gc5023e7",
-			"Rev": "c5023e7fcbf021ef75cd1ec77c7ce9fffa771e5d"
-		},
-		{
-			"ImportPath": "github.com/docker/docker/pkg/mount",
-			"Comment": "v1.2.0-644-gd142b18",
-			"Rev": "d142b18aab2a3b90959a2ab32676b388a5e98769"
-		},
-		{
-			"ImportPath": "github.com/docker/docker/pkg/symlink",
-			"Comment": "v1.2.0-644-gd142b18",
-			"Rev": "d142b18aab2a3b90959a2ab32676b388a5e98769"
-		},
-		{
-			"ImportPath": "github.com/docker/libcontainer",
-			"Comment": "v1.2.0-51-g30e50af",
-			"Rev": "30e50af76076f6443feaef7284dc1f985d6f14ec"
-		},
-		{
-			"ImportPath": "github.com/godbus/dbus",
-			"Comment": "0-11-gcfab99a",
-			"Rev": "cfab99a9500db4ba03067996059d2fc425090bf3"
+			"ImportPath": "github.com/fatih/color",
+			"Rev": "3161cccfa22c6243e02aa984cf2886d022024cec"
 		},
 		{
 			"ImportPath": "github.com/julienschmidt/httprouter",
@@ -80,10 +59,6 @@
 			"ImportPath": "github.com/prometheus/client_model/go",
 			"Comment": "model-0.0.2-7-g775af94",
 			"Rev": "775af9440e07a658e13f699448c745367bc12115"
-		},
-		{
-			"ImportPath": "github.com/syndtr/gocapability/capability",
-			"Rev": "3c85049eaeb429febe7788d9c7aac42322a377fe"
 		}
 	]
 }
