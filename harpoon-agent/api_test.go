@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -113,24 +112,27 @@ func TestContainerList(t *testing.T) {
 	}
 }
 
-func TestResources(t *testing.T) {
+func TestAgentHostResources(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 
+	// Set up an empty agent
 	agentMem = 1000
 	agentCPU = 2
 	configuredVolumes = map[string]struct{}{"/tmp": struct{}{}}
 	newContainer = newFakeContainer
 
 	var (
-		registry = newRegistry()
-		pdb      = newPortDB(lowTestPort, highTestPort)
-		api      = newAPI(fixtureContainerRoot, registry, pdb)
-		server   = httptest.NewServer(api)
+		registry  = newRegistry()
+		pdb       = newPortDB(lowTestPort, highTestPort)
+		api       = newAPI(fixtureContainerRoot, registry, pdb)
+		server    = httptest.NewServer(api)
+		client, _ = agent.NewClient(server.URL)
 	)
 	defer pdb.exit()
 	defer server.Close()
 
-	have, err := getResources(server.URL)
+	// Verify the HostResources of the empty agent
+	have, err := client.Resources()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,18 +146,23 @@ func TestResources(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	config := agent.ContainerConfig{
-		Resources: agent.Resources{
-			Mem: 100,
-			CPU: 2,
-		},
-	}
+	// Create a  container with some resource reservations
+	var (
+		containerID = "123"
+		config      = agent.ContainerConfig{
+			Resources: agent.Resources{
+				Mem: 100,
+				CPU: 2,
+			},
+		}
+	)
 
-	if err := createContainer(server.URL, config, "containerID"); err != nil {
+	if err := client.Put(containerID, config); err != nil {
 		t.Fatal(err)
 	}
 
-	have, err = getResources(server.URL)
+	// Verify the HostResources are as we expect
+	have, err = client.Resources()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,11 +176,13 @@ func TestResources(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := deleteContainer(server.URL, "containerID"); err != nil {
+	// Destroy the container
+	if err := client.Destroy(containerID); err != nil {
 		t.Fatal(err)
 	}
 
-	have, err = getResources(server.URL)
+	// Verify the HostResources are reclaimed
+	have, err = client.Resources()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -486,21 +495,6 @@ func validateEvent(expected agent.HostResources, have agent.StateEvent, containe
 	return nil
 }
 
-func getResources(url string) (agent.HostResources, error) {
-	resp, err := http.Get(url + "/api/v0/resources")
-	if err != nil {
-		return agent.HostResources{}, fmt.Errorf("unable to get resources: %s", err)
-	}
-	defer resp.Body.Close()
-
-	var resources agent.HostResources
-	if err = json.NewDecoder(resp.Body).Decode(&resources); err != nil {
-		return agent.HostResources{}, fmt.Errorf("unable to read json response: %s", err)
-	}
-
-	return resources, nil
-}
-
 func validateResources(expected agent.HostResources, have agent.HostResources) error {
 	if expected.CPU != have.CPU {
 		return fmt.Errorf("invalid cpu resources: expected %v != have %v", expected.CPU, have.CPU)
@@ -513,41 +507,6 @@ func validateResources(expected agent.HostResources, have agent.HostResources) e
 	if !reflect.DeepEqual(expected.Volumes, have.Volumes) {
 		return fmt.Errorf("invalid volumes : expected %v != have %v", expected.Volumes, have.Volumes)
 	}
-
-	return nil
-}
-
-func createContainer(url string, config agent.ContainerConfig, id string) error {
-	var body bytes.Buffer
-	if err := json.NewEncoder(&body).Encode(config); err != nil {
-		return fmt.Errorf("problem encoding container config (%s)", err)
-	}
-
-	req, err := http.NewRequest("PUT", url+"/api/v0/containers/"+id, &body)
-	if err != nil {
-		return fmt.Errorf("problem constructing HTTP request (%s)", err)
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("could not create container")
-	}
-	defer resp.Body.Close()
-
-	return nil
-}
-
-func deleteContainer(url string, id string) error {
-	req, err := http.NewRequest("DELETE", url+"/api/v0/containers/"+id, nil)
-	if err != nil {
-		return fmt.Errorf("problem constructing HTTP request (%s)", err)
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("could not delete container")
-	}
-	defer resp.Body.Close()
 
 	return nil
 }

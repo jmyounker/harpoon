@@ -10,7 +10,7 @@ import (
 	dto "github.com/prometheus/client_model/go"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/soundcloud/harpoon/harpoon-agent/lib"
+	"github.com/soundcloud/harpoon/harpoon-agent/lib"	
 )
 
 func TestReceiveLogInstrumentation(t *testing.T) {

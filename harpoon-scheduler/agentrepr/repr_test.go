@@ -5,7 +5,7 @@ import (
 	"log"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
-	"github.com/soundcloud/harpoon/harpoon-scheduler/agentrepr"
+	"github.com/elenadeneva92/harpoon/harpoon-scheduler/agentrepr"
 
 	"testing"
 	"time"
