@@ -139,10 +139,16 @@ func (h *handler) handleRegistry(w http.ResponseWriter, r *http.Request) {
 func writeResponse(w http.ResponseWriter, code int, msg string) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status_code": code,
-		"msg":         quoteReplacer.Replace(msg),
+	json.NewEncoder(w).Encode(Response{
+		StatusCode: code,
+		Message:    quoteReplacer.Replace(msg),
 	})
 }
 
 var quoteReplacer = strings.NewReplacer(`"`, `'`)
+
+// Response is returned for RPC-style requests, like Schedule and Unschedule.
+type Response struct {
+	StatusCode int    `json:"status_code"`
+	Message    string `json:"msg"`
+}
