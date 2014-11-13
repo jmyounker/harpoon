@@ -45,11 +45,6 @@ func psAction(c *cli.Context) {
 		log.Fatalf("%s: when parsing response: %s", endpoint.Host, err)
 	}
 
-	if len(m) <= 0 {
-		log.Verbosef("no tasks in the scheduling domain")
-		return
-	}
-
 	a := []string{}
 
 	if l {
@@ -78,6 +73,12 @@ func psAction(c *cli.Context) {
 				))
 			}
 		}
+	}
+
+	// Don't display header if we didn't have any rows.
+	if len(a) <= 0 {
+		log.Verbosef("no tasks")
+		return
 	}
 
 	sort.Sort(sort.StringSlice(a))

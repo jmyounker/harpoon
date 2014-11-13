@@ -99,14 +99,17 @@ func psAction(c *cli.Context) {
 		}
 	}
 
+	// Don't display header if we didn't have any rows.
+	if len(a) <= 0 {
+		log.Verbosef("no tasks")
+		return
+	}
+
 	sort.StringSlice(a).Sort()
 
 	for _, s := range a {
 		fmt.Fprintf(w, s)
 	}
 
-	// Don't display header if we didn't have any rows.
-	if len(a) > 0 {
-		w.Flush()
-	}
+	w.Flush()
 }

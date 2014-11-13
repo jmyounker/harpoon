@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sort"
 	"text/tabwriter"
 
 	"github.com/codegangsta/cli"
@@ -38,15 +39,17 @@ func registryAction(c *cli.Context) {
 		log.Fatalf("%s: when parsing response: %s", endpoint.Host, err)
 	}
 
+	// Don't display header if we didn't have any rows.
 	if len(m) <= 0 {
-		log.Verbosef("no jobs in the registry")
+		log.Verbosef("no jobs")
 		return
 	}
 
+	a := []string{}
+
 	fmt.Fprint(w, "HASH\tJOB\tENV\tPROD\tSCALE\tCMD\tARTIFACT\n")
 	for _, c := range m {
-		fmt.Fprintf(
-			w,
+		a = append(a, fmt.Sprintf(
 			"%s\t%s\t%s\t%s\t%d\t%s\t%s\n",
 			c.Hash(),
 			c.Job,
@@ -55,7 +58,14 @@ func registryAction(c *cli.Context) {
 			c.Scale,
 			c.Command.Exec[0],
 			c.ArtifactURL,
-		)
+		))
 	}
+
+	sort.Sort(sort.StringSlice(a))
+
+	for _, s := range a {
+		fmt.Fprintf(w, s)
+	}
+
 	w.Flush()
 }
