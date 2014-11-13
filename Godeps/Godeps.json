@@ -20,23 +20,23 @@
 		},
 		{
 			"ImportPath": "github.com/codegangsta/cli",
-			"Comment": "1.2.0-28-g61f43e7",
-			"Rev": "61f43e76957561f52674f48b7dc9a07f53c8f398"
+			"Comment": "1.2.0-26-gf7ebb76",
+			"Rev": "f7ebb761e83e21225d1d8954fde853bf8edd46c4"
 		},
 		{
 			"ImportPath": "github.com/coreos/go-systemd/dbus",
-			"Comment": "v2-39-ge3e4f60",
-			"Rev": "e3e4f602334ec3e1c2cd68322a1284903c62f940"
+			"Comment": "v2-31-gc5023e7",
+			"Rev": "c5023e7fcbf021ef75cd1ec77c7ce9fffa771e5d"
 		},
 		{
 			"ImportPath": "github.com/docker/docker/pkg/mount",
-			"Comment": "v1.3.0-418-ge4fe85f",
-			"Rev": "e4fe85fc9554c09c210bb441161906f34ebe90db"
+			"Comment": "v1.2.0-644-gd142b18",
+			"Rev": "d142b18aab2a3b90959a2ab32676b388a5e98769"
 		},
 		{
 			"ImportPath": "github.com/docker/docker/pkg/symlink",
-			"Comment": "v1.3.0-418-ge4fe85f",
-			"Rev": "e4fe85fc9554c09c210bb441161906f34ebe90db"
+			"Comment": "v1.2.0-644-gd142b18",
+			"Rev": "d142b18aab2a3b90959a2ab32676b388a5e98769"
 		},
 		{
 			"ImportPath": "github.com/docker/libcontainer",
@@ -44,13 +44,9 @@
 			"Rev": "30e50af76076f6443feaef7284dc1f985d6f14ec"
 		},
 		{
-			"ImportPath": "github.com/fatih/color",
-			"Rev": "3161cccfa22c6243e02aa984cf2886d022024cec"
-		},
-		{
 			"ImportPath": "github.com/godbus/dbus",
-			"Comment": "0-13-g25a4b8c",
-			"Rev": "25a4b8ca48c64b3d631110fb74a210f56c401e0b"
+			"Comment": "0-11-gcfab99a",
+			"Rev": "cfab99a9500db4ba03067996059d2fc425090bf3"
 		},
 		{
 			"ImportPath": "github.com/julienschmidt/httprouter",

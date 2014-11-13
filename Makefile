@@ -1,4 +1,4 @@
-.PHONY: default clean build check govet test archive
+.PHONY: default clean build test archive dep
 
 VERSION := 0.0.6
 REV := $(shell git rev-parse --short HEAD)
@@ -36,18 +36,15 @@ $(GODEP):
 	$(GO) get github.com/tools/godep
 	touch $@
 
+dep: $(GODEP)
+	$(GOBIN)/godep restore
+
 build: $(DISTDIR)/harpoon-agent $(DISTDIR)/harpoon-supervisor $(DISTDIR)/harpoon-scheduler $(DISTDIR)/harpoonctl
 
 $(DISTDIR)/%: $(GODEP)
 	GOOS=$(GOOS) GOARCH=$(GOARCH) $(GODEP) go build -ldflags "$(LDFLAGS)" -o $(DISTDIR)/$* ./$*
 
-check: govet
-	./misc/check-style.sh
-
-govet:
-	$(GO) get code.google.com/p/go.tools/cmd/vet || $(GO) get golang.org/x/tools/cmd/vet
-
-test: $(GODEP) check
+test: $(GODEP)
 	GOOS=$(GOOS) GOARCH=$(GOARCH) $(GODEP) go test ./...
 
 archive: build test
