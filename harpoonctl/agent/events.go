@@ -22,18 +22,27 @@ var eventsCommand = cli.Command{
 }
 
 func eventsAction(c *cli.Context) {
-	type cStopper struct {
-		c <-chan string
-		agent.Stopper
-	}
+	type Stopper agent.Stopper
 
 	var (
-		id   = c.Args().First()
-		epec = make(chan (<-chan agent.StateEvent), len(endpoints)) // endpoint event channels
-		wg   = sync.WaitGroup{}
+		id       = c.Args().First()
+		epec     = make(chan (<-chan agent.StateEvent), len(endpoints)) // endpoint event channels
+		stoppers = make(chan Stopper, len(endpoints))
+		wg       = sync.WaitGroup{}
 	)
 
-	// I should probaly shut this thing down gracefully, but it works.
+	// Shut down opened clients at termination
+	defer func(sc chan Stopper) {
+		for {
+			select {
+			case s := <-sc:
+				s.Stop()
+			default:
+				return
+			}
+		}
+	}(stoppers)
+
 	for _, u := range endpoints {
 		go func(u *url.URL) {
 			var c <-chan agent.StateEvent
@@ -47,11 +56,12 @@ func eventsAction(c *cli.Context) {
 
 			log.Verbosef("%s: checking %s...", u.Host, id)
 
-			c, _, err = client.Events()
+			c, stopper, err := client.Events()
 			if err != nil {
 				log.Warnf("%s: %s", u.Host, err)
 				return
 			}
+			stoppers <- stopper
 
 			log.Verbosef("%s: %s found", u.Host, id)
 		}(u)
@@ -69,7 +79,8 @@ func eventsAction(c *cli.Context) {
 		wg.Add(1)
 
 		// Spew events from this one agent's channel
-		go func() {
+		go func(wg *sync.WaitGroup) {
+			defer wg.Done()
 			for e := range ec {
 				m, err := json.Marshal(e)
 				if err != nil {
@@ -78,7 +89,7 @@ func eventsAction(c *cli.Context) {
 				}
 				fmt.Fprintf(os.Stdout, fmt.Sprintf("%s\n", string(m)))
 			}
-		}()
+		}(&wg)
 	}
 
 	wg.Wait()
