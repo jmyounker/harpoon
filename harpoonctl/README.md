@@ -43,7 +43,7 @@ COMMANDS:
 
 OPTIONS:
    -e, --endpoint '-e option -e option'  agent endpoint(s) (repeatable, overrides --cluster)
-   -c, --cluster 'default'               read agent endpoint(s) from /Users/peter/.harpoonctl/cluster/default
+   -c, --cluster 'default'               read agent endpoint(s) from $HOME/.harpoonctl/cluster/default
 ```
 
 ### Specifying endpoints
