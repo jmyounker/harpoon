@@ -36,6 +36,7 @@ func createAction(c *cli.Context) {
 	if err != nil {
 		log.Fatalf("%s: %s", filename, err)
 	}
+	defer f.Close()
 
 	var cfg agent.ContainerConfig
 	if err := json.NewDecoder(f).Decode(&cfg); err != nil {

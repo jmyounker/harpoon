@@ -31,17 +31,15 @@ var (
 )
 
 var endpointFlag = cli.StringSliceFlag{
-	Name:   "e, endpoint",
-	Value:  &cli.StringSlice{},
-	Usage:  "agent endpoint(s) (repeatable, overrides --cluster)",
-	EnvVar: "",
+	Name:  "e, endpoint",
+	Value: &cli.StringSlice{},
+	Usage: "agent endpoint(s) (repeatable, overrides --cluster)",
 }
 
 var clusterFlag = cli.StringFlag{
-	Name:   "c, cluster",
-	Value:  "default",
-	Usage:  "read agent endpoint(s) from " + clusterPath + "/default",
-	EnvVar: "",
+	Name:  "c, cluster",
+	Value: "default",
+	Usage: "read agent endpoint(s) from " + clusterPath + "/default",
 }
 
 var endpoints = []*url.URL{}
