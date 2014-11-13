@@ -44,6 +44,10 @@
 			"Rev": "30e50af76076f6443feaef7284dc1f985d6f14ec"
 		},
 		{
+			"ImportPath": "github.com/fatih/color",
+			"Rev": "3161cccfa22c6243e02aa984cf2886d022024cec"
+		},
+		{
 			"ImportPath": "github.com/godbus/dbus",
 			"Comment": "0-11-gcfab99a",
 			"Rev": "cfab99a9500db4ba03067996059d2fc425090bf3"
