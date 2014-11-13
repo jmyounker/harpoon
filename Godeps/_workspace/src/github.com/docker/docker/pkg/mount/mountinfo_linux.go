@@ -1,5 +1,3 @@
-// +build linux
-
 package mount
 
 import (
@@ -73,15 +71,4 @@ func parseInfoFile(r io.Reader) ([]*MountInfo, error) {
 		out = append(out, p)
 	}
 	return out, nil
-}
-
-// PidMountInfo collects the mounts for a specific Pid
-func PidMountInfo(pid int) ([]*MountInfo, error) {
-	f, err := os.Open(fmt.Sprintf("/proc/%d/mountinfo", pid))
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	return parseInfoFile(f)
 }

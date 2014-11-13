@@ -46,7 +46,7 @@ func findFixture(target string, t *testing.T) string {
 
 func setupUnit(target string, conn *Conn, t *testing.T) {
 	// Blindly stop the unit in case it is running
-	conn.StopUnit(target, "replace", nil)
+	conn.StopUnit(target, "replace")
 
 	// Blindly remove the symlink in case it exists
 	targetRun := filepath.Join("/run/systemd/system/", target)
@@ -81,13 +81,11 @@ func TestStartStopUnit(t *testing.T) {
 	linkUnit(target, conn, t)
 
 	// 2. Start the unit
-	reschan := make(chan string)
-	_, err := conn.StartUnit(target, "replace", reschan)
+	job, err := conn.StartUnit(target, "replace")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	job := <-reschan
 	if job != "done" {
 		t.Fatal("Job is not done:", job)
 	}
@@ -110,13 +108,10 @@ func TestStartStopUnit(t *testing.T) {
 	}
 
 	// 3. Stop the unit
-	_, err = conn.StopUnit(target, "replace", reschan)
+	job, err = conn.StopUnit(target, "replace")
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// wait for StopUnit job to complete
-	<-reschan
 
 	units, err = conn.ListUnits()
 
@@ -265,13 +260,11 @@ func TestStartStopTransientUnit(t *testing.T) {
 	target := fmt.Sprintf("testing-transient-%d.service", rand.Int())
 
 	// Start the unit
-	reschan := make(chan string)
-	_, err := conn.StartTransientUnit(target, "replace", props, reschan)
+	job, err := conn.StartTransientUnit(target, "replace", props...)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	job := <-reschan
 	if job != "done" {
 		t.Fatal("Job is not done:", job)
 	}
@@ -294,13 +287,10 @@ func TestStartStopTransientUnit(t *testing.T) {
 	}
 
 	// 3. Stop the unit
-	_, err = conn.StopUnit(target, "replace", reschan)
+	job, err = conn.StopUnit(target, "replace")
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// wait for StopUnit job to complete
-	<-reschan
 
 	units, err = conn.ListUnits()
 
@@ -325,20 +315,15 @@ func TestConnJobListener(t *testing.T) {
 
 	jobSize := len(conn.jobListener.jobs)
 
-	reschan := make(chan string)
-	_, err := conn.StartUnit(target, "replace", reschan)
+	_, err := conn.StartUnit(target, "replace")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	<-reschan
-
-	_, err = conn.StopUnit(target, "replace", reschan)
+	_, err = conn.StopUnit(target, "replace")
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	<-reschan
 
 	currentJobSize := len(conn.jobListener.jobs)
 	if jobSize != currentJobSize {
