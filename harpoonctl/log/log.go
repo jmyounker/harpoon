@@ -19,7 +19,7 @@ var (
 	normal  = color.New()
 	verbose = color.New(color.FgCyan)
 	warn    = color.New(color.FgYellow, color.Bold)
-	fatal   = color.New(color.FgRed, color.Bold)
+	red     = color.New(color.FgRed, color.Bold)
 )
 
 // Printf prints normal information.
@@ -39,9 +39,14 @@ func Warnf(format string, args ...interface{}) {
 	printWith(warn, format, args...)
 }
 
+// Errorf prints error information.
+func Errorf(format string, args ...interface{}) {
+	printWith(red, format, args...)
+}
+
 // Fatalf prints error information, and terminates execution.
 func Fatalf(format string, args ...interface{}) {
-	printWith(fatal, format, args...)
+	printWith(red, format, args...)
 	os.Exit(1)
 }
 

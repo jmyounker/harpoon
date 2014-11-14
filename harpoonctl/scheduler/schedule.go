@@ -42,25 +42,39 @@ func scheduleAction(c *cli.Context) {
 		log.Fatalf("%s: %s", filename, err)
 	}
 
+	if err := schedule(cfg); err != nil {
+		log.Fatalf("%s: %s", endpoint.Host, err)
+	}
+
+	log.Verbosef("schedule %s OK", cfg.Job)
+}
+
+func schedule(cfg configstore.JobConfig) error {
+	buf, err := json.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+
 	req, err := http.NewRequest(
 		"PUT",
 		endpoint.String()+schedulerapi.APIVersionPrefix+schedulerapi.APISchedulePath,
 		bytes.NewReader(buf),
 	)
 	if err != nil {
-		log.Fatalf("%s", err)
+		return err
 	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		log.Fatalf("%s: %s", endpoint.Host, err)
+		return err
 	}
 	defer resp.Body.Close()
 
 	var r schedulerapi.Response
 	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
-		log.Warnf("%s: when parsing response: %s", endpoint.Host, err)
+		return err
 	}
 
 	log.Printf("%s: %s - %s", endpoint.Host, http.StatusText(r.StatusCode), r.Message)
+	return nil
 }

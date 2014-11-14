@@ -3,12 +3,12 @@ package scheduler
 import (
 	"bytes"
 	"encoding/json"
-	"io"
 	"io/ioutil"
 	"net/http"
 
 	"github.com/codegangsta/cli"
 
+	"github.com/soundcloud/harpoon/harpoon-configstore/lib"
 	schedulerapi "github.com/soundcloud/harpoon/harpoon-scheduler/api"
 	"github.com/soundcloud/harpoon/harpoonctl/log"
 )
@@ -28,35 +28,75 @@ func unscheduleAction(c *cli.Context) {
 		log.Fatalf("usage: unschedule <jobconfig.json / hash>")
 	}
 
-	var (
-		path string
-		body io.Reader
-	)
-
 	buf, err := ioutil.ReadFile(arg)
 	if err == nil {
-		log.Verbosef("passing contents of %s as request body", arg)
-		path = endpoint.String() + schedulerapi.APIVersionPrefix + schedulerapi.APIUnschedulePath
-		body = bytes.NewReader(buf)
+		log.Verbosef("interpreting %s as a config file", arg)
+
+		var cfg configstore.JobConfig
+		if err := json.Unmarshal(buf, &cfg); err != nil {
+			log.Fatalf("%s: %s", arg, err)
+		}
+
+		if err := unscheduleConfig(cfg); err != nil {
+			log.Fatalf("%s: %s", arg, err)
+		}
 	} else {
-		log.Verbosef("passing %s as job config hash", arg)
-		path = endpoint.String() + schedulerapi.APIVersionPrefix + schedulerapi.APIUnschedulePath + "/" + arg
+		log.Verbosef("interpreting %s as job config hash", arg)
+
+		if err := unscheduleHash(arg); err != nil {
+			log.Fatalf("%s: %s", arg, err)
+		}
+	}
+}
+
+func unscheduleConfig(cfg configstore.JobConfig) error {
+	if err := cfg.Valid(); err != nil {
+		return err
 	}
 
-	req, err := http.NewRequest("PUT", path, body)
+	buf, err := json.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest(
+		"PUT",
+		endpoint.String()+schedulerapi.APIVersionPrefix+schedulerapi.APIUnschedulePath,
+		bytes.NewReader(buf),
+	)
+	if err != nil {
+		return err
+	}
+
+	return unscheduleRequest(req)
+}
+
+func unscheduleHash(jobConfigHash string) error {
+	req, err := http.NewRequest(
+		"PUT",
+		endpoint.String()+schedulerapi.APIVersionPrefix+schedulerapi.APIUnschedulePath+"/"+jobConfigHash,
+		nil,
+	)
 	if err != nil {
 		log.Fatalf("%s", err)
 	}
 
+	return unscheduleRequest(req)
+}
+
+func unscheduleRequest(req *http.Request) error {
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		log.Fatalf("%s: %s", endpoint.Host, err)
+		return err
 	}
+	defer resp.Body.Close()
 
 	var r schedulerapi.Response
 	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
-		log.Warnf("%s: when parsing response: %s", endpoint.Host, err)
+		return err
 	}
 
 	log.Printf("%s: %s - %s", endpoint.Host, http.StatusText(r.StatusCode), r.Message)
+
+	return nil
 }
