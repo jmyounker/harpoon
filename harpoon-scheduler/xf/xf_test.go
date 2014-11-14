@@ -3,6 +3,7 @@ package xf
 import (
 	"io/ioutil"
 	"log"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -335,6 +336,96 @@ func TestRetryingMutation(t *testing.T) {
 	}
 }
 
+// https://github.com/soundcloud/harpoon/issues/121
+func TestSchedulerRestartsDisappearingTasksIndefinitely(t *testing.T) {
+	Debugf = t.Logf
+
+	var (
+		desire = newFakeDesireBroadcaster()
+		actual = newFakeActualBroadcaster()
+		target = &mockTaskScheduler{}
+	)
+
+	// Start a scheduler (Transform) talking to 2 agents
+
+	actual.set(map[string]agent.StateEvent{
+		"leeroy":  agent.StateEvent{},
+		"jenkins": agent.StateEvent{},
+	})
+
+	go Transform(desire, actual, target)
+	time.Sleep(time.Millisecond) // let Transform subscribe
+
+	// Schedule a job with scale = 3
+
+	jobConfig := configstore.JobConfig{Job: "a", Scale: 3}
+	desire.set(map[string]configstore.JobConfig{"a": jobConfig})
+	time.Sleep(time.Millisecond)
+
+	if want, have := int32(3), target.schedules; want != have {
+		t.Fatalf("want %d, have %d", want, have)
+	}
+
+	var (
+		id0 = makeContainerID(jobConfig.Hash(), 0)
+		ci0 = agent.ContainerInstance{ID: id0, ContainerStatus: agent.ContainerStatusRunning}
+		id1 = makeContainerID(jobConfig.Hash(), 1)
+		ci1 = agent.ContainerInstance{ID: id1, ContainerStatus: agent.ContainerStatusRunning}
+		id2 = makeContainerID(jobConfig.Hash(), 2)
+		ci2 = agent.ContainerInstance{ID: id2, ContainerStatus: agent.ContainerStatusRunning}
+	)
+
+	actual.set(map[string]agent.StateEvent{
+		"leeroy":  agent.StateEvent{Containers: map[string]agent.ContainerInstance{id0: ci0, id1: ci1}},
+		"jenkins": agent.StateEvent{Containers: map[string]agent.ContainerInstance{id2: ci2}},
+	})
+	t.Logf("(all tasks started and running)")
+	time.Sleep(time.Millisecond)
+
+	// Disappear one of the tasks
+
+	actual.set(map[string]agent.StateEvent{
+		"leeroy":  agent.StateEvent{Containers: map[string]agent.ContainerInstance{id0: ci0}},
+		"jenkins": agent.StateEvent{Containers: map[string]agent.ContainerInstance{id2: ci2}},
+	})
+	t.Logf("(task 1 has disappeared)")
+	time.Sleep(time.Millisecond)
+
+	// The scheduler (Transform) should restart it
+
+	if want, have := int32(4), target.schedules; want != have {
+		t.Fatalf("want %d, have %d", want, have)
+	}
+
+	actual.set(map[string]agent.StateEvent{
+		"leeroy":  agent.StateEvent{Containers: map[string]agent.ContainerInstance{id0: ci0, id1: ci1}},
+		"jenkins": agent.StateEvent{Containers: map[string]agent.ContainerInstance{id2: ci2}},
+	})
+	t.Logf("(the task comes back)")
+	time.Sleep(time.Millisecond)
+
+	// Disappear the task again
+
+	actual.set(map[string]agent.StateEvent{
+		"leeroy":  agent.StateEvent{Containers: map[string]agent.ContainerInstance{id0: ci0}},
+		"jenkins": agent.StateEvent{Containers: map[string]agent.ContainerInstance{id2: ci2}},
+	})
+	t.Logf("(task 1 has disappeared again)")
+	time.Sleep(time.Millisecond)
+
+	// The scheduler (Transform) should restart it again
+
+	if want, have := int32(5), target.schedules; want != have {
+		t.Fatalf("want %d, have %d", want, have)
+	}
+
+	actual.set(map[string]agent.StateEvent{
+		"leeroy":  agent.StateEvent{Containers: map[string]agent.ContainerInstance{id0: ci0, id1: ci1}},
+		"jenkins": agent.StateEvent{Containers: map[string]agent.ContainerInstance{id2: ci2}},
+	})
+	t.Logf("(the task comes back again)")
+}
+
 type mockTaskScheduler struct {
 	schedules   int32
 	unschedules int32
@@ -348,4 +439,99 @@ func (s *mockTaskScheduler) Schedule(endpoint, id string, _ agent.ContainerConfi
 func (s *mockTaskScheduler) Unschedule(endpoint, id string) error {
 	atomic.AddInt32(&s.unschedules, 1)
 	return nil
+}
+
+type fakeDesireBroadcaster struct {
+	sync.RWMutex
+	subs map[chan<- map[string]configstore.JobConfig]struct{}
+	m    map[string]configstore.JobConfig
+}
+
+func newFakeDesireBroadcaster() *fakeDesireBroadcaster {
+	return &fakeDesireBroadcaster{
+		subs: map[chan<- map[string]configstore.JobConfig]struct{}{},
+		m:    map[string]configstore.JobConfig{},
+	}
+}
+
+func (b *fakeDesireBroadcaster) Subscribe(c chan<- map[string]configstore.JobConfig) {
+	b.Lock()
+	defer b.Unlock()
+
+	b.subs[c] = struct{}{}
+	go func(m map[string]configstore.JobConfig) { c <- m }(b.m)
+}
+
+func (b *fakeDesireBroadcaster) Unsubscribe(c chan<- map[string]configstore.JobConfig) {
+	b.Lock()
+	defer b.Unlock()
+
+	delete(b.subs, c)
+	close(c)
+}
+
+func (b *fakeDesireBroadcaster) set(m map[string]configstore.JobConfig) {
+	b.Lock()
+	defer b.Unlock()
+
+	b.m = m
+	b.broadcast()
+}
+
+func (b *fakeDesireBroadcaster) broadcast() {
+	log.Printf("### fakeDesireBroadcaster broadcasting to %d", len(b.subs))
+	for c := range b.subs {
+		select {
+		case c <- b.m:
+		case <-time.After(time.Millisecond):
+			panic("slow subscriber in fakeDesireBroadcaster")
+		}
+	}
+}
+
+type fakeActualBroadcaster struct {
+	sync.RWMutex
+	subs map[chan<- map[string]agent.StateEvent]struct{}
+	m    map[string]agent.StateEvent
+}
+
+func newFakeActualBroadcaster() *fakeActualBroadcaster {
+	return &fakeActualBroadcaster{
+		subs: map[chan<- map[string]agent.StateEvent]struct{}{},
+		m:    map[string]agent.StateEvent{},
+	}
+}
+
+func (b *fakeActualBroadcaster) Subscribe(c chan<- map[string]agent.StateEvent) {
+	b.Lock()
+	defer b.Unlock()
+
+	b.subs[c] = struct{}{}
+	go func(m map[string]agent.StateEvent) { c <- m }(b.m)
+}
+
+func (b *fakeActualBroadcaster) Unsubscribe(c chan<- map[string]agent.StateEvent) {
+	b.Lock()
+	defer b.Unlock()
+
+	delete(b.subs, c)
+	close(c)
+}
+
+func (b *fakeActualBroadcaster) set(m map[string]agent.StateEvent) {
+	b.Lock()
+	defer b.Unlock()
+
+	b.m = m
+	b.broadcast()
+}
+
+func (b *fakeActualBroadcaster) broadcast() {
+	for c := range b.subs {
+		select {
+		case c <- b.m:
+		case <-time.After(time.Millisecond):
+			panic("slow subscriber in fakeActualBroadcaster")
+		}
+	}
 }
