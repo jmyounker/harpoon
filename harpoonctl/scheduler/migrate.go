@@ -7,10 +7,13 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/codegangsta/cli"
 
+	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 	"github.com/soundcloud/harpoon/harpoon-configstore/lib"
+	"github.com/soundcloud/harpoon/harpoon-scheduler/xf"
 	"github.com/soundcloud/harpoon/harpoonctl/log"
 )
 
@@ -67,18 +70,18 @@ func migrateAction(c *cli.Context) {
 	// Migrate is a stateful action, so we need to be more careful.
 
 	var (
-		irqc   = make(chan os.Signal) // ctrl-C
-		abortc = make(chan struct{})  // into migrate goroutine
-		errc   = make(chan error)     // out of migrate goroutine
+		signalc    = make(chan os.Signal) // ctrl-C
+		interruptc = make(chan struct{})  // into migrate goroutine
+		errc       = make(chan error)     // out of migrate goroutine
 	)
 
-	signal.Notify(irqc, syscall.SIGINT, syscall.SIGTERM)
-	go func() { errc <- migrate(oldJob, newJob, abortc) }()
+	signal.Notify(signalc, syscall.SIGINT, syscall.SIGTERM)
+	go func() { errc <- migrate(oldJob, newJob, interruptc) }()
 
 	select {
-	case sig := <-irqc:
+	case sig := <-signalc:
 		log.Errorf("received %s, terminating migration...", sig)
-		close(abortc)
+		close(interruptc)
 		log.Fatalf("migration failed: %s", <-errc)
 
 	case err := <-errc:
@@ -90,20 +93,152 @@ func migrateAction(c *cli.Context) {
 	log.Printf("migration complete")
 }
 
-func migrate(oldJob, newJob configstore.JobConfig, abortc chan struct{}) error {
-	// TODO(pb): wire in abortc everywhere
+func migrate(oldJob, newJob configstore.JobConfig, interruptc chan struct{}) error {
+	abortable := func(f func() error) error {
+		errc := make(chan error, 1)
 
-	if err := schedule(newJob); err != nil {
+		go func() { errc <- f() }()
+
+		select {
+		case <-interruptc:
+			return fmt.Errorf("interrupted")
+		case err := <-errc:
+			return err
+		}
+	}
+
+	var (
+		scheduleTimeout   = newJob.Grace.Startup.Duration * 2
+		unscheduleTimeout = oldJob.Grace.Shutdown.Duration * 2
+	)
+
+	// Schedule new job.
+	if err := abortable(func() error { return schedule(newJob) }); err != nil {
 		return fmt.Errorf("request to schedule new job failed: %s", err)
 	}
 
-	// TODO(pb): wait for all new tasks to be running
+	// Wait for all new tasks to be running.
+	if err := abortable(func() error { return waitForRunning(tasksFor(newJob), scheduleTimeout) }); err != nil {
+		return fmt.Errorf("when waiting for new tasks: %s", err)
+	}
 
-	if err := unscheduleConfig(oldJob); err != nil {
+	// Unschedule old job.
+	if err := abortable(func() error { return unscheduleConfig(oldJob) }); err != nil {
 		return fmt.Errorf("request to unschedule old job failed: %s", err)
 	}
 
-	// TODO(pb): wait for all old tasks to be terminated
+	// Wait for all old tasks to be terminated.
+	if err := abortable(func() error { return waitForDeleted(tasksFor(oldJob), unscheduleTimeout) }); err != nil {
+		return fmt.Errorf("when waiting for old tasks: %s", err)
+	}
 
 	return nil
+}
+
+func tasksFor(c configstore.JobConfig) []string {
+	var (
+		hash    = c.Hash()
+		taskIDs = []string{}
+	)
+
+	for i := 0; i < c.Scale; i++ {
+		taskIDs = append(taskIDs, xf.MakeContainerID(hash, i))
+	}
+
+	return taskIDs
+}
+
+func waitForRunning(taskIDs []string, timeout time.Duration) error {
+	var (
+		begin    = time.Now()
+		deadline = begin.Add(timeout)
+		interval = 250 * time.Millisecond
+		want     = map[string]struct{}{}
+	)
+
+	for _, id := range taskIDs {
+		want[id] = struct{}{}
+	}
+
+	for _ = range time.Tick(interval) {
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timeout (%s) exceeded", timeout)
+		}
+
+		m, err := currentState()
+		if err != nil {
+			log.Warnf("%s: %s", endpoint.Host, err)
+			continue
+		}
+
+		have := map[string]struct{}{}
+
+		for _, e := range m {
+			for id, ci := range e.Containers {
+				if _, ok := want[id]; ok && ci.ContainerStatus == agent.ContainerStatusRunning {
+					have[id] = struct{}{}
+				}
+			}
+		}
+
+		if len(have) < len(want) {
+			log.Verbosef("waiting for %d task(s) to be started: %d started, %d still pending", len(want), len(have), len(want)-len(have))
+			continue
+		}
+
+		log.Printf("%d task(s) started in %s", len(taskIDs), time.Since(begin))
+		return nil
+	}
+
+	panic("unreachable")
+}
+
+func waitForDeleted(taskIDs []string, timeout time.Duration) error {
+	var (
+		begin    = time.Now()
+		deadline = begin.Add(timeout)
+		interval = 250 * time.Millisecond
+		want     = map[string]struct{}{}
+	)
+
+	for _, id := range taskIDs {
+		want[id] = struct{}{}
+	}
+
+	for _ = range time.Tick(interval) {
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timeout (%s) exceeded", timeout)
+		}
+
+		m, err := currentState()
+		if err != nil {
+			log.Warnf("%s: %s", endpoint.Host, err)
+			continue
+		}
+
+		for wantID := range want {
+			if found := func() bool {
+				for _, e := range m {
+					for foundID := range e.Containers {
+						if wantID == foundID {
+							return true
+						}
+					}
+				}
+				return false
+			}(); found {
+				delete(want, wantID)
+			}
+		}
+
+		if len(want) > 0 {
+			log.Verbosef("waiting for %d task(s) to be stopped: %d stopped, %d still pending", len(taskIDs), len(taskIDs)-len(want), len(want))
+			continue
+		}
+
+		log.Printf("%d task(s) stopped in %s", len(taskIDs), time.Since(begin))
+		return nil
+	}
+
+	panic("unreachable")
 }
