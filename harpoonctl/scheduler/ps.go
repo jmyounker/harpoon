@@ -1,10 +1,10 @@
 package scheduler
 
 import (
-	"net/url"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"text/tabwriter"
 
@@ -12,8 +12,8 @@ import (
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 	schedulerapi "github.com/soundcloud/harpoon/harpoon-scheduler/api"
-	"github.com/soundcloud/harpoon/harpoonctl/log"
 	agentcmd "github.com/soundcloud/harpoon/harpoonctl/agent"
+	"github.com/soundcloud/harpoon/harpoonctl/log"
 )
 
 var psCommand = cli.Command{
