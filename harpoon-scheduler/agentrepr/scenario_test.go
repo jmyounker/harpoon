@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/elenadeneva92/harpoon/harpoon-agent/lib"
-	"github.com/elenadeneva92/harpoon/harpoon-scheduler/agentrepr"
+	"github.com/soundcloud/harpoon/harpoon-agent/lib"
+	"github.com/soundcloud/harpoon/harpoon-scheduler/agentrepr"
 )
 
 func TestCreatedBecomesRunning(t *testing.T) {
