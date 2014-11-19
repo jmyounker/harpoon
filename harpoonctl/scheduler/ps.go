@@ -31,18 +31,12 @@ var longFlag = cli.BoolFlag{
 func psAction(c *cli.Context) {
 	var (
 		l = c.Bool("long")
-		m = map[string]agent.StateEvent{}
 		w = tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
 	)
 
-	resp, err := http.Get(endpoint.String() + schedulerapi.APIVersionPrefix + schedulerapi.APIProxyPath)
+	m, err := currentState()
 	if err != nil {
-		log.Fatalf("%s", err)
-	}
-	defer resp.Body.Close()
-
-	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
-		log.Fatalf("%s: when parsing response: %s", endpoint.Host, err)
+		log.Fatalf("%s: %s", endpoint.Host, err)
 	}
 
 	a := []string{}
@@ -88,4 +82,19 @@ func psAction(c *cli.Context) {
 	}
 
 	w.Flush()
+}
+
+func currentState() (map[string]agent.StateEvent, error) {
+	resp, err := http.Get(endpoint.String() + schedulerapi.APIVersionPrefix + schedulerapi.APIProxyPath)
+	if err != nil {
+		return map[string]agent.StateEvent{}, err
+	}
+	defer resp.Body.Close()
+
+	var m map[string]agent.StateEvent
+	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
+		return map[string]agent.StateEvent{}, fmt.Errorf("when parsing response: %s", err)
+	}
+
+	return m, nil
 }

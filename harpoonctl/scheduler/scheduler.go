@@ -18,7 +18,7 @@ var Command = cli.Command{
 	Name:        "scheduler",
 	Usage:       "Control a Harpoon agent",
 	Description: "Interact with a Harpoon scheduler.",
-	Subcommands: []cli.Command{registryCommand, psCommand, scheduleCommand, unscheduleCommand},
+	Subcommands: []cli.Command{registryCommand, psCommand, scheduleCommand, unscheduleCommand, migrateCommand},
 	Flags:       []cli.Flag{endpointFlag, schedulerFlag},
 	Before:      parseEndpoint,
 	HideHelp:    true,
