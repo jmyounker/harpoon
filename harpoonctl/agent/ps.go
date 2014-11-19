@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"sort"
 	"text/tabwriter"
 
 	"github.com/codegangsta/cli"
@@ -66,12 +67,13 @@ func WriteContainerPS(w writeFlusher, m map[string]map[string]agent.ContainerIns
 		return
 	}
 
+	lines := []string{}
+
 	if long {
 		fmt.Fprint(w, "AGENT\tID\tSTATUS\tCPUTIME\tMEM USED\tFDS\tRESTARTS\tOOMS\tCMD\tPORTS\tRC\n")
 		for host, containers := range m {
 			for id, ci := range containers {
-				fmt.Fprintf(
-					w,
+				lines = append(lines, fmt.Sprintf(
 					"%s\t%s\t%s\t%d\t%dM\t%d\t%d\t%d\t%s\t%+v\t%d\n",
 					host,
 					id,
@@ -84,23 +86,27 @@ func WriteContainerPS(w writeFlusher, m map[string]map[string]agent.ContainerIns
 					ci.Command.Exec[0],
 					ci.Ports,
 					ci.ExitStatus,
-				)
+				))
 			}
 		}
 	} else {
 		fmt.Fprint(w, "AGENT\tID\tSTATUS\tCMD\n")
 		for host, containers := range m {
 			for id, ci := range containers {
-				fmt.Fprintf(
-					w,
+				lines = append(lines, fmt.Sprintf(
 					"%s\t%s\t%s\t%s\n",
 					host,
 					id,
 					ci.ContainerStatus,
 					ci.Command.Exec[0],
-				)
+				))
 			}
 		}
+	}
+
+	sort.Sort(sort.StringSlice(lines))
+	for _, line := range lines {
+		fmt.Fprintf(w, line)
 	}
 
 	w.Flush()
