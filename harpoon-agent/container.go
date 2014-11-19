@@ -60,7 +60,7 @@ type realContainer struct {
 // Satisfaction guaranteed.
 var _ container = &realContainer{}
 
-func newContainer(id string, containerRoot string, config agent.ContainerConfig, pdb *portDB) *realContainer {
+func newRealContainer(id string, containerRoot string, config agent.ContainerConfig, pdb *portDB) container {
 	c := &realContainer{
 		ContainerInstance: agent.ContainerInstance{
 			ID:              id,
