@@ -15,33 +15,16 @@ import (
 
 var eventsCommand = cli.Command{
 	Name:        "events",
-	Usage:       "events",
-	Description: "Streams events from an agent.",
+	Usage:       "Stream events from agent(s)",
+	Description: "Displays events streaming from agent(s).",
 	Action:      eventsAction,
-	Flags:       []cli.Flag{},
 }
 
 func eventsAction(c *cli.Context) {
-	type Stopper agent.Stopper
-
 	var (
-		id       = c.Args().First()
-		epec     = make(chan (<-chan agent.StateEvent), len(endpoints)) // endpoint event channels
-		stoppers = make(chan Stopper, len(endpoints))
-		wg       = sync.WaitGroup{}
+		epec = make(chan (<-chan agent.StateEvent), len(endpoints)) // endpoint event channels
+		wg   = sync.WaitGroup{}
 	)
-
-	// Shut down opened clients at termination
-	defer func(sc chan Stopper) {
-		for {
-			select {
-			case s := <-sc:
-				s.Stop()
-			default:
-				return
-			}
-		}
-	}(stoppers)
 
 	for _, u := range endpoints {
 		go func(u *url.URL) {
@@ -54,16 +37,14 @@ func eventsAction(c *cli.Context) {
 				return
 			}
 
-			log.Verbosef("%s: checking %s...", u.Host, id)
+			log.Verbosef("%s: connected to host", u.Host)
 
-			c, stopper, err := client.Events()
+			c, _, err = client.Events()
 			if err != nil {
 				log.Warnf("%s: %s", u.Host, err)
 				return
 			}
-			stoppers <- stopper
-
-			log.Verbosef("%s: %s found", u.Host, id)
+			log.Verbosef("%s: connected to event stream", u.Host)
 		}(u)
 	}
 
