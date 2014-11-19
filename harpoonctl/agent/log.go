@@ -27,11 +27,6 @@ var historyFlag = cli.IntFlag{
 }
 
 func logAction(c *cli.Context) {
-	type cStopper struct {
-		c <-chan string
-		agent.Stopper
-	}
-
 	var (
 		id = c.Args().First()
 		n  = c.Int("history")

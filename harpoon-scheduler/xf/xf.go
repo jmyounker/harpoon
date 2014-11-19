@@ -146,7 +146,7 @@ func transform(
 	var (
 		wantTasks    = map[string]agent.ContainerConfig{}              // id: config
 		haveTasks    = map[string]map[string]agent.ContainerInstance{} // id: endpoint: instance
-		toKeep       = map[string]string{}                             // endpoint: id
+		toKeep       = map[string][]string{}                           // endpoint: ids
 		toSchedule   = map[string]agent.ContainerConfig{}              // id: config
 		toStart      = map[string]map[string]agent.ContainerConfig{}   // endpoint: configs
 		toUnschedule = map[string][]string{}                           // endpoint: ids
@@ -155,7 +155,7 @@ func transform(
 	// Expand every wanted Job to its composite tasks.
 	for _, config := range want {
 		for i := 0; i < config.Scale; i++ {
-			wantTasks[makeContainerID(config.Hash(), i)] = config.ContainerConfig
+			wantTasks[MakeContainerID(config.Hash(), i)] = config.ContainerConfig
 		}
 	}
 
@@ -271,7 +271,7 @@ func transform(
 				if running || finished || failed {
 					// The container is already being supervised.
 					delete(haveTasks[id], endpoint) // accounted-for
-					toKeep[endpoint] = id
+					toKeep[endpoint] = append(toKeep[endpoint], id)
 					satisfied = true
 					continue
 				}
@@ -281,7 +281,7 @@ func transform(
 					// started. We'll just wait for it, and unschedule the
 					// others.
 					delete(haveTasks[id], endpoint) // accounted-for
-					toKeep[endpoint] = id
+					toKeep[endpoint] = append(toKeep[endpoint], id)
 					satisfied = true
 					continue
 				}
@@ -291,7 +291,7 @@ func transform(
 					// would stick around in Created state. Keep it, and also
 					// re-emit the scheduling signal.
 					delete(haveTasks[id], endpoint) // accounted-for
-					toKeep[endpoint] = id
+					toKeep[endpoint] = append(toKeep[endpoint], id)
 					{
 						m, ok := toStart[endpoint]
 						if !ok {
@@ -347,16 +347,11 @@ func transform(
 		}
 	}
 
-	var killCount int
-	for _, endpoints := range toUnschedule {
-		killCount += len(endpoints)
-	}
-
 	Debugf(
-		"after scan: %d to keep, %d to schedule, %d to unschedule",
-		len(toKeep),
+		"after scan: keep %d task(s), schedule %d task(s), unschedule %d task(s)",
+		count(toKeep),
 		len(toSchedule),
-		killCount,
+		count(toUnschedule),
 	)
 
 	// Schedule those containers that need it.
@@ -409,4 +404,11 @@ func transform(
 	}
 
 	return pending
+}
+
+func count(m map[string][]string) (n int) {
+	for _, a := range m {
+		n += len(a)
+	}
+	return n
 }

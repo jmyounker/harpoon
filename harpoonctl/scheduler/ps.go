@@ -4,14 +4,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
-	"sort"
 	"text/tabwriter"
 
 	"github.com/codegangsta/cli"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 	schedulerapi "github.com/soundcloud/harpoon/harpoon-scheduler/api"
+	agentcmd "github.com/soundcloud/harpoon/harpoonctl/agent"
 	"github.com/soundcloud/harpoon/harpoonctl/log"
 )
 
@@ -29,63 +30,57 @@ var longFlag = cli.BoolFlag{
 }
 
 func psAction(c *cli.Context) {
-	var (
-		l = c.Bool("long")
-		m = map[string]agent.StateEvent{}
-		w = tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
-	)
+	m, err := currentState()
+	if err != nil {
+		log.Fatalf("%s: %s", endpoint.Host, err)
+	}
 
+	agentcmd.WriteContainerPS(
+		tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0),
+		se2ci(m),
+		c.Bool("long"),
+	)
+}
+
+func currentState() (map[string]agent.StateEvent, error) {
 	resp, err := http.Get(endpoint.String() + schedulerapi.APIVersionPrefix + schedulerapi.APIProxyPath)
 	if err != nil {
-		log.Fatalf("%s", err)
+		return map[string]agent.StateEvent{}, err
 	}
 	defer resp.Body.Close()
 
+	var m map[string]agent.StateEvent
 	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
-		log.Fatalf("%s: when parsing response: %s", endpoint.Host, err)
+		return map[string]agent.StateEvent{}, fmt.Errorf("when parsing response: %s", err)
 	}
 
-	a := []string{}
+	return m, nil
+}
 
-	if l {
-		fmt.Fprintf(w, "AGENT\tID\tSTATUS\tCMD\tARTIFACT\n")
-		for endpoint, se := range m {
-			for _, ci := range se.Containers {
-				a = append(a, fmt.Sprintf(
-					"%s\t%s\t%s\t%s\t%s\n",
-					endpoint,
-					ci.ID,
-					ci.ContainerStatus,
-					ci.Command.Exec[0],
-					ci.ArtifactURL,
-				))
+func se2ci(m map[string]agent.StateEvent) map[string]map[string]agent.ContainerInstance {
+	out := map[string]map[string]agent.ContainerInstance{}
+
+	for endpoint, se := range m {
+		host := endpoint2host(endpoint)
+
+		for id, ci := range se.Containers {
+			if _, ok := out[host]; !ok {
+				out[host] = map[string]agent.ContainerInstance{}
 			}
-		}
-	} else {
-		fmt.Fprintf(w, "AGENT\tID\tSTATUS\n")
-		for endpoint, se := range m {
-			for _, ci := range se.Containers {
-				a = append(a, fmt.Sprintf(
-					"%s\t%s\t%s\n",
-					endpoint,
-					ci.ID,
-					ci.ContainerStatus,
-				))
-			}
+
+			out[host][id] = ci
 		}
 	}
 
-	// Don't display header if we didn't have any rows.
-	if len(a) <= 0 {
-		log.Verbosef("no tasks")
-		return
+	return out
+}
+
+func endpoint2host(endpoint string) string {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		log.Warnf("parsing endpoint %s: %s", err)
+		return endpoint
 	}
 
-	sort.Sort(sort.StringSlice(a))
-
-	for _, s := range a {
-		fmt.Fprintf(w, s)
-	}
-
-	w.Flush()
+	return u.Host
 }
