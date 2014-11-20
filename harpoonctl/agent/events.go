@@ -60,7 +60,7 @@ func eventsAction(c *cli.Context) {
 		wg.Add(1)
 
 		// Spew events from this one agent's channel
-		go func(wg *sync.WaitGroup) {
+		go func() {
 			defer wg.Done()
 			for e := range ec {
 				m, err := json.Marshal(e)
@@ -70,7 +70,7 @@ func eventsAction(c *cli.Context) {
 				}
 				fmt.Fprintf(os.Stdout, fmt.Sprintf("%s\n", string(m)))
 			}
-		}(&wg)
+		}()
 	}
 
 	wg.Wait()
