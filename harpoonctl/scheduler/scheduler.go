@@ -16,7 +16,7 @@ import (
 // Command is the scheduler subcommand.
 var Command = cli.Command{
 	Name:        "scheduler",
-	Usage:       "Control a Harpoon agent",
+	Usage:       "Control a Harpoon scheduler",
 	Description: "Interact with a Harpoon scheduler.",
 	Subcommands: []cli.Command{registryCommand, psCommand, scheduleCommand, unscheduleCommand, migrateCommand},
 	Flags:       []cli.Flag{endpointFlag, schedulerFlag},
