@@ -120,7 +120,7 @@ func (r Resources) Valid() error {
 
 // Storage describes storage requirements for a container.
 type Storage struct {
-	Temp    map[string]int    `json:"tmp"`     // container path: max alloc megabytes (-1 for unlimited)
+	Tmp     map[string]int    `json:"tmp"`     // container path: max alloc megabytes (-1 for unlimited)
 	Volumes map[string]string `json:"volumes"` // container path: host path
 }
 

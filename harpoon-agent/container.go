@@ -340,7 +340,7 @@ func (c *realContainer) validateConfig() error {
 		}
 	}
 
-	for dest, size := range c.ContainerConfig.Storage.Temp {
+	for dest, size := range c.ContainerConfig.Storage.Tmp {
 		if size != -1 {
 			return fmt.Errorf("cannot make tmpfs %q %dMB: sized tmpfs storage not yet supported", dest, size)
 		}

@@ -274,7 +274,7 @@ func (c *container) libcontainerConfig() *libcontainer.Config {
 		})
 	}
 
-	for dest := range c.agentConfig.Storage.Temp {
+	for dest := range c.agentConfig.Storage.Tmp {
 		config.MountConfig.Mounts = append(config.MountConfig.Mounts, &mount.Mount{
 			Type: "tmpfs", Destination: dest, Writable: true, Private: true,
 		})
