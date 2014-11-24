@@ -53,6 +53,10 @@ func psAction(c *cli.Context) {
 
 	for i := 0; i < cap(ch); i++ {
 		for host, containers := range <-ch {
+			if len(containers) <= 0 {
+				continue
+			}
+
 			m[host] = containers
 		}
 	}
