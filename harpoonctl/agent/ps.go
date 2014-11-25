@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"os"
 	"sort"
+	"strconv"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/codegangsta/cli"
@@ -74,22 +76,22 @@ func WriteContainerPS(w writeFlusher, m map[string]map[string]agent.ContainerIns
 	lines := []string{}
 
 	if long {
-		fmt.Fprint(w, "AGENT\tID\tSTATUS\tCPUTIME\tMEM USED\tFDS\tRESTARTS\tOOMS\tCMD\tPORTS\tRC\n")
+		fmt.Fprint(w, "AGENT\tID\tSTATUS\tCPU\tMEM\tFDS\t⟲\tOOMS\tCMD\tRC\tPORTS\n")
 		for host, containers := range m {
 			for id, ci := range containers {
 				lines = append(lines, fmt.Sprintf(
-					"%s\t%s\t%s\t%d\t%dM\t%d\t%d\t%d\t%s\t%+v\t%d\n",
+					"%s\t%s\t%s\t%ds\t%dM\t%d\t%d\t%d\t%s\t%d\t%s\n",
 					host,
 					id,
 					ci.ContainerStatus,
-					ci.ContainerMetrics.CPUTime,
-					ci.ContainerMetrics.MemoryUsage/1024/1024,
+					ci.ContainerMetrics.CPUTime/1e9,           // ns -> s
+					ci.ContainerMetrics.MemoryUsage/1024/1024, // B -> MB
 					ci.FD,
 					ci.Restarts,
 					ci.OOMs,
 					ci.Command.Exec[0],
-					ci.Ports,
 					ci.ExitStatus,
+					renderPorts(host, ci.Ports),
 				))
 			}
 		}
@@ -114,6 +116,17 @@ func WriteContainerPS(w writeFlusher, m map[string]map[string]agent.ContainerIns
 	}
 
 	w.Flush()
+}
+
+func renderPorts(host string, ports map[string]uint16) string {
+	var a []string
+	for _, port := range ports {
+		a = append(a, (&url.URL{
+			Scheme: "http",
+			Host:   strings.Split(host, ":")[0] + ":" + strconv.FormatUint(uint64(port), 10),
+		}).String())
+	}
+	return strings.Join(a, ", ")
 }
 
 type writeFlusher interface {
