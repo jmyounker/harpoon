@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"sort"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/codegangsta/cli"
@@ -101,17 +102,18 @@ func chooseEndpoint(c *cli.Context) *url.URL {
 
 	sort.Sort(byURL(a))
 
-	fmt.Fprintf(w, " \tAGENT\tCPU\tTOTAL\tMEM\tTOTAL\n")
+	fmt.Fprintf(w, " \tAGENT\tCPU FREE\tCPU TOTAL\tMEM FREE\tMEM TOTAL\tVOLUMES\n")
 	for i, ur := range a {
 		fmt.Fprintf(
 			w,
-			"%d\t%s\t%.2f\t%.2f\t%d\t%d\n",
+			"%d\t%s\t%.2f\t%.2f\t%d\t%d\t%s\n",
 			i+1,
 			ur.URL.Host,
-			ur.HostResources.CPU.Reserved,
+			ur.HostResources.CPU.Total-ur.HostResources.CPU.Reserved,
 			ur.HostResources.CPU.Total,
-			ur.HostResources.Mem.Reserved,
+			ur.HostResources.Mem.Total-ur.HostResources.Mem.Reserved,
 			ur.HostResources.Mem.Total,
+			strings.Join(ur.HostResources.Volumes, ", "),
 		)
 	}
 
