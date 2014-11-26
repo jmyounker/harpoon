@@ -24,23 +24,23 @@ func TestReceiveLogInstrumentation(t *testing.T) {
 	clearCounters()
 	sendLog("container[123] m1")
 	waitForLogLine(t, linec, 100*time.Millisecond)
-	ExpectCounterEqual(t, "log_received_lines_total", 1)
-	ExpectCounterEqual(t, "log_unparsable_lines_total", 0)
-	ExpectCounterEqual(t, "log_unroutable_lines_total", 0)
+	expectCounterEqual(t, "log_received_lines_total", 1)
+	expectCounterEqual(t, "log_unparsable_lines_total", 0)
+	expectCounterEqual(t, "log_unroutable_lines_total", 0)
 
 	clearCounters()
 	sendLog("container[23] m2")
 	expectNoLogLines(t, linec, 100*time.Millisecond)
-	ExpectCounterEqual(t, "log_received_lines_total", 1)
-	ExpectCounterEqual(t, "log_unparsable_lines_total", 0)
-	ExpectCounterEqual(t, "log_unroutable_lines_total", 1)
+	expectCounterEqual(t, "log_received_lines_total", 1)
+	expectCounterEqual(t, "log_unparsable_lines_total", 0)
+	expectCounterEqual(t, "log_unroutable_lines_total", 1)
 
 	clearCounters()
 	sendLog("ilj;irtr")
 	expectNoLogLines(t, linec, 100*time.Millisecond)
-	ExpectCounterEqual(t, "log_received_lines_total", 1)
-	ExpectCounterEqual(t, "log_unparsable_lines_total", 1)
-	ExpectCounterEqual(t, "log_unroutable_lines_total", 0)
+	expectCounterEqual(t, "log_received_lines_total", 1)
+	expectCounterEqual(t, "log_unparsable_lines_total", 1)
+	expectCounterEqual(t, "log_unroutable_lines_total", 0)
 }
 
 func TestLogInstrumentationNotifyWithoutWatchers(t *testing.T) {
@@ -59,11 +59,11 @@ func TestLogInstrumentationNotifyWithoutWatchers(t *testing.T) {
 	clearCounters()
 	sendLog("container[123] m1")
 	expectNoLogLines(t, nonDestinationLinec, 100*time.Millisecond)
-	ExpectCounterEqual(t, "log_received_lines_total", 1)
-	ExpectCounterEqual(t, "log_unparsable_lines_total", 0)
-	ExpectCounterEqual(t, "log_unroutable_lines_total", 0)
-	ExpectCounterEqual(t, "log_deliverable_lines_total", 0)
-	ExpectCounterEqual(t, "log_undelivered_lines_total", 0)
+	expectCounterEqual(t, "log_received_lines_total", 1)
+	expectCounterEqual(t, "log_unparsable_lines_total", 0)
+	expectCounterEqual(t, "log_unroutable_lines_total", 0)
+	expectCounterEqual(t, "log_deliverable_lines_total", 0)
+	expectCounterEqual(t, "log_undelivered_lines_total", 0)
 }
 
 func TestLogInstrumentationNotifyWatchers(t *testing.T) {
@@ -81,11 +81,11 @@ func TestLogInstrumentationNotifyWatchers(t *testing.T) {
 	sendLog("container[123] m1")
 	waitForLogLine(t, linec1, 100*time.Millisecond)
 	waitForLogLine(t, linec2, 100*time.Millisecond)
-	ExpectCounterEqual(t, "log_received_lines_total", 1)
-	ExpectCounterEqual(t, "log_unparsable_lines_total", 0)
-	ExpectCounterEqual(t, "log_unroutable_lines_total", 0)
-	ExpectCounterEqual(t, "log_deliverable_lines_total", 2)
-	ExpectCounterEqual(t, "log_undelivered_lines_total", 0)
+	expectCounterEqual(t, "log_received_lines_total", 1)
+	expectCounterEqual(t, "log_unparsable_lines_total", 0)
+	expectCounterEqual(t, "log_unroutable_lines_total", 0)
+	expectCounterEqual(t, "log_deliverable_lines_total", 2)
+	expectCounterEqual(t, "log_undelivered_lines_total", 0)
 }
 
 func TestLogInstrumentationNotifyWithBlockedWatcher(t *testing.T) {
@@ -103,19 +103,14 @@ func TestLogInstrumentationNotifyWithBlockedWatcher(t *testing.T) {
 	sendLog("container[123] m1")
 	waitForLogLine(t, linec1, 100*time.Millisecond)
 	expectNoLogLines(t, linec2, 100*time.Millisecond)
-	ExpectCounterEqual(t, "log_received_lines_total", 1)
-	ExpectCounterEqual(t, "log_unparsable_lines_total", 0)
-	ExpectCounterEqual(t, "log_unroutable_lines_total", 0)
-	ExpectCounterEqual(t, "log_deliverable_lines_total", 1)
-	ExpectCounterEqual(t, "log_undelivered_lines_total", 1)
+	expectCounterEqual(t, "log_received_lines_total", 1)
+	expectCounterEqual(t, "log_unparsable_lines_total", 0)
+	expectCounterEqual(t, "log_unroutable_lines_total", 0)
+	expectCounterEqual(t, "log_deliverable_lines_total", 1)
+	expectCounterEqual(t, "log_undelivered_lines_total", 1)
 }
 
-func createReceiveLogsFixture(t *testing.T, r *registry) {
-	setLogAddrRandomly(t)
-	go receiveLogs(r)
-}
-
-func ExpectCounterEqual(t *testing.T, name string, value int) {
+func expectCounterEqual(t *testing.T, name string, value int) {
 	expvarValue, err := strconv.Atoi(expvar.Get(name).String())
 	if err != nil {
 		t.Fatalf("unable to convert counter %s to an int: %s", name, err)

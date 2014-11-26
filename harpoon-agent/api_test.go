@@ -5,11 +5,9 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
-	"strconv"
 	"testing"
 	"time"
 
@@ -52,13 +50,13 @@ func TestContainerList(t *testing.T) {
 		t.Fatal("unable to load containers json:", err)
 	}
 
-	expected := agent.HostResources{
+	want := agent.HostResources{
 		CPU:     agent.TotalReserved{Total: 2.0, Reserved: 0.0},
 		Mem:     agent.TotalReservedInt{Total: 1000.0, Reserved: 0.0},
 		Volumes: []string{"/tmp"},
 	}
 
-	if err := validateEvent(expected, state, 0, ""); err != nil {
+	if err := validateEvent(want, state, 0, ""); err != nil {
 		t.Error(err)
 	}
 
@@ -85,9 +83,9 @@ func TestContainerList(t *testing.T) {
 		t.Fatal("unable to load containers json:", err)
 	}
 
-	expected.CPU.Reserved = 2
-	expected.Mem.Reserved = 100
-	if err := validateEvent(expected, state, 1, agent.ContainerStatusRunning); err != nil {
+	want.CPU.Reserved = 2
+	want.Mem.Reserved = 100
+	if err := validateEvent(want, state, 1, agent.ContainerStatusRunning); err != nil {
 		t.Error(err)
 	}
 
@@ -105,9 +103,9 @@ func TestContainerList(t *testing.T) {
 		t.Fatal("unable to load containers json:", err)
 	}
 
-	expected.CPU.Reserved = 0
-	expected.Mem.Reserved = 0
-	if err := validateEvent(expected, state, 1, agent.ContainerStatusDeleted); err != nil {
+	want.CPU.Reserved = 0
+	want.Mem.Reserved = 0
+	if err := validateEvent(want, state, 1, agent.ContainerStatusDeleted); err != nil {
 		t.Error(err)
 	}
 }
@@ -116,6 +114,7 @@ func TestAgentHostResources(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 
 	// Set up an empty agent
+
 	agentMem = 1000
 	agentCPU = 2
 	configuredVolumes = map[string]struct{}{"/tmp": struct{}{}}
@@ -132,21 +131,23 @@ func TestAgentHostResources(t *testing.T) {
 	defer server.Close()
 
 	// Verify the HostResources of the empty agent
+
 	have, err := client.Resources()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	expected := agent.HostResources{
+	want := agent.HostResources{
 		CPU:     agent.TotalReserved{Total: 2.0, Reserved: 0.0},
 		Mem:     agent.TotalReservedInt{Total: 1000.0, Reserved: 0.0},
 		Volumes: []string{"/tmp"},
 	}
-	if err := validateResources(expected, have); err != nil {
+	if err := validateResources(want, have); err != nil {
 		t.Fatal(err)
 	}
 
-	// Create a  container with some resource reservations
+	// Create a container with some resource reservations
+
 	var (
 		containerID = "123"
 		config      = agent.ContainerConfig{
@@ -162,37 +163,40 @@ func TestAgentHostResources(t *testing.T) {
 	}
 
 	// Verify the HostResources are as we expect
+
 	have, err = client.Resources()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	expected = agent.HostResources{
+	want = agent.HostResources{
 		CPU:     agent.TotalReserved{Total: 2.0, Reserved: 2.0},
 		Mem:     agent.TotalReservedInt{Total: 1000.0, Reserved: 100.0},
 		Volumes: []string{"/tmp"},
 	}
-	if err := validateResources(expected, have); err != nil {
+	if err := validateResources(want, have); err != nil {
 		t.Fatal(err)
 	}
 
 	// Destroy the container
+
 	if err := client.Destroy(containerID); err != nil {
 		t.Fatal(err)
 	}
 
 	// Verify the HostResources are reclaimed
+
 	have, err = client.Resources()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	expected = agent.HostResources{
+	want = agent.HostResources{
 		CPU:     agent.TotalReserved{Total: 2.0, Reserved: 0.0},
 		Mem:     agent.TotalReservedInt{Total: 1000.0, Reserved: 0.0},
 		Volumes: []string{"/tmp"},
 	}
-	if err := validateResources(expected, have); err != nil {
+	if err := validateResources(want, have); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -220,7 +224,7 @@ func TestLogAPICanTailLogs(t *testing.T) {
 	linec := make(chan string, 10) // Plenty of room before anything gets dropped
 	c.Logs().notify(linec)
 
-	// Send a log line that wil be lost
+	// Send a log line that will be lost
 	sendLog("container[123] m1")
 	waitForLogLine(t, linec, time.Second)
 
@@ -265,11 +269,11 @@ func TestLogAPICanTailLogs(t *testing.T) {
 	sendLog("container[123] m3")
 
 	logLines := <-readResultc
-	ExpectArraysEqual(t, logLines, []string{"container[123] m2"})
+	expectArraysEqual(t, logLines, []string{"container[123] m2"})
 
 	readStepc <- struct{}{}
 	logLines = <-readResultc
-	ExpectArraysEqual(t, logLines, []string{"container[123] m3"})
+	expectArraysEqual(t, logLines, []string{"container[123] m3"})
 }
 
 func TestLogAPILogTailIncludesHistory(t *testing.T) {
@@ -338,15 +342,15 @@ func TestLogAPILogTailIncludesHistory(t *testing.T) {
 	sendLog("container[123] m3")
 
 	logLines := <-readResultc
-	ExpectArraysEqual(t, logLines, []string{"container[123] m1"})
+	expectArraysEqual(t, logLines, []string{"container[123] m1"})
 
 	readStepc <- struct{}{}
 	logLines = <-readResultc
-	ExpectArraysEqual(t, logLines, []string{"container[123] m2"})
+	expectArraysEqual(t, logLines, []string{"container[123] m2"})
 
 	readStepc <- struct{}{}
 	logLines = <-readResultc
-	ExpectArraysEqual(t, logLines, []string{"container[123] m3"})
+	expectArraysEqual(t, logLines, []string{"container[123] m3"})
 }
 
 func TestLogAPICanRetrieveLastLines(t *testing.T) {
@@ -389,94 +393,16 @@ func TestLogAPICanRetrieveLastLines(t *testing.T) {
 		t.Fatalf("unable to read json response: %s", err)
 	}
 
-	ExpectArraysEqual(t, logLines, []string{"container[123] m1", "container[123] m2"})
+	expectArraysEqual(t, logLines, []string{"container[123] m1", "container[123] m2"})
 }
 
-func TestMessagesGetWrittenToLogs(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-
-	registry := newRegistry()
-
-	createReceiveLogsFixture(t, registry)
-
-	c := newFakeContainer("123", "", agent.ContainerConfig{}, nil)
-	registry.register(c)
-
-	// UDP has some weirdness with processing, so we use the container log's subscription
-	// mechanism to ensure that we don't run the test until all the messages have been
-	// processed.
-	linec := make(chan string, 10) // Plenty of room before anything gets dropped
-	c.Logs().notify(linec)
-
-	// Send two log messages out
-	sendLog("container[123] m1")
-	sendLog("container[123] m2")
-
-	// Wait for both messages to come in.
-	waitForLogLine(t, linec, time.Second)
-	waitForLogLine(t, linec, time.Second)
-
-	logLines := c.Logs().last(3)
-	ExpectArraysEqual(t, logLines, []string{"container[123] m1", "container[123] m2"})
-}
-
-func TestLogRoutingOfDefectiveMessages(t *testing.T) {
-	registry := newRegistry()
-
-	createReceiveLogsFixture(t, registry)
-
-	c := newFakeContainer("123", "", agent.ContainerConfig{}, nil)
-	registry.register(c)
-
-	linec := make(chan string, 10) // Plenty of room before anything gets dropped
-	c.Logs().notify(linec)
-
-	sendLog("ilj;irtr") // Should not be received
-
-	// TODO(jmy): In the future make sure that "unroutable message" counter goes up.
-	// For now a timeout is a workable substitute for verifying that a log message was
-	// not routed.  It's better than nothing.
-	expectNoLogLines(t, linec, 100*time.Millisecond)
-}
-
-func waitForLogLine(t *testing.T, c chan string, timeout time.Duration) {
-	select {
-	case <-c:
-	case <-time.After(timeout):
-		t.Errorf("did not receive an item within %s", timeout)
-	}
-}
-
-func expectNoLogLines(t *testing.T, c chan string, timeout time.Duration) {
-	select {
-	case logLine := <-c:
-		t.Errorf("nothing should have been received, but got: %s", logLine)
-	case <-time.After(timeout):
-	}
-}
-
-func sendLog(logLine string) error {
-	conn, _ := net.Dial("udp", logAddr)
-	buf := []byte(logLine)
-	_, err := conn.Write(buf)
-	return err
-}
-
-func setLogAddrRandomly(t *testing.T) {
-	port, err := getRandomUDPPort()
-	if err != nil {
-		t.Fatalf("could not locate a random port: %s", err)
-	}
-	logAddr = "localhost:" + strconv.Itoa(port)
-}
-
-func validateEvent(expected agent.HostResources, have agent.StateEvent, containersCount int, status agent.ContainerStatus) error {
-	if err := validateResources(expected, have.Resources); err != nil {
+func validateEvent(want agent.HostResources, have agent.StateEvent, containersCount int, status agent.ContainerStatus) error {
+	if err := validateResources(want, have.Resources); err != nil {
 		return err
 	}
 
-	if len(have.Containers) != containersCount {
-		return fmt.Errorf("invalid number of containers in delta update, expected %d != %d", len(have.Containers), containersCount)
+	if containersCount != len(have.Containers) {
+		return fmt.Errorf("invalid number of containers in delta update, want %d, have %d", containersCount, len(have.Containers))
 	}
 
 	if containersCount == 0 {
@@ -489,23 +415,23 @@ func validateEvent(expected agent.HostResources, have agent.StateEvent, containe
 	}
 
 	if container.ContainerStatus != status {
-		return fmt.Errorf("invalid status, expected: %s != %s", status, container.ContainerStatus)
+		return fmt.Errorf("invalid status, want: %s, have %s", status, container.ContainerStatus)
 	}
 
 	return nil
 }
 
-func validateResources(expected agent.HostResources, have agent.HostResources) error {
-	if expected.CPU != have.CPU {
-		return fmt.Errorf("invalid cpu resources: expected %v != have %v", expected.CPU, have.CPU)
+func validateResources(want agent.HostResources, have agent.HostResources) error {
+	if want.CPU != have.CPU {
+		return fmt.Errorf("invalid CPU resources: want %v, have %v", want.CPU, have.CPU)
 	}
 
-	if expected.Mem != have.Mem {
-		return fmt.Errorf("invalid memory resources: expected %v != have %v", expected.Mem, have.Mem)
+	if want.Mem != have.Mem {
+		return fmt.Errorf("invalid mem resources: want %v, have %v", want.Mem, have.Mem)
 	}
 
-	if !reflect.DeepEqual(expected.Volumes, have.Volumes) {
-		return fmt.Errorf("invalid volumes : expected %v != have %v", expected.Volumes, have.Volumes)
+	if !reflect.DeepEqual(want.Volumes, have.Volumes) {
+		return fmt.Errorf("invalid volumes: want %v, have %v", want.Volumes, have.Volumes)
 	}
 
 	return nil

@@ -6,9 +6,9 @@ import (
 
 func TestValidArtifactURLs(t *testing.T) {
 	validArtifactTestCases := []struct {
-		url                 string
-		expectedPath        string
-		expectedCompression string
+		url             string
+		wantPath        string
+		wantCompression string
 	}{{
 		"http://foo/bar.tar",
 		"/srv/harpoon/artifacts/foo/bar",
@@ -30,11 +30,11 @@ func TestValidArtifactURLs(t *testing.T) {
 
 	for _, test := range validArtifactTestCases {
 		path, compression, err := getArtifactDetails(test.url)
-		if path != test.expectedPath {
-			t.Errorf("artifact url %q: path %q does not equal expected path %q", test.url, path, test.expectedPath)
+		if path != test.wantPath {
+			t.Errorf("artifact url %q: path %q does not equal want path %q", test.url, path, test.wantPath)
 		}
-		if compression != test.expectedCompression {
-			t.Errorf("artifact url %q: path %q does not equal expected compression %q", test.url, compression, test.expectedCompression)
+		if compression != test.wantCompression {
+			t.Errorf("artifact url %q: path %q does not equal want compression %q", test.url, compression, test.wantCompression)
 		}
 		if err != nil {
 			t.Errorf("artifact url %q: did not expect error: %s", test.url, err)
@@ -48,13 +48,13 @@ func TestInvalidArtifactURLs(t *testing.T) {
 	for _, artifactURL := range invalidArtifactURLs {
 		path, compression, err := getArtifactDetails(artifactURL)
 		if path != "" {
-			t.Errorf("artifact url %q: expected no path, but got %q", artifactURL, path)
+			t.Errorf("artifact url %q: want no path, but got %q", artifactURL, path)
 		}
 		if compression != "" {
-			t.Errorf("artifact url %q: expected no compression, but got %q", artifactURL, compression)
+			t.Errorf("artifact url %q: want no compression, but got %q", artifactURL, compression)
 		}
 		if err == nil {
-			t.Errorf("artifact url %q: expected error, but got nothing", artifactURL)
+			t.Errorf("artifact url %q: want error, but got nothing", artifactURL)
 		}
 	}
 }

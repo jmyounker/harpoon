@@ -14,7 +14,7 @@ func TestLastRetrievesLastLogLines(t *testing.T) {
 	cl := newContainerLog(3)
 	cl.addLogLine("m1")
 
-	ExpectArraysEqual(t, cl.last(1), []string{"m1"})
+	expectArraysEqual(t, cl.last(1), []string{"m1"})
 }
 
 func TestListenersReceiveMessages(t *testing.T) {
@@ -28,7 +28,7 @@ func TestListenersReceiveMessages(t *testing.T) {
 	cl.notify(logSink)
 	cl.addLogLine("m1")
 
-	ExpectMessage(t, logSink, "m1")
+	expectMessage(t, logSink, "m1")
 }
 
 func TestBlockedChannelsAreSkipped(t *testing.T) {
@@ -42,7 +42,7 @@ func TestBlockedChannelsAreSkipped(t *testing.T) {
 	cl.notify(logSink)
 	cl.addLogLine("m1")
 
-	ExpectNoMessage(t, logSink)
+	expectNoMessage(t, logSink)
 }
 
 func TestListenerShouldReceivesAllMessagesOnChannel(t *testing.T) {
@@ -57,8 +57,8 @@ func TestListenerShouldReceivesAllMessagesOnChannel(t *testing.T) {
 	cl.addLogLine("m1")
 	cl.addLogLine("m2")
 
-	ExpectMessage(t, logSink, "m1")
-	ExpectMessage(t, logSink, "m2")
+	expectMessage(t, logSink, "m1")
+	expectMessage(t, logSink, "m2")
 }
 
 func TestMessagesShouldBroadcastToAllListeners(t *testing.T) {
@@ -74,8 +74,8 @@ func TestMessagesShouldBroadcastToAllListeners(t *testing.T) {
 	cl.notify(logSink2)
 	cl.addLogLine("m1")
 
-	ExpectMessage(t, logSink1, "m1")
-	ExpectMessage(t, logSink2, "m1")
+	expectMessage(t, logSink1, "m1")
+	expectMessage(t, logSink2, "m1")
 }
 
 func TestRemovedListenersDoNotReceiveMessages(t *testing.T) {
@@ -92,8 +92,8 @@ func TestRemovedListenersDoNotReceiveMessages(t *testing.T) {
 	cl.stop(logSink2)
 	cl.addLogLine("m1")
 
-	ExpectMessage(t, logSink1, "m1")
-	ExpectNoMessage(t, logSink2)
+	expectMessage(t, logSink1, "m1")
+	expectNoMessage(t, logSink2)
 }
 
 func TestKillingContainerUnblocksListeners(t *testing.T) {
@@ -124,14 +124,14 @@ func TestKillingContainerUnblocksListeners(t *testing.T) {
 	}
 }
 
-func ExpectMessage(t *testing.T, logSink chan string, expected string) {
+func expectMessage(t *testing.T, logSink chan string, want string) {
 	msg := <-logSink
-	if msg != expected {
-		t.Errorf("Received %q when expecting %q", msg, expected)
+	if msg != want {
+		t.Errorf("Received %q when expecting %q", msg, want)
 	}
 }
 
-func ExpectNoMessage(t *testing.T, logSink chan string) {
+func expectNoMessage(t *testing.T, logSink chan string) {
 	select {
 	case logLine := <-logSink:
 		if logLine != "" {
@@ -144,20 +144,20 @@ func ExpectNoMessage(t *testing.T, logSink chan string) {
 
 func TestEmptyRingBufferHasNoLastElements(t *testing.T) {
 	rb := newRingBuffer(3)
-	ExpectArraysEqual(t, rb.last(2), []string{})
+	expectArraysEqual(t, rb.last(2), []string{})
 }
 
 func TestRingBufferWithSomethingReturnsSomething(t *testing.T) {
 	rb := newRingBuffer(3)
 	rb.insert("m1")
-	ExpectArraysEqual(t, rb.last(1), []string{"m1"})
+	expectArraysEqual(t, rb.last(1), []string{"m1"})
 }
 
 func TestRingBufferOnlyReturnsNumberOfResultsPresent(t *testing.T) {
 	// Checks that nil was used to limit number returned.
 	rb := newRingBuffer(3)
 	rb.insert("m1")
-	ExpectArraysEqual(t, rb.last(2), []string{"m1"})
+	expectArraysEqual(t, rb.last(2), []string{"m1"})
 }
 
 func TestLastOnlyReturnsTheRequestedNumberOfElements(t *testing.T) {
@@ -165,14 +165,14 @@ func TestLastOnlyReturnsTheRequestedNumberOfElements(t *testing.T) {
 	rb := newRingBuffer(3)
 	rb.insert("m1")
 	rb.insert("m2")
-	ExpectArraysEqual(t, rb.last(1), []string{"m2"})
+	expectArraysEqual(t, rb.last(1), []string{"m2"})
 }
 
 func TestLastReturnsResultsFromOldestToNewest(t *testing.T) {
 	rb := newRingBuffer(3)
 	rb.insert("m1")
 	rb.insert("m2")
-	ExpectArraysEqual(t, rb.last(2), []string{"m1", "m2"})
+	expectArraysEqual(t, rb.last(2), []string{"m1", "m2"})
 }
 
 func TestRingBufferWithCapacityNReallyHoldsNRecords(t *testing.T) {
@@ -180,7 +180,7 @@ func TestRingBufferWithCapacityNReallyHoldsNRecords(t *testing.T) {
 	rb.insert("m1")
 	rb.insert("m2")
 	rb.insert("m3")
-	ExpectArraysEqual(t, rb.last(3), []string{"m1", "m2", "m3"})
+	expectArraysEqual(t, rb.last(3), []string{"m1", "m2", "m3"})
 }
 
 func TestRingBufferWithCapacityNReallyHoldsOnlyNRecords(t *testing.T) {
@@ -189,7 +189,7 @@ func TestRingBufferWithCapacityNReallyHoldsOnlyNRecords(t *testing.T) {
 	rb.insert("m2")
 	rb.insert("m3")
 	rb.insert("m4")
-	ExpectArraysEqual(t, rb.last(3), []string{"m2", "m3", "m4"})
+	expectArraysEqual(t, rb.last(3), []string{"m2", "m3", "m4"})
 }
 
 func TestLastLimitsRetrievalToTheRingBufferSize(t *testing.T) {
@@ -198,29 +198,29 @@ func TestLastLimitsRetrievalToTheRingBufferSize(t *testing.T) {
 	rb.insert("m2")
 	rb.insert("m3")
 	rb.insert("m4")
-	ExpectArraysEqual(t, rb.last(4), []string{"m2", "m3", "m4"})
+	expectArraysEqual(t, rb.last(4), []string{"m2", "m3", "m4"})
 }
 
 func TestReverse(t *testing.T) {
-	ExpectArraysEqual(t, reverse([]string{}), []string{})
-	ExpectArraysEqual(t, reverse([]string{"1"}), []string{"1"})
-	ExpectArraysEqual(t, reverse([]string{"1", "2"}), []string{"2", "1"})
-	ExpectArraysEqual(t, reverse([]string{"1", "2", "3"}), []string{"3", "2", "1"})
+	expectArraysEqual(t, reverse([]string{}), []string{})
+	expectArraysEqual(t, reverse([]string{"1"}), []string{"1"})
+	expectArraysEqual(t, reverse([]string{"1", "2"}), []string{"2", "1"})
+	expectArraysEqual(t, reverse([]string{"1", "2", "3"}), []string{"3", "2", "1"})
 }
 
 func TestMin(t *testing.T) {
-	ExpectEqual(t, min(1, 2), 1)
-	ExpectEqual(t, min(2, 1), 1)
-	ExpectEqual(t, min(1, 1), 1)
+	expectEqual(t, min(1, 2), 1)
+	expectEqual(t, min(2, 1), 1)
+	expectEqual(t, min(1, 1), 1)
 }
 
-func ExpectArraysEqual(t *testing.T, x []string, y []string) {
+func expectArraysEqual(t *testing.T, x []string, y []string) {
 	if !reflect.DeepEqual(x, y) {
 		t.Errorf("%q != %q", x, y)
 	}
 }
 
-func ExpectEqual(t *testing.T, x int, y int) {
+func expectEqual(t *testing.T, x int, y int) {
 	if x != y {
 		t.Errorf("%q != %q", x, y)
 	}
