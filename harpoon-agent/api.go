@@ -88,18 +88,28 @@ func (a *api) handleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var config agent.ContainerConfig
-
 	if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
+	undo := []func(){}
+	defer func() {
+		for i := len(undo) - 1; i >= 0; i-- {
+			undo[i]()
+		}
+	}()
+
 	container := newContainer(id, a.containerRoot, config, a.portDB)
+
+	undo = append(undo, func() { container.Exit() })
 
 	if ok := a.registry.register(container); !ok {
 		http.Error(w, "already exists", http.StatusConflict)
 		return
 	}
+
+	undo = append(undo, func() { a.registry.remove(id) })
 
 	if err := container.Create(); err != nil {
 		log.Printf("[%s] create: %s", id, err)
@@ -107,11 +117,15 @@ func (a *api) handleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	undo = append(undo, func() { container.Destroy() })
+
 	if err := container.Start(); err != nil {
 		log.Printf("[%s] create, start: %s", id, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	undo = []func(){} // all good
 
 	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte("created OK"))
