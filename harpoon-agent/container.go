@@ -426,9 +426,9 @@ func (c *realContainer) fetchArtifact() (string, error) {
 
 func (c *realContainer) start() error {
 	switch c.ContainerInstance.ContainerStatus {
+	case agent.ContainerStatusCreated, agent.ContainerStatusFinished, agent.ContainerStatusFailed:
 	default:
 		return fmt.Errorf("can't start container with status %s", c.ContainerInstance.ContainerStatus)
-	case agent.ContainerStatusCreated, agent.ContainerStatusFinished, agent.ContainerStatusFailed:
 	}
 
 	var (

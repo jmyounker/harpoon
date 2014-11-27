@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"reflect"
 	"testing"
 	"time"
@@ -16,26 +17,32 @@ import (
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
-// If we ever start getting collisions during testing then we can point this to a
-// temp directory.
-const fixtureContainerRoot = "/run/harpoon"
-
 func TestContainerList(t *testing.T) {
 	agentMem = 1000
 	agentCPU = 2
 	configuredVolumes = map[string]struct{}{"/tmp": struct{}{}}
 
+	testContainerRoot, err := ioutil.TempDir(os.TempDir(), "harpoon-agent-api-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(testContainerRoot)
+
 	var (
 		registry = newRegistry()
 		pdb      = newPortDB(lowTestPort, highTestPort)
-		api      = newAPI(fixtureContainerRoot, registry, pdb)
+		api      = newAPI(testContainerRoot, registry, pdb)
 		server   = httptest.NewServer(api)
 	)
 
 	defer pdb.exit()
 	defer server.Close()
 
-	req, _ := http.NewRequest("GET", server.URL+"/api/v0/containers", nil)
+	req, err := http.NewRequest("GET", server.URL+agent.APIVersionPrefix+agent.APIListContainersPath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	es := eventsource.New(req, -1)
 	defer es.Close()
 
@@ -120,10 +127,16 @@ func TestAgentHostResources(t *testing.T) {
 	configuredVolumes = map[string]struct{}{"/tmp": struct{}{}}
 	newContainer = newFakeContainer
 
+	testContainerRoot, err := ioutil.TempDir(os.TempDir(), "harpoon-agent-api-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(testContainerRoot)
+
 	var (
 		registry  = newRegistry()
 		pdb       = newPortDB(lowTestPort, highTestPort)
-		api       = newAPI(fixtureContainerRoot, registry, pdb)
+		api       = newAPI(testContainerRoot, registry, pdb)
 		server    = httptest.NewServer(api)
 		client, _ = agent.NewClient(server.URL)
 	)
@@ -204,10 +217,16 @@ func TestAgentHostResources(t *testing.T) {
 func TestLogAPICanTailLogs(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 
+	testContainerRoot, err := ioutil.TempDir(os.TempDir(), "harpoon-agent-api-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(testContainerRoot)
+
 	var (
 		registry = newRegistry()
 		pdb      = newPortDB(lowTestPort, highTestPort)
-		api      = newAPI(fixtureContainerRoot, registry, pdb)
+		api      = newAPI(testContainerRoot, registry, pdb)
 		server   = httptest.NewServer(api)
 	)
 	defer pdb.exit()
@@ -229,7 +248,7 @@ func TestLogAPICanTailLogs(t *testing.T) {
 	waitForLogLine(t, linec, time.Second)
 
 	// history=0 forces logging to ignore all previous history
-	req, err := http.NewRequest("GET", server.URL+"/api/v0/containers/123/log?history=0", nil)
+	req, err := http.NewRequest("GET", server.URL+agent.APIVersionPrefix+"/containers/123/log?history=0", nil)
 	if err != nil {
 		t.Fatalf("unable to get log history: %s", err)
 	}
@@ -279,10 +298,16 @@ func TestLogAPICanTailLogs(t *testing.T) {
 func TestLogAPILogTailIncludesHistory(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 
+	testContainerRoot, err := ioutil.TempDir(os.TempDir(), "harpoon-agent-api-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(testContainerRoot)
+
 	var (
 		registry = newRegistry()
 		pdb      = newPortDB(lowTestPort, highTestPort)
-		api      = newAPI(fixtureContainerRoot, registry, pdb)
+		api      = newAPI(testContainerRoot, registry, pdb)
 		server   = httptest.NewServer(api)
 	)
 	defer pdb.exit()
@@ -303,7 +328,7 @@ func TestLogAPILogTailIncludesHistory(t *testing.T) {
 	sendLog("container[123] m1")
 	waitForLogLine(t, linec, time.Second)
 
-	req, err := http.NewRequest("GET", server.URL+"/api/v0/containers/123/log", nil)
+	req, err := http.NewRequest("GET", server.URL+agent.APIVersionPrefix+"/containers/123/log", nil)
 	if err != nil {
 		t.Fatalf("unable to get log history: %s", err)
 	}
@@ -356,10 +381,16 @@ func TestLogAPILogTailIncludesHistory(t *testing.T) {
 func TestLogAPICanRetrieveLastLines(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 
+	testContainerRoot, err := ioutil.TempDir(os.TempDir(), "harpoon-agent-api-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(testContainerRoot)
+
 	var (
 		registry = newRegistry()
 		pdb      = newPortDB(lowTestPort, highTestPort)
-		api      = newAPI(fixtureContainerRoot, registry, pdb)
+		api      = newAPI(testContainerRoot, registry, pdb)
 		server   = httptest.NewServer(api)
 	)
 	defer pdb.exit()
@@ -384,7 +415,7 @@ func TestLogAPICanRetrieveLastLines(t *testing.T) {
 	waitForLogLine(t, linec, time.Second)
 	waitForLogLine(t, linec, time.Second)
 
-	resp, err := http.Get(server.URL + "/api/v0/containers/123/log?history=3")
+	resp, err := http.Get(server.URL + agent.APIVersionPrefix + "/containers/123/log?history=3")
 	if err != nil {
 		t.Fatalf("unable to get log history: %s", err)
 	}

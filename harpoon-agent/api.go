@@ -42,14 +42,14 @@ func newAPI(containerRoot string, r *registry, pdb *portDB) *api {
 		}
 	)
 
-	mux.Put("/api/v0/containers/:id", http.HandlerFunc(api.handleCreate))
-	mux.Get("/api/v0/containers/:id", http.HandlerFunc(api.handleGet))
-	mux.Del("/api/v0/containers/:id", http.HandlerFunc(api.handleDestroy))
-	mux.Post("/api/v0/containers/:id/start", http.HandlerFunc(api.handleStart))
-	mux.Post("/api/v0/containers/:id/stop", http.HandlerFunc(api.handleStop))
-	mux.Get("/api/v0/containers/:id/log", http.HandlerFunc(api.handleLog))
-	mux.Get("/api/v0/containers", http.HandlerFunc(api.handleList))
-	mux.Get("/api/v0/resources", http.HandlerFunc(api.handleResources))
+	mux.Get(agent.APIVersionPrefix+agent.APIListContainersPath, http.HandlerFunc(api.handleList))
+	mux.Put(agent.APIVersionPrefix+agent.APICreateContainerPath, http.HandlerFunc(api.handleCreate))
+	mux.Get(agent.APIVersionPrefix+agent.APIGetContainerPath, http.HandlerFunc(api.handleGet))
+	mux.Del(agent.APIVersionPrefix+agent.APIDestroyContainerPath, http.HandlerFunc(api.handleDestroy))
+	mux.Post(agent.APIVersionPrefix+agent.APIStartContainerPath, http.HandlerFunc(api.handleStart))
+	mux.Post(agent.APIVersionPrefix+agent.APIStopContainerPath, http.HandlerFunc(api.handleStop))
+	mux.Get(agent.APIVersionPrefix+agent.APIGetContainerLogPath, http.HandlerFunc(api.handleLog))
+	mux.Get(agent.APIVersionPrefix+agent.APIGetResourcesPath, http.HandlerFunc(api.handleResources))
 
 	return api
 }
