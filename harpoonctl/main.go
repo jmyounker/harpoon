@@ -9,6 +9,7 @@ import (
 	"github.com/codegangsta/cli"
 
 	"github.com/soundcloud/harpoon/harpoonctl/agent"
+	"github.com/soundcloud/harpoon/harpoonctl/config"
 	"github.com/soundcloud/harpoon/harpoonctl/log"
 	"github.com/soundcloud/harpoon/harpoonctl/scheduler"
 )
@@ -21,7 +22,7 @@ func main() {
 		Name:                 "harpoonctl",
 		Usage:                "Interact with Harpoon platform components.",
 		Version:              version(),
-		Commands:             []cli.Command{agent.Command, scheduler.Command},
+		Commands:             []cli.Command{agent.Command, scheduler.Command, config.Command},
 		Flags:                []cli.Flag{verboseFlag, timeoutFlag},
 		EnableBashCompletion: false,
 		HideHelp:             true,
