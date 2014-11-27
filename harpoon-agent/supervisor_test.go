@@ -26,7 +26,7 @@ func TestSupervisorConnectEarlyExit(t *testing.T) {
 	exitedc <- errExited
 
 	if _, err := s.connect("/tmp/noexist", exitedc); err != errExited {
-		t.Fatalf("expected connect to return errExited, got %v", err)
+		t.Fatalf("want connect to return errExited, got %v", err)
 	}
 }
 
@@ -58,7 +58,7 @@ func TestSupervisorConnectRetry(t *testing.T) {
 
 	select {
 	case err := <-errc:
-		t.Fatalf("expected no error, got %v", err)
+		t.Fatalf("want no error, got %v", err)
 	case <-time.After(100 * time.Millisecond):
 	}
 
@@ -70,7 +70,7 @@ func TestSupervisorConnectRetry(t *testing.T) {
 
 	select {
 	case err := <-errc:
-		t.Fatalf("expected no error, got %v", err)
+		t.Fatalf("want no error, got %v", err)
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("supervisor did not connect after control socket was created")
 	case rwc := <-connc:
@@ -118,7 +118,7 @@ func TestSupervisorConnectRetryListenRace(t *testing.T) {
 	// let the agent attempt to connect a few times
 	select {
 	case err := <-errc:
-		t.Fatalf("expected no error, got %v", err)
+		t.Fatalf("want no error, got %v", err)
 	case <-time.After(100 * time.Millisecond):
 	}
 
@@ -128,7 +128,7 @@ func TestSupervisorConnectRetryListenRace(t *testing.T) {
 
 	select {
 	case err := <-errc:
-		t.Fatalf("expected no error, got %v", err)
+		t.Fatalf("want no error, got %v", err)
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("supervisor did not connect after control socket was created")
 	case rwc := <-connc:
@@ -174,7 +174,7 @@ func TestSupervisorConnectDeadSupervisor(t *testing.T) {
 
 	select {
 	case err := <-errc:
-		t.Fatalf("expected no error, got %v", err)
+		t.Fatalf("want no error, got %v", err)
 	case <-time.After(100 * time.Millisecond):
 	}
 
@@ -235,7 +235,7 @@ func TestSupervisor(t *testing.T) {
 	select {
 	case err := <-exitErrc:
 		if err == nil {
-			t.Fatal("Exit expected to return error before first state received")
+			t.Fatal("Exit want to return error before first state received")
 		}
 	case <-time.After(time.Millisecond):
 		panic("exit before down did not return")
@@ -247,7 +247,7 @@ func TestSupervisor(t *testing.T) {
 	select {
 	case state := <-statec:
 		if !state.Up {
-			t.Fatal("expected notification that container was running")
+			t.Fatal("want notification that container was running")
 		}
 	case <-time.After(time.Millisecond):
 		panic("no state sent")
@@ -261,7 +261,7 @@ func TestSupervisor(t *testing.T) {
 	select {
 	case state := <-statec:
 		if !state.Up {
-			t.Fatal("expected subscribe to immediately receive the latest state")
+			t.Fatal("want subscribe to immediately receive the latest state")
 		}
 	case <-time.After(time.Millisecond):
 		panic("no state sent")
@@ -270,7 +270,7 @@ func TestSupervisor(t *testing.T) {
 	s.Stop(time.Second)
 
 	if ev := receiveControlEvent(t, conn, time.Millisecond); ev != "stop" {
-		t.Fatalf("expected stop event, got %q", ev)
+		t.Fatalf("want stop event, got %q", ev)
 	}
 
 	go func() { exitErrc <- s.Exit() }()
@@ -278,7 +278,7 @@ func TestSupervisor(t *testing.T) {
 	select {
 	case err := <-exitErrc:
 		if err == nil {
-			t.Fatal("Exit expected to return error when container is running")
+			t.Fatal("Exit want to return error when container is running")
 		}
 	case <-time.After(time.Millisecond):
 		panic("exit before down did not return")
@@ -295,7 +295,7 @@ func TestSupervisor(t *testing.T) {
 	select {
 	case state := <-statec:
 		if state.Up {
-			t.Fatal("expected notification that container was stopped")
+			t.Fatal("want notification that container was stopped")
 		}
 	case <-time.After(time.Millisecond):
 		panic("no state sent")
@@ -304,7 +304,7 @@ func TestSupervisor(t *testing.T) {
 	go func() { exitErrc <- s.Exit() }()
 
 	if ev := receiveControlEvent(t, conn, 15*time.Millisecond); ev != "exit" {
-		t.Fatalf("expected exit event, got %q", ev)
+		t.Fatalf("want exit event, got %q", ev)
 	}
 
 	conn.Close()
@@ -313,7 +313,7 @@ func TestSupervisor(t *testing.T) {
 	select {
 	case err := <-exitErrc:
 		if err != nil {
-			t.Fatal("expected Exit to succeed, got: ", err)
+			t.Fatal("want Exit to succeed, got: ", err)
 		}
 	case <-time.After(time.Millisecond):
 		panic("Exit call did not return")
@@ -386,7 +386,7 @@ func TestSupervisorKillAfterGrace(t *testing.T) {
 	select {
 	case state := <-statec:
 		if !state.Up {
-			t.Fatal("expected notification that container was running")
+			t.Fatal("want notification that container was running")
 		}
 	case <-time.After(time.Millisecond):
 		panic("no state sent")
@@ -396,11 +396,11 @@ func TestSupervisorKillAfterGrace(t *testing.T) {
 	s.Stop(10 * time.Millisecond)
 
 	if ev := receiveControlEvent(t, conn, time.Millisecond); ev != "stop" {
-		t.Fatalf("expected stop event, got %q", ev)
+		t.Fatalf("want stop event, got %q", ev)
 	}
 
 	if ev := receiveControlEvent(t, conn, 15*time.Millisecond); ev != "kill" {
-		t.Fatalf("expected kill event, got %q", ev)
+		t.Fatalf("want kill event, got %q", ev)
 	}
 
 	// send terminal state update
@@ -414,7 +414,7 @@ func TestSupervisorKillAfterGrace(t *testing.T) {
 	select {
 	case state := <-statec:
 		if state.Up {
-			t.Fatal("expected notification that container was stopped")
+			t.Fatal("want notification that container was stopped")
 		}
 	case <-time.After(time.Millisecond):
 		panic("no state sent")
@@ -423,7 +423,7 @@ func TestSupervisorKillAfterGrace(t *testing.T) {
 	go func() { exitErrc <- s.Exit() }()
 
 	if ev := receiveControlEvent(t, conn, 15*time.Millisecond); ev != "exit" {
-		t.Fatalf("expected exit event, got %q", ev)
+		t.Fatalf("want exit event, got %q", ev)
 	}
 
 	conn.Close()
@@ -432,7 +432,7 @@ func TestSupervisorKillAfterGrace(t *testing.T) {
 	select {
 	case err := <-exitErrc:
 		if err != nil {
-			t.Fatal("expected Exit to succeed, got: ", err)
+			t.Fatal("want Exit to succeed, got: ", err)
 		}
 	case <-time.After(time.Millisecond):
 		panic("Exit call did not return")

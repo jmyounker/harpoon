@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"reflect"
-	"strconv"
 	"testing"
 	"time"
 
@@ -18,26 +17,32 @@ import (
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
-// If we ever start getting collisions during testing then we can point this to a
-// temp directory.
-const fixtureContainerRoot = "/run/harpoon"
-
 func TestContainerList(t *testing.T) {
 	agentMem = 1000
 	agentCPU = 2
 	configuredVolumes = map[string]struct{}{"/tmp": struct{}{}}
 
+	testContainerRoot, err := ioutil.TempDir(os.TempDir(), "harpoon-agent-api-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(testContainerRoot)
+
 	var (
 		registry = newRegistry()
 		pdb      = newPortDB(lowTestPort, highTestPort)
-		api      = newAPI(fixtureContainerRoot, registry, pdb)
+		api      = newAPI(testContainerRoot, registry, pdb)
 		server   = httptest.NewServer(api)
 	)
 
 	defer pdb.exit()
 	defer server.Close()
 
-	req, _ := http.NewRequest("GET", server.URL+"/api/v0/containers", nil)
+	req, err := http.NewRequest("GET", server.URL+agent.APIVersionPrefix+agent.APIListContainersPath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	es := eventsource.New(req, -1)
 	defer es.Close()
 
@@ -52,13 +57,13 @@ func TestContainerList(t *testing.T) {
 		t.Fatal("unable to load containers json:", err)
 	}
 
-	expected := agent.HostResources{
+	want := agent.HostResources{
 		CPU:     agent.TotalReserved{Total: 2.0, Reserved: 0.0},
 		Mem:     agent.TotalReservedInt{Total: 1000.0, Reserved: 0.0},
 		Volumes: []string{"/tmp"},
 	}
 
-	if err := validateEvent(expected, state, 0, ""); err != nil {
+	if err := validateEvent(want, state, 0, ""); err != nil {
 		t.Error(err)
 	}
 
@@ -85,9 +90,9 @@ func TestContainerList(t *testing.T) {
 		t.Fatal("unable to load containers json:", err)
 	}
 
-	expected.CPU.Reserved = 2
-	expected.Mem.Reserved = 100
-	if err := validateEvent(expected, state, 1, agent.ContainerStatusRunning); err != nil {
+	want.CPU.Reserved = 2
+	want.Mem.Reserved = 100
+	if err := validateEvent(want, state, 1, agent.ContainerStatusRunning); err != nil {
 		t.Error(err)
 	}
 
@@ -105,9 +110,9 @@ func TestContainerList(t *testing.T) {
 		t.Fatal("unable to load containers json:", err)
 	}
 
-	expected.CPU.Reserved = 0
-	expected.Mem.Reserved = 0
-	if err := validateEvent(expected, state, 1, agent.ContainerStatusDeleted); err != nil {
+	want.CPU.Reserved = 0
+	want.Mem.Reserved = 0
+	if err := validateEvent(want, state, 1, agent.ContainerStatusDeleted); err != nil {
 		t.Error(err)
 	}
 }
@@ -116,15 +121,22 @@ func TestAgentHostResources(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 
 	// Set up an empty agent
+
 	agentMem = 1000
 	agentCPU = 2
 	configuredVolumes = map[string]struct{}{"/tmp": struct{}{}}
 	newContainer = newFakeContainer
 
+	testContainerRoot, err := ioutil.TempDir(os.TempDir(), "harpoon-agent-api-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(testContainerRoot)
+
 	var (
 		registry  = newRegistry()
 		pdb       = newPortDB(lowTestPort, highTestPort)
-		api       = newAPI(fixtureContainerRoot, registry, pdb)
+		api       = newAPI(testContainerRoot, registry, pdb)
 		server    = httptest.NewServer(api)
 		client, _ = agent.NewClient(server.URL)
 	)
@@ -132,21 +144,23 @@ func TestAgentHostResources(t *testing.T) {
 	defer server.Close()
 
 	// Verify the HostResources of the empty agent
+
 	have, err := client.Resources()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	expected := agent.HostResources{
+	want := agent.HostResources{
 		CPU:     agent.TotalReserved{Total: 2.0, Reserved: 0.0},
 		Mem:     agent.TotalReservedInt{Total: 1000.0, Reserved: 0.0},
 		Volumes: []string{"/tmp"},
 	}
-	if err := validateResources(expected, have); err != nil {
+	if err := validateResources(want, have); err != nil {
 		t.Fatal(err)
 	}
 
-	// Create a  container with some resource reservations
+	// Create a container with some resource reservations
+
 	var (
 		containerID = "123"
 		config      = agent.ContainerConfig{
@@ -162,37 +176,40 @@ func TestAgentHostResources(t *testing.T) {
 	}
 
 	// Verify the HostResources are as we expect
+
 	have, err = client.Resources()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	expected = agent.HostResources{
+	want = agent.HostResources{
 		CPU:     agent.TotalReserved{Total: 2.0, Reserved: 2.0},
 		Mem:     agent.TotalReservedInt{Total: 1000.0, Reserved: 100.0},
 		Volumes: []string{"/tmp"},
 	}
-	if err := validateResources(expected, have); err != nil {
+	if err := validateResources(want, have); err != nil {
 		t.Fatal(err)
 	}
 
 	// Destroy the container
+
 	if err := client.Destroy(containerID); err != nil {
 		t.Fatal(err)
 	}
 
 	// Verify the HostResources are reclaimed
+
 	have, err = client.Resources()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	expected = agent.HostResources{
+	want = agent.HostResources{
 		CPU:     agent.TotalReserved{Total: 2.0, Reserved: 0.0},
 		Mem:     agent.TotalReservedInt{Total: 1000.0, Reserved: 0.0},
 		Volumes: []string{"/tmp"},
 	}
-	if err := validateResources(expected, have); err != nil {
+	if err := validateResources(want, have); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -200,85 +217,16 @@ func TestAgentHostResources(t *testing.T) {
 func TestLogAPICanTailLogs(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 
-	var (
-		registry = newRegistry()
-		pdb      = newPortDB(lowTestPort, highTestPort)
-		api      = newAPI(fixtureContainerRoot, registry, pdb)
-		server   = httptest.NewServer(api)
-	)
-	defer pdb.exit()
-	defer server.Close()
-
-	createReceiveLogsFixture(t, registry)
-
-	c := newFakeContainer("123", "", agent.ContainerConfig{}, nil)
-	registry.register(c)
-
-	// UDP has some weirdness with processing, so we use the container log's subscription
-	// mechanism to ensure that we don't run the test until all the messages have been
-	// processed.
-	linec := make(chan string, 10) // Plenty of room before anything gets dropped
-	c.Logs().notify(linec)
-
-	// Send a log line that wil be lost
-	sendLog("container[123] m1")
-	waitForLogLine(t, linec, time.Second)
-
-	// history=0 forces logging to ignore all previous history
-	req, err := http.NewRequest("GET", server.URL+"/api/v0/containers/123/log?history=0", nil)
+	testContainerRoot, err := ioutil.TempDir(os.TempDir(), "harpoon-agent-api-test-")
 	if err != nil {
-		t.Fatalf("unable to get log history: %s", err)
+		t.Fatal(err)
 	}
-	es := eventsource.New(req, time.Second)
-	defer es.Close()
-
-	// A tailing reader only receives events sent after it connects, so the test must
-	// connect before the test sends the log messages.  Therefore the reader must run
-	// concurrently.
-	readStepc := make(chan struct{})
-	readResultc := make(chan []string)
-
-	// This function performs a read each time it receives a write on the channel readStepc.
-	// It writes the results to readResultc.  The goroutine terminates when readStepc
-	// closes.  Any error causes test failure.
-	go func() {
-		for _ = range readStepc {
-			ev, err := es.Read()
-			if err != nil {
-				t.Fatal(err)
-			}
-			var logLines []string
-			if err := json.Unmarshal(ev.Data, &logLines); err != nil {
-				t.Fatalf("unable to load containers json: %s", err)
-			}
-			readResultc <- logLines
-		}
-	}()
-	defer close(readStepc)
-
-	readStepc <- struct{}{} // Initial read causes a connection.
-
-	// Horrible, horrible hack to ensure that the eventstream.Read() has time to connect.
-	time.Sleep(time.Second)
-
-	sendLog("container[123] m2")
-	sendLog("container[123] m3")
-
-	logLines := <-readResultc
-	ExpectArraysEqual(t, logLines, []string{"container[123] m2"})
-
-	readStepc <- struct{}{}
-	logLines = <-readResultc
-	ExpectArraysEqual(t, logLines, []string{"container[123] m3"})
-}
-
-func TestLogAPILogTailIncludesHistory(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
+	defer os.RemoveAll(testContainerRoot)
 
 	var (
 		registry = newRegistry()
 		pdb      = newPortDB(lowTestPort, highTestPort)
-		api      = newAPI(fixtureContainerRoot, registry, pdb)
+		api      = newAPI(testContainerRoot, registry, pdb)
 		server   = httptest.NewServer(api)
 	)
 	defer pdb.exit()
@@ -299,7 +247,88 @@ func TestLogAPILogTailIncludesHistory(t *testing.T) {
 	sendLog("container[123] m1")
 	waitForLogLine(t, linec, time.Second)
 
-	req, err := http.NewRequest("GET", server.URL+"/api/v0/containers/123/log", nil)
+	// history=0 forces logging to ignore all previous history
+	req, err := http.NewRequest("GET", server.URL+agent.APIVersionPrefix+"/containers/123/log?history=0", nil)
+	if err != nil {
+		t.Fatalf("unable to get log history: %s", err)
+	}
+	es := eventsource.New(req, time.Second)
+	defer es.Close()
+
+	// A tailing reader only receives events sent after it connects, so the test must
+	// connect before the test sends the log messages.  Therefore the reader must run
+	// concurrently.
+	readStepc := make(chan struct{})
+	readResultc := make(chan []string)
+
+	// This function performs a read each time it receives a write on the channel readStepc.
+	// It writes the results to readResultc.  The goroutine terminates when readStepc
+	// closes.  Any error causes test failure.
+	go func() {
+		for _ = range readStepc {
+			ev, err := es.Read()
+			if err != nil {
+				t.Fatal(err)
+			}
+			var logLines []string
+			if err := json.Unmarshal(ev.Data, &logLines); err != nil {
+				t.Fatalf("unable to load containers json: %s", err)
+			}
+			readResultc <- logLines
+		}
+	}()
+	defer close(readStepc)
+
+	readStepc <- struct{}{} // Initial read causes a connection.
+
+	// Horrible, horrible hack to ensure that the eventstream.Read() has time to connect.
+	time.Sleep(time.Second)
+
+	sendLog("container[123] m2")
+	sendLog("container[123] m3")
+
+	logLines := <-readResultc
+	expectArraysEqual(t, logLines, []string{"container[123] m2"})
+
+	readStepc <- struct{}{}
+	logLines = <-readResultc
+	expectArraysEqual(t, logLines, []string{"container[123] m3"})
+}
+
+func TestLogAPILogTailIncludesHistory(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+
+	testContainerRoot, err := ioutil.TempDir(os.TempDir(), "harpoon-agent-api-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(testContainerRoot)
+
+	var (
+		registry = newRegistry()
+		pdb      = newPortDB(lowTestPort, highTestPort)
+		api      = newAPI(testContainerRoot, registry, pdb)
+		server   = httptest.NewServer(api)
+	)
+	defer pdb.exit()
+	defer server.Close()
+
+	createReceiveLogsFixture(t, registry)
+
+	c := newFakeContainer("123", "", agent.ContainerConfig{}, nil)
+	registry.register(c)
+
+	// UDP has some weirdness with processing, so we use the container log's subscription
+	// mechanism to ensure that we don't run the test until all the messages have been
+	// processed.
+	linec := make(chan string, 10) // Plenty of room before anything gets dropped
+	c.Logs().notify(linec)
+
+	// Send a log line that will be lost
+	sendLog("container[123] m1")
+	waitForLogLine(t, linec, time.Second)
+
+	req, err := http.NewRequest("GET", server.URL+agent.APIVersionPrefix+"/containers/123/log", nil)
 	if err != nil {
 		t.Fatalf("unable to get log history: %s", err)
 	}
@@ -338,24 +367,30 @@ func TestLogAPILogTailIncludesHistory(t *testing.T) {
 	sendLog("container[123] m3")
 
 	logLines := <-readResultc
-	ExpectArraysEqual(t, logLines, []string{"container[123] m1"})
+	expectArraysEqual(t, logLines, []string{"container[123] m1"})
 
 	readStepc <- struct{}{}
 	logLines = <-readResultc
-	ExpectArraysEqual(t, logLines, []string{"container[123] m2"})
+	expectArraysEqual(t, logLines, []string{"container[123] m2"})
 
 	readStepc <- struct{}{}
 	logLines = <-readResultc
-	ExpectArraysEqual(t, logLines, []string{"container[123] m3"})
+	expectArraysEqual(t, logLines, []string{"container[123] m3"})
 }
 
 func TestLogAPICanRetrieveLastLines(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 
+	testContainerRoot, err := ioutil.TempDir(os.TempDir(), "harpoon-agent-api-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(testContainerRoot)
+
 	var (
 		registry = newRegistry()
 		pdb      = newPortDB(lowTestPort, highTestPort)
-		api      = newAPI(fixtureContainerRoot, registry, pdb)
+		api      = newAPI(testContainerRoot, registry, pdb)
 		server   = httptest.NewServer(api)
 	)
 	defer pdb.exit()
@@ -380,7 +415,7 @@ func TestLogAPICanRetrieveLastLines(t *testing.T) {
 	waitForLogLine(t, linec, time.Second)
 	waitForLogLine(t, linec, time.Second)
 
-	resp, err := http.Get(server.URL + "/api/v0/containers/123/log?history=3")
+	resp, err := http.Get(server.URL + agent.APIVersionPrefix + "/containers/123/log?history=3")
 	if err != nil {
 		t.Fatalf("unable to get log history: %s", err)
 	}
@@ -389,94 +424,60 @@ func TestLogAPICanRetrieveLastLines(t *testing.T) {
 		t.Fatalf("unable to read json response: %s", err)
 	}
 
-	ExpectArraysEqual(t, logLines, []string{"container[123] m1", "container[123] m2"})
+	expectArraysEqual(t, logLines, []string{"container[123] m1", "container[123] m2"})
 }
 
-func TestMessagesGetWrittenToLogs(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
+func TestFailedCreateDestroysContainer(t *testing.T) {
+	// There are many ways to fail:
+	//
+	// - a.registry.register fails (already exists)
+	// - container.Create fails (invalid config; can't assign ports; mkdir run/logdir fails; agent.json fails; fetch fails; symlink fails)
+	// - container.Start fails (bad initial status; supervisor log create fails; startLogger fails; supervisor create fails)
+	//
+	// This test just captures one of them: container.Create fails because fetch fails.
 
-	registry := newRegistry()
-
-	createReceiveLogsFixture(t, registry)
-
-	c := newFakeContainer("123", "", agent.ContainerConfig{}, nil)
-	registry.register(c)
-
-	// UDP has some weirdness with processing, so we use the container log's subscription
-	// mechanism to ensure that we don't run the test until all the messages have been
-	// processed.
-	linec := make(chan string, 10) // Plenty of room before anything gets dropped
-	c.Logs().notify(linec)
-
-	// Send two log messages out
-	sendLog("container[123] m1")
-	sendLog("container[123] m2")
-
-	// Wait for both messages to come in.
-	waitForLogLine(t, linec, time.Second)
-	waitForLogLine(t, linec, time.Second)
-
-	logLines := c.Logs().last(3)
-	ExpectArraysEqual(t, logLines, []string{"container[123] m1", "container[123] m2"})
-}
-
-func TestLogRoutingOfDefectiveMessages(t *testing.T) {
-	registry := newRegistry()
-
-	createReceiveLogsFixture(t, registry)
-
-	c := newFakeContainer("123", "", agent.ContainerConfig{}, nil)
-	registry.register(c)
-
-	linec := make(chan string, 10) // Plenty of room before anything gets dropped
-	c.Logs().notify(linec)
-
-	sendLog("ilj;irtr") // Should not be received
-
-	// TODO(jmy): In the future make sure that "unroutable message" counter goes up.
-	// For now a timeout is a workable substitute for verifying that a log message was
-	// not routed.  It's better than nothing.
-	expectNoLogLines(t, linec, 100*time.Millisecond)
-}
-
-func waitForLogLine(t *testing.T, c chan string, timeout time.Duration) {
-	select {
-	case <-c:
-	case <-time.After(timeout):
-		t.Errorf("did not receive an item within %s", timeout)
-	}
-}
-
-func expectNoLogLines(t *testing.T, c chan string, timeout time.Duration) {
-	select {
-	case logLine := <-c:
-		t.Errorf("nothing should have been received, but got: %s", logLine)
-	case <-time.After(timeout):
-	}
-}
-
-func sendLog(logLine string) error {
-	conn, _ := net.Dial("udp", logAddr)
-	buf := []byte(logLine)
-	_, err := conn.Write(buf)
-	return err
-}
-
-func setLogAddrRandomly(t *testing.T) {
-	port, err := getRandomUDPPort()
+	testContainerRoot, err := ioutil.TempDir(os.TempDir(), "harpoon-agent-api-test-")
 	if err != nil {
-		t.Fatalf("could not locate a random port: %s", err)
+		t.Fatal(err)
 	}
-	logAddr = "localhost:" + strconv.Itoa(port)
+	defer os.RemoveAll(testContainerRoot)
+
+	// If we don't do this, newRealContainer will try to mutate the
+	// /srv/harpoon filesystem, which doesn't necessarily exist.
+	newContainer = newFakeContainer
+
+	var (
+		registry = newRegistry()
+		pdb      = newPortDB(lowTestPort, highTestPort)
+		api      = newAPI(testContainerRoot, registry, pdb)
+		server   = httptest.NewServer(api)
+		client   = agent.MustNewClient(server.URL)
+	)
+	defer pdb.exit()
+	defer server.Close()
+
+	err = client.Put("foo", agent.ContainerConfig{ArtifactURL: failingArtifactURL})
+	if err == nil {
+		t.Fatalf("expected error, got none")
+	}
+
+	t.Logf("got expected error (%v)", err)
+
+	_, err = client.Get("foo")
+	if err == nil {
+		t.Fatal("expected error, got none")
+	}
+
+	t.Logf("got expected error (%v)", err)
 }
 
-func validateEvent(expected agent.HostResources, have agent.StateEvent, containersCount int, status agent.ContainerStatus) error {
-	if err := validateResources(expected, have.Resources); err != nil {
+func validateEvent(want agent.HostResources, have agent.StateEvent, containersCount int, status agent.ContainerStatus) error {
+	if err := validateResources(want, have.Resources); err != nil {
 		return err
 	}
 
-	if len(have.Containers) != containersCount {
-		return fmt.Errorf("invalid number of containers in delta update, expected %d != %d", len(have.Containers), containersCount)
+	if containersCount != len(have.Containers) {
+		return fmt.Errorf("invalid number of containers in delta update, want %d, have %d", containersCount, len(have.Containers))
 	}
 
 	if containersCount == 0 {
@@ -489,23 +490,23 @@ func validateEvent(expected agent.HostResources, have agent.StateEvent, containe
 	}
 
 	if container.ContainerStatus != status {
-		return fmt.Errorf("invalid status, expected: %s != %s", status, container.ContainerStatus)
+		return fmt.Errorf("invalid status, want: %s, have %s", status, container.ContainerStatus)
 	}
 
 	return nil
 }
 
-func validateResources(expected agent.HostResources, have agent.HostResources) error {
-	if expected.CPU != have.CPU {
-		return fmt.Errorf("invalid cpu resources: expected %v != have %v", expected.CPU, have.CPU)
+func validateResources(want agent.HostResources, have agent.HostResources) error {
+	if want.CPU != have.CPU {
+		return fmt.Errorf("invalid CPU resources: want %v, have %v", want.CPU, have.CPU)
 	}
 
-	if expected.Mem != have.Mem {
-		return fmt.Errorf("invalid memory resources: expected %v != have %v", expected.Mem, have.Mem)
+	if want.Mem != have.Mem {
+		return fmt.Errorf("invalid mem resources: want %v, have %v", want.Mem, have.Mem)
 	}
 
-	if !reflect.DeepEqual(expected.Volumes, have.Volumes) {
-		return fmt.Errorf("invalid volumes : expected %v != have %v", expected.Volumes, have.Volumes)
+	if !reflect.DeepEqual(want.Volumes, have.Volumes) {
+		return fmt.Errorf("invalid volumes: want %v, have %v", want.Volumes, have.Volumes)
 	}
 
 	return nil

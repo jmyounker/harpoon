@@ -42,14 +42,14 @@ func newAPI(containerRoot string, r *registry, pdb *portDB) *api {
 		}
 	)
 
-	mux.Put("/api/v0/containers/:id", http.HandlerFunc(api.handleCreate))
-	mux.Get("/api/v0/containers/:id", http.HandlerFunc(api.handleGet))
-	mux.Del("/api/v0/containers/:id", http.HandlerFunc(api.handleDestroy))
-	mux.Post("/api/v0/containers/:id/start", http.HandlerFunc(api.handleStart))
-	mux.Post("/api/v0/containers/:id/stop", http.HandlerFunc(api.handleStop))
-	mux.Get("/api/v0/containers/:id/log", http.HandlerFunc(api.handleLog))
-	mux.Get("/api/v0/containers", http.HandlerFunc(api.handleList))
-	mux.Get("/api/v0/resources", http.HandlerFunc(api.handleResources))
+	mux.Get(agent.APIVersionPrefix+agent.APIListContainersPath, http.HandlerFunc(api.handleList))
+	mux.Put(agent.APIVersionPrefix+agent.APICreateContainerPath, http.HandlerFunc(api.handleCreate))
+	mux.Get(agent.APIVersionPrefix+agent.APIGetContainerPath, http.HandlerFunc(api.handleGet))
+	mux.Del(agent.APIVersionPrefix+agent.APIDestroyContainerPath, http.HandlerFunc(api.handleDestroy))
+	mux.Post(agent.APIVersionPrefix+agent.APIStartContainerPath, http.HandlerFunc(api.handleStart))
+	mux.Post(agent.APIVersionPrefix+agent.APIStopContainerPath, http.HandlerFunc(api.handleStop))
+	mux.Get(agent.APIVersionPrefix+agent.APIGetContainerLogPath, http.HandlerFunc(api.handleLog))
+	mux.Get(agent.APIVersionPrefix+agent.APIGetResourcesPath, http.HandlerFunc(api.handleResources))
 
 	return api
 }
@@ -88,18 +88,28 @@ func (a *api) handleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var config agent.ContainerConfig
-
 	if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
+	undo := []func(){}
+	defer func() {
+		for i := len(undo) - 1; i >= 0; i-- {
+			undo[i]()
+		}
+	}()
+
 	container := newContainer(id, a.containerRoot, config, a.portDB)
+
+	undo = append(undo, func() { container.Exit() })
 
 	if ok := a.registry.register(container); !ok {
 		http.Error(w, "already exists", http.StatusConflict)
 		return
 	}
+
+	undo = append(undo, func() { a.registry.remove(id) })
 
 	if err := container.Create(); err != nil {
 		log.Printf("[%s] create: %s", id, err)
@@ -107,11 +117,15 @@ func (a *api) handleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	undo = append(undo, func() { container.Destroy() })
+
 	if err := container.Start(); err != nil {
 		log.Printf("[%s] create, start: %s", id, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	undo = []func(){} // all good
 
 	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte("created OK"))
