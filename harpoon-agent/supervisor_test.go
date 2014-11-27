@@ -196,7 +196,8 @@ func TestSupervisor(t *testing.T) {
 	controlPath := tmpdir + "/control"
 
 	var (
-		s        = newSupervisor("arbitraryID", tmpdir)
+		debug    = false
+		s        = newSupervisor("arbitraryID", tmpdir, debug)
 		done     = make(chan struct{})
 		exitErrc = make(chan error)
 	)
@@ -346,7 +347,8 @@ func TestSupervisorKillAfterGrace(t *testing.T) {
 	controlPath := tmpdir + "/control"
 
 	var (
-		s        = newSupervisor("arbitraryID", tmpdir)
+		debug    = false
+		s        = newSupervisor("arbitraryID", tmpdir, debug)
 		done     = make(chan struct{})
 		exitErrc = make(chan error)
 	)

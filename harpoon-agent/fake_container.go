@@ -22,7 +22,13 @@ type fakeContainer struct {
 // Satisfaction guaranteed.
 var _ container = &fakeContainer{}
 
-func newFakeContainer(id string, _ string, config agent.ContainerConfig, _ *portDB) container {
+func newFakeContainer(
+	id string,
+	_ string,
+	_ volumes,
+	config agent.ContainerConfig,
+	_ bool,
+	_ *portDB) container {
 	c := &fakeContainer{
 		ContainerInstance: agent.ContainerInstance{
 			ID:              id,

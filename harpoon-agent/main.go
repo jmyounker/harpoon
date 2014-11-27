@@ -22,28 +22,21 @@ var (
 	ExternalReleaseVersion string
 )
 
-var (
-	heartbeatInterval = 3 * time.Second
-	configuredVolumes = volumes{} // TODO: de-globalize
-	agentCPU          float64     // TODO: de-globalize
-	agentMem          int64       // TODO: de-globalize
-	debug             bool        // TODO: de-globalize
-	logAddr           string      // TODO: de-globalize
-)
-
 func main() {
 	var (
-		showVersion   = flag.Bool("version", false, "print version")
-		containerRoot = flag.String("run", "/run/harpoon", "filesytem root for packages")
-		addr          = flag.String("addr", ":3333", "address to listen on")
-		portsStart    = flag.Uint64("ports.start", 30000, "starting of port allocation range")
-		portsEnd      = flag.Uint64("ports.end", 32767, "ending of port allocation range")
+		heartbeatInterval = 3 * time.Second
+		configuredVolumes = volumes{}
+		agentCPU          = flag.Float64("cpu", systemCPU(), "CPU resources to make available")
+		agentMem          = flag.Int64("mem", systemMem(), "memory (MB) resources to make available")
+		debug             = flag.Bool("debug", false, "debug logging")
+		logAddr           = flag.String("log.addr", ":3334", "address for log communications")
+		showVersion       = flag.Bool("version", false, "print version")
+		containerRoot     = flag.String("run", "/run/harpoon", "filesytem root for packages")
+		addr              = flag.String("addr", ":3333", "address to listen on")
+		portsStart        = flag.Uint64("ports.start", 30000, "starting of port allocation range")
+		portsEnd          = flag.Uint64("ports.end", 32767, "ending of port allocation range")
 	)
 	flag.Var(&configuredVolumes, "vol", "repeatable list of available volumes")
-	flag.Float64Var(&agentCPU, "cpu", systemCPU(), "CPU resources to make available")
-	flag.Int64Var(&agentMem, "mem", systemMem(), "memory (MB) resources to make available")
-	flag.BoolVar(&debug, "debug", false, "debug logging")
-	flag.StringVar(&logAddr, "log.addr", ":3334", "address for log communications")
 
 	flag.Parse()
 
@@ -69,14 +62,14 @@ func main() {
 	r := newRegistry()
 	pdb := newPortDB(portsStart16, portsEnd16)
 	defer pdb.exit()
-	api := newAPI(*containerRoot, r, pdb)
+	api := newAPI(*containerRoot, r, pdb, configuredVolumes, *agentCPU, *agentMem, *debug)
 
-	go receiveLogs(r)
+	go receiveLogs(r, *logAddr)
 
 	http.Handle("/", api)
 
 	go func() {
-		recoverContainers(*containerRoot, r, pdb)
+		recoverContainers(*containerRoot, r, pdb, configuredVolumes, *debug)
 
 		r.acceptStateUpdates()
 

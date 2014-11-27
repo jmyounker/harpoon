@@ -148,7 +148,7 @@ func (cl *containerLog) removeNotifiers() {
 
 // receiveLogs opens udp port 3334, listens for incoming log messages, and
 // then feeds these into the appropriate buffers.
-func receiveLogs(r *registry) {
+func receiveLogs(r *registry, logAddr string) {
 	laddr, err := net.ResolveUDPAddr("udp", logAddr)
 	if err != nil {
 		log.Fatal(err)
