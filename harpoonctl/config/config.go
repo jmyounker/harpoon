@@ -44,15 +44,17 @@ var artifactFlag = cli.StringFlag{
 	Usage: "artifact URL",
 }
 
+var defaultPortFlag = cli.StringSlice([]string{"HTTP:0"})
 var portFlag = cli.StringSliceFlag{
 	Name:  "port",
-	Value: &cli.StringSlice{"HTTP:0"},
+	Value: &defaultPortFlag,
 	Usage: "NAME:PORT, port to allocate, e.g. HTTP:0 (autoassign), ROOTKIT:31337 [repeatable]",
 }
 
+var defaultEnvFlag = cli.StringSlice([]string{"MSG=Hello, 世界"})
 var envFlag = cli.StringSliceFlag{
 	Name:  "env",
-	Value: &cli.StringSlice{"MSG=Hello, 世界"},
+	Value: &defaultEnvFlag,
 	Usage: "KEY=VAL, environment to set [repeatable]",
 }
 
