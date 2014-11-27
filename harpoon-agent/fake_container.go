@@ -1,6 +1,10 @@
 package main
 
-import "github.com/soundcloud/harpoon/harpoon-agent/lib"
+import (
+	"fmt"
+
+	"github.com/soundcloud/harpoon/harpoon-agent/lib"
+)
 
 type fakeContainer struct {
 	agent.ContainerInstance
@@ -128,7 +132,12 @@ func (c *fakeContainer) loop() {
 	}
 }
 
+const failingArtifactURL = "http://fail-forever.biz/no-container.tgz"
+
 func (c *fakeContainer) create() error {
+	if c.ContainerConfig.ArtifactURL == failingArtifactURL {
+		return fmt.Errorf("failed to fetch")
+	}
 	return nil
 }
 

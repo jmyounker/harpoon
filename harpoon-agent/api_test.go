@@ -396,6 +396,50 @@ func TestLogAPICanRetrieveLastLines(t *testing.T) {
 	expectArraysEqual(t, logLines, []string{"container[123] m1", "container[123] m2"})
 }
 
+func TestFailedCreateDestroysContainer(t *testing.T) {
+	// There are many ways to fail:
+	//
+	// - a.registry.register fails (already exists)
+	// - container.Create fails (invalid config; can't assign ports; mkdir run/logdir fails; agent.json fails; fetch fails; symlink fails)
+	// - container.Start fails (bad initial status; supervisor log create fails; startLogger fails; supervisor create fails)
+	//
+	// This test just captures one of them: container.Create fails because fetch fails.
+
+	testContainerRoot, err := ioutil.TempDir(os.TempDir(), "harpoon-agent-api-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(testContainerRoot)
+
+	// If we don't do this, newRealContainer will try to mutate the
+	// /srv/harpoon filesystem, which doesn't necessarily exist.
+	newContainer = newFakeContainer
+
+	var (
+		registry = newRegistry()
+		pdb      = newPortDB(lowTestPort, highTestPort)
+		api      = newAPI(testContainerRoot, registry, pdb)
+		server   = httptest.NewServer(api)
+		client   = agent.MustNewClient(server.URL)
+	)
+	defer pdb.exit()
+	defer server.Close()
+
+	err = client.Put("foo", agent.ContainerConfig{ArtifactURL: failingArtifactURL})
+	if err == nil {
+		t.Fatalf("expected error, got none")
+	}
+
+	t.Logf("got expected error (%v)", err)
+
+	_, err = client.Get("foo")
+	if err == nil {
+		t.Fatal("expected error, got none")
+	}
+
+	t.Logf("got expected error (%v)", err)
+}
+
 func validateEvent(want agent.HostResources, have agent.StateEvent, containersCount int, status agent.ContainerStatus) error {
 	if err := validateResources(want, have.Resources); err != nil {
 		return err
