@@ -48,14 +48,14 @@ var defaultPortFlag = cli.StringSlice([]string{"HTTP:0"})
 var portFlag = cli.StringSliceFlag{
 	Name:  "port",
 	Value: &defaultPortFlag,
-	Usage: "NAME:PORT, port to allocate, e.g. HTTP:0 (autoassign), ROOTKIT:31337 [repeatable]",
+	Usage: "port to allocate, NAME:PORT, e.g. HTTP:0 (autoassign), ROOTKIT:31337 [repeatable]",
 }
 
 var defaultEnvFlag = cli.StringSlice([]string{"MSG=Hello, 世界"})
 var envFlag = cli.StringSliceFlag{
 	Name:  "env",
 	Value: &defaultEnvFlag,
-	Usage: "KEY=VAL, environment to set [repeatable]",
+	Usage: "env var to set, KEY=VAL [repeatable]",
 }
 
 var workingDirFlag = cli.StringFlag{
@@ -91,13 +91,13 @@ var fdFlag = cli.IntFlag{
 var tmpFlag = cli.StringSliceFlag{
 	Name:  "tmp",
 	Value: &cli.StringSlice{},
-	Usage: "PATH:SIZE, temp mount to create, e.g. /tmp:-1 (unlimited), /var/scratch:1024 [repeatable]",
+	Usage: "tmp mount to create, PATH:SIZE, e.g. /tmp:-1 (unlimited), /var/scratch:1024 [repeatable]",
 }
 
 var volFlag = cli.StringSliceFlag{
 	Name:  "vol",
 	Value: &cli.StringSlice{},
-	Usage: "DST:SRC, volume to mount, e.g. /metrics:/data/prometheus/apiv2 [repeatable]",
+	Usage: "host volume to mount, DST:SRC, e.g. /metrics:/data/prometheus/apiv2 [repeatable]",
 }
 
 var startupFlag = cli.DurationFlag{
