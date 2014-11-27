@@ -18,7 +18,7 @@ import (
 // http://www.catb.org/~esr/writings/taouu/html/
 
 func main() {
-	a := &cli.App{
+	(&cli.App{
 		Name:                 "harpoonctl",
 		Usage:                "Interact with Harpoon platform components.",
 		Version:              version(),
@@ -33,8 +33,7 @@ func main() {
 		Compiled:             compileTime(),
 		Author:               "Infrastructure Software and Services",
 		Email:                "iss@soundcloud.com",
-	}
-	a.Run(os.Args)
+	}).Run(os.Args)
 }
 
 var verboseFlag = cli.BoolFlag{
