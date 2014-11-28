@@ -17,7 +17,7 @@ import (
 // Command is the config subcommand.
 var Command = cli.Command{
 	Name:        "config",
-	Usage:       "Create container config",
+	Usage:       "Create a container config",
 	Description: "Create a container configuration file.",
 	Action:      configAction,
 	Flags: []cli.Flag{
