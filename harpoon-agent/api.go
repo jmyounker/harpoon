@@ -20,12 +20,12 @@ type api struct {
 	*portDB
 	*registry
 
-	enabled           bool
-	cpu               float64
-	configuredVolumes volumes
-	containerRoot     string
-	debug             bool
-	memory            int64
+	enabled bool
+	cpu     float64
+	vols    volumes
+	root    string
+	debug   bool
+	mem     int64
 	sync.RWMutex
 }
 
@@ -36,25 +36,25 @@ var (
 )
 
 func newAPI(
-	containerRoot string,
+	root string,
 	r *registry,
 	pdb *portDB,
-	cv volumes,
+	vols volumes,
 	cpu float64,
-	memory int64,
+	mem int64,
 	debug bool,
 ) *api {
 	var (
 		mux = pat.New()
 		api = &api{
-			Handler:           mux,
-			containerRoot:     containerRoot,
-			registry:          r,
-			portDB:            pdb,
-			configuredVolumes: cv,
-			cpu:               cpu,
-			debug:             debug,
-			memory:            memory,
+			Handler:  mux,
+			root:     root,
+			registry: r,
+			portDB:   pdb,
+			vols:     vols,
+			cpu:      cpu,
+			debug:    debug,
+			mem:      mem,
 		}
 	)
 
@@ -116,7 +116,7 @@ func (a *api) handleCreate(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	container := newContainer(id, a.containerRoot, a.configuredVolumes, config, a.debug, a.portDB)
+	container := newContainer(id, a.root, a.vols, config, a.debug, a.portDB)
 
 	undo = append(undo, func() { container.Exit() })
 
@@ -227,7 +227,7 @@ func (a *api) handleContainerStream(_ string, enc *eventsource.Encoder, stop <-c
 	instances := a.registry.instances()
 	b, err := json.Marshal(
 		&agent.StateEvent{
-			Resources:  resources(a.registry.instances(), a.configuredVolumes, a.memory, a.cpu),
+			Resources:  resources(a.registry.instances(), a.vols, a.mem, a.cpu),
 			Containers: instances,
 		},
 	)
@@ -249,7 +249,7 @@ func (a *api) handleContainerStream(_ string, enc *eventsource.Encoder, stop <-c
 		case state := <-statec:
 			b, err := json.Marshal(
 				agent.StateEvent{
-					Resources:  resources(a.registry.instances(), a.configuredVolumes, a.memory, a.cpu),
+					Resources:  resources(a.registry.instances(), a.vols, a.mem, a.cpu),
 					Containers: map[string]agent.ContainerInstance{state.ID: state},
 				},
 			)
@@ -365,18 +365,18 @@ func (a *api) streamLog(history []string, current *containerLog, enc *eventsourc
 }
 
 func (a *api) handleResources(w http.ResponseWriter, r *http.Request) {
-	json.NewEncoder(w).Encode(resources(a.registry.instances(), a.configuredVolumes, a.memory, a.cpu))
+	json.NewEncoder(w).Encode(resources(a.registry.instances(), a.vols, a.mem, a.cpu))
 }
 
 func resources(
 	instances map[string]agent.ContainerInstance,
-	configuredVolumes volumes,
+	vols volumes,
 	agentMem int64,
 	agentCPU float64,
 ) agent.HostResources {
-	volumes := make([]string, 0, len(configuredVolumes))
+	volumes := make([]string, 0, len(vols))
 
-	for vol := range configuredVolumes {
+	for vol := range vols {
 		volumes = append(volumes, vol)
 	}
 
