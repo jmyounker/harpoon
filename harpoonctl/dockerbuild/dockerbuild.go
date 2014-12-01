@@ -1,9 +1,20 @@
 package dockerbuild
 
 import (
+	"bytes"
 	"fmt"
+	"io/ioutil"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"time"
 
 	"github.com/codegangsta/cli"
+	"github.com/ghemawat/stream"
+
+	"github.com/soundcloud/harpoon/harpoonctl/log"
 )
 
 // Command is the dockerbuild subcommand.
@@ -13,50 +24,36 @@ var Command = cli.Command{
 	Description: "Use the Docker build system to produce a Harpoon container.",
 	Action:      buildAction,
 	Flags: []cli.Flag{
-		contextFlag,
-		fromFlag,
-		addFlag,
-		imageFlag,
-		tagFlag,
-		outputFlag,
+		cli.StringFlag{
+			Name:  "context",
+			Usage: "Docker build context, i.e. directory. Overrides other build options.",
+		},
+		cli.StringFlag{
+			Name:  "from",
+			Value: defaultFrom,
+			Usage: "Docker image to base your container on",
+		},
+		cli.StringSliceFlag{
+			Name:  "add",
+			Usage: "SRC:DST, file(s) to include in your container (ADD src dst) [repeatable]",
+		},
+		cli.StringFlag{
+			Name:  "image",
+			Value: defaultImage,
+			Usage: "Name for built image",
+		},
+		cli.StringFlag{
+			Name:  "tag",
+			Value: defaultTag,
+			Usage: "Tag for built container",
+		},
+		cli.StringFlag{
+			Name:  "output",
+			Value: defaultOutput,
+			Usage: "Output filename, or stdout",
+		},
 	},
 	HideHelp: true,
-}
-
-var contextFlag = cli.StringFlag{
-	Name:  "context",
-	Value: "",
-	Usage: "Docker build context, i.e. directory. Overrides other build options.",
-}
-
-var fromFlag = cli.StringFlag{
-	Name:  "from",
-	Value: defaultFrom,
-	Usage: "Docker image to base your container on",
-}
-
-var addFlag = cli.StringSliceFlag{
-	Name:  "add",
-	Value: &cli.StringSlice{},
-	Usage: "SRC:DST, file(s) to include in your container (ADD src dst) [repeatable]",
-}
-
-var imageFlag = cli.StringFlag{
-	Name:  "image",
-	Value: defaultImage,
-	Usage: "Image name for built container",
-}
-
-var tagFlag = cli.StringFlag{
-	Name:  "tag",
-	Value: defaultTag,
-	Usage: "Tag for built container (optional)",
-}
-
-var outputFlag = cli.StringFlag{
-	Name:  "output",
-	Value: defaultOutput,
-	Usage: "Output filename, or stdout",
 }
 
 var (
@@ -64,20 +61,167 @@ var (
 	defaultImage  = "IMAGE"
 	defaultTag    = "TAG"
 	defaultOutput = fmt.Sprintf("%s-%s-%s.tar.gz", defaultFrom, defaultImage, defaultTag)
+	dockerPath    = ""
+	dockerEnv     = os.Environ()
 )
 
 func buildAction(ctx *cli.Context) {
-	if contextFlag.Value != "" {
-		buildContext(ctx, contextFlag.Value)
+	if err := checkFlags(ctx); err != nil {
+		log.Fatalf("%s", err)
+	}
+
+	if err := setGlobalDockerEnv(); err != nil {
+		log.Fatalf("%s", err)
+	}
+
+	var err error
+	if ctx.String("context") != "" {
+		err = buildContext(ctx.String("context"), ctx.String("image"), ctx.String("tag"), ctx.String("output"))
 	} else {
-		buildManual(ctx, fromFlag.Value, addFlag.Value.Value(), imageFlag.Value, tagFlag.Value, outputFlag.Value)
+		err = buildManual(ctx.String("from"), ctx.StringSlice("add"), ctx.String("image"), ctx.String("tag"), ctx.String("output"))
+	}
+
+	if err != nil {
+		log.Fatalf("%s", err)
 	}
 }
 
-func buildContext(ctx *cli.Context, context string) {
+func buildManual(from string, add []string, image, tag, file string) error {
+	contextPath := fmt.Sprintf(".harpoonctl-dockerbuild-%d", time.Now().UTC().UnixNano())
+	if err := os.MkdirAll(contextPath, 0775); err != nil {
+		return fmt.Errorf("when making temporary context directory: %s", err)
+	}
 
+	defer os.RemoveAll(contextPath)
+
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "FROM %s", from)
+	for _, pair := range add {
+		srcdst := strings.SplitN(pair, ":", 2)
+		src, dst := srcdst[0], srcdst[1]
+		if src == "" || dst == "" {
+			return fmt.Errorf("--add %q invalid", add)
+		}
+		fmt.Fprintf(&buf, "ADD %s %s", src, dst)
+	}
+
+	if err := ioutil.WriteFile(filepath.Join(contextPath, "Dockerfile"), buf.Bytes(), 0775); err != nil {
+		return fmt.Errorf("when writing Dockerfile: %s", err)
+	}
+
+	return buildContext(contextPath, image, tag, file)
 }
 
-func buildManual(ctx *cli.Context, from string, add []string, outImage, outTag, outFile string) {
+func buildContext(contextPath, image, tag, file string) error {
+	args := []string{dockerPath, "build"}
+	if tag != defaultTag {
+		args = append(args, "-t", tag)
+	}
+	args = append(args, contextPath)
 
+	cmd := exec.Cmd{
+		Path:   dockerPath,
+		Args:   args,
+		Env:    dockerEnv,
+		Stdout: verboseWriter{},
+		Stderr: errorWriter{},
+	}
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("docker build: %s", err)
+	}
+
+	return nil
+}
+
+func checkFlags(ctx *cli.Context) error {
+	if contextPath := ctx.String("context"); contextPath != "" {
+		if fi, err := os.Stat(contextPath); err != nil {
+			return fmt.Errorf("--context %q: %s", contextPath, err)
+		} else if !fi.IsDir() {
+			return fmt.Errorf("--context %q: not a directory", contextPath)
+		}
+	} else {
+		if ctx.String("from") == defaultFrom {
+			return fmt.Errorf("must specify --from")
+		}
+		if ctx.String("image") == defaultImage {
+			return fmt.Errorf("must specify --image")
+		}
+		if ctx.String("tag") == defaultTag {
+			return fmt.Errorf("must specify --tag")
+		}
+	}
+
+	return nil
+}
+
+func setGlobalDockerEnv() error {
+	var err error
+
+	dockerPath, err = exec.LookPath("docker")
+	if err != nil {
+		return fmt.Errorf("docker not found in $PATH")
+	}
+
+	log.Verbosef("docker found at %s", dockerPath)
+
+	if runtime.GOOS == "darwin" {
+		boot2dockerPath, err := exec.LookPath("boot2docker")
+		if err != nil {
+			return fmt.Errorf("boot2docker not found in $PATH")
+		}
+
+		log.Verbosef("boot2docker found at %s", boot2dockerPath)
+
+		// Make sure VM is running.
+		var buf bytes.Buffer
+		if err := stream.Run(
+			stream.Command("boot2docker", "status"),
+			stream.WriteLines(&buf),
+		); err != nil {
+			return fmt.Errorf("boot2docker status: %s", err)
+		}
+
+		if status := string(bytes.TrimSpace(buf.Bytes())); status != "running" {
+			return fmt.Errorf("boot2docker status: %s", status)
+		}
+
+		buf.Reset()
+
+		// Get the relevant environment variables.
+		if err := stream.Run(
+			stream.Command("boot2docker", "shellinit"),
+			stream.Grep("export"),
+			stream.Substitute(`^[ ]*export ([^=]+)=(.*)$`, `$1=$2`),
+			stream.WriteLines(&buf),
+		); err != nil {
+			return fmt.Errorf("boot2docker shellinit: %s", err)
+		}
+
+		for _, line := range strings.Split(buf.String(), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			dockerEnv = append(dockerEnv, line)
+			log.Verbosef("%s", line)
+		}
+	}
+
+	return nil
+}
+
+type verboseWriter struct{}
+
+func (w verboseWriter) Write(p []byte) (int, error) {
+	log.Verbosef("%s", bytes.TrimSpace(p))
+	return len(p), nil
+}
+
+type errorWriter struct{}
+
+func (w errorWriter) Write(p []byte) (int, error) {
+	log.Errorf("%s", bytes.TrimSpace(p))
+	return len(p), nil
 }
