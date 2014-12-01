@@ -14,6 +14,9 @@ var (
 	// Chosen so they don't collide with the production range.
 	lowTestPort  = uint16(rand.Intn((23000-100)-20000) + 20000)
 	highTestPort = lowTestPort + 100
+
+	// Global var to simplify testing-only functions.
+	logAddr string
 )
 
 // getRandomUDPPort identifies a UDP port by attempting to connect to port zero. This
@@ -43,7 +46,7 @@ func dumpJSONPretty(v interface{}) string {
 
 func createReceiveLogsFixture(t *testing.T, r *registry) {
 	setLogAddrRandomly(t)
-	go receiveLogs(r)
+	go receiveLogs(r, logAddr)
 }
 
 func setLogAddrRandomly(t *testing.T) {

@@ -41,9 +41,11 @@ const (
 type realContainer struct {
 	agent.ContainerInstance
 
-	containerRoot string
-	portDB        *portDB
-	logs          *containerLog
+	debug             bool
+	configuredVolumes volumes
+	containerRoot     string
+	portDB            *portDB
+	logs              *containerLog
 
 	supervisor      *supervisor
 	containerStatec chan agent.ContainerProcessState
@@ -60,7 +62,14 @@ type realContainer struct {
 // Satisfaction guaranteed.
 var _ container = &realContainer{}
 
-func newRealContainer(id string, containerRoot string, config agent.ContainerConfig, pdb *portDB) container {
+func newRealContainer(
+	id string,
+	containerRoot string,
+	configuredVolumes volumes,
+	config agent.ContainerConfig,
+	debug bool,
+	pdb *portDB,
+) container {
 	c := &realContainer{
 		ContainerInstance: agent.ContainerInstance{
 			ID:              id,
@@ -68,9 +77,11 @@ func newRealContainer(id string, containerRoot string, config agent.ContainerCon
 			ContainerConfig: config,
 		},
 
-		containerRoot: containerRoot,
-		portDB:        pdb,
-		logs:          newContainerLog(containerLogRingBufferSize),
+		configuredVolumes: configuredVolumes,
+		containerRoot:     containerRoot,
+		debug:             debug,
+		portDB:            pdb,
+		logs:              newContainerLog(containerLogRingBufferSize),
 
 		subscribers: map[chan<- agent.ContainerInstance]struct{}{},
 
@@ -238,7 +249,7 @@ func (c *realContainer) Recover() error {
 	// ensure we don't hold on to the logger
 	defer logPipe.Close()
 
-	c.supervisor = newSupervisor(c.ID, rundir)
+	c.supervisor = newSupervisor(c.ID, rundir, c.debug)
 
 	_, err = os.Stat(filepath.Join(rundir, "control"))
 	if err == syscall.ENOENT || err == syscall.ENOTDIR {
@@ -306,7 +317,7 @@ func (c *realContainer) create() error {
 		return err
 	}
 
-	if debug {
+	if c.debug {
 		log.Printf("agent file written to: %s", agentJSONPath)
 	}
 	// TODO(pb): it's a problem that this is blocking
@@ -323,7 +334,7 @@ func (c *realContainer) create() error {
 		return fmt.Errorf("symlink log: %s", err)
 	}
 
-	if debug {
+	if c.debug {
 		log.Printf("artifact successfully retrieved and unpacked")
 	}
 	return nil
@@ -335,7 +346,7 @@ func (c *realContainer) validateConfig() error {
 	}
 
 	for _, source := range c.ContainerConfig.Storage.Volumes {
-		if _, ok := configuredVolumes[source]; !ok {
+		if _, ok := c.configuredVolumes[source]; !ok {
 			return fmt.Errorf("container depends on missing volume %q", source)
 		}
 	}
@@ -452,7 +463,7 @@ func (c *realContainer) start() error {
 	// ensure we don't hold on to the logger
 	defer logPipe.Close()
 
-	s := newSupervisor(c.ID, rundir)
+	s := newSupervisor(c.ID, rundir, c.debug)
 
 	if err := s.Start(c.ContainerConfig, logPipe, supervisorLog); err != nil {
 		return err

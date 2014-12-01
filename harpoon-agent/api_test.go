@@ -18,10 +18,6 @@ import (
 )
 
 func TestContainerList(t *testing.T) {
-	agentMem = 1000
-	agentCPU = 2
-	configuredVolumes = map[string]struct{}{"/tmp": struct{}{}}
-
 	testContainerRoot, err := ioutil.TempDir(os.TempDir(), "harpoon-agent-api-test-")
 	if err != nil {
 		t.Fatal(err)
@@ -29,9 +25,14 @@ func TestContainerList(t *testing.T) {
 	defer os.RemoveAll(testContainerRoot)
 
 	var (
+		agentMem          int64   = 1000
+		agentCPU          float64 = 2
+		configuredVolumes         = map[string]struct{}{"/tmp": struct{}{}}
+		debug                     = false
+
 		registry = newRegistry()
 		pdb      = newPortDB(lowTestPort, highTestPort)
-		api      = newAPI(testContainerRoot, registry, pdb)
+		api      = newAPI(testContainerRoot, registry, pdb, configuredVolumes, agentCPU, agentMem, debug)
 		server   = httptest.NewServer(api)
 	)
 
@@ -70,13 +71,16 @@ func TestContainerList(t *testing.T) {
 	cont := newFakeContainer(
 		"123",
 		"",
+		volumes{},
 		agent.ContainerConfig{
 			Resources: agent.Resources{
 				Mem: 100,
 				CPU: 2,
 			},
 		},
-		nil)
+		false,
+		nil,
+	)
 
 	registry.m["123"] = cont
 	registry.statec <- cont.Instance()
@@ -120,13 +124,11 @@ func TestContainerList(t *testing.T) {
 func TestAgentHostResources(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 
-	// Set up an empty agent
-
-	agentMem = 1000
-	agentCPU = 2
-	configuredVolumes = map[string]struct{}{"/tmp": struct{}{}}
+	// If we don't do this, newRealContainer will try to mutate the
+	// /srv/harpoon filesystem, which doesn't necessarily exist.
 	newContainer = newFakeContainer
 
+	// Set up an empty agent
 	testContainerRoot, err := ioutil.TempDir(os.TempDir(), "harpoon-agent-api-test-")
 	if err != nil {
 		t.Fatal(err)
@@ -134,9 +136,14 @@ func TestAgentHostResources(t *testing.T) {
 	defer os.RemoveAll(testContainerRoot)
 
 	var (
+		agentMem          int64   = 1000
+		agentCPU          float64 = 2
+		configuredVolumes         = map[string]struct{}{"/tmp": struct{}{}}
+		debug                     = false
+
 		registry  = newRegistry()
 		pdb       = newPortDB(lowTestPort, highTestPort)
-		api       = newAPI(testContainerRoot, registry, pdb)
+		api       = newAPI(testContainerRoot, registry, pdb, configuredVolumes, agentCPU, agentMem, debug)
 		server    = httptest.NewServer(api)
 		client, _ = agent.NewClient(server.URL)
 	)
@@ -224,9 +231,14 @@ func TestLogAPICanTailLogs(t *testing.T) {
 	defer os.RemoveAll(testContainerRoot)
 
 	var (
+		agentMem          int64
+		agentCPU          float64
+		configuredVolumes map[string]struct{}
+		debug             = false
+
 		registry = newRegistry()
 		pdb      = newPortDB(lowTestPort, highTestPort)
-		api      = newAPI(testContainerRoot, registry, pdb)
+		api      = newAPI(testContainerRoot, registry, pdb, configuredVolumes, agentCPU, agentMem, debug)
 		server   = httptest.NewServer(api)
 	)
 	defer pdb.exit()
@@ -234,7 +246,7 @@ func TestLogAPICanTailLogs(t *testing.T) {
 
 	createReceiveLogsFixture(t, registry)
 
-	c := newFakeContainer("123", "", agent.ContainerConfig{}, nil)
+	c := newFakeContainer("123", "", volumes{}, agent.ContainerConfig{}, false, nil)
 	registry.register(c)
 
 	// UDP has some weirdness with processing, so we use the container log's subscription
@@ -305,9 +317,14 @@ func TestLogAPILogTailIncludesHistory(t *testing.T) {
 	defer os.RemoveAll(testContainerRoot)
 
 	var (
+		agentMem          int64   = 1000
+		agentCPU          float64 = 2
+		configuredVolumes         = map[string]struct{}{"/tmp": struct{}{}}
+		debug                     = false
+
 		registry = newRegistry()
 		pdb      = newPortDB(lowTestPort, highTestPort)
-		api      = newAPI(testContainerRoot, registry, pdb)
+		api      = newAPI(testContainerRoot, registry, pdb, configuredVolumes, agentCPU, agentMem, debug)
 		server   = httptest.NewServer(api)
 	)
 	defer pdb.exit()
@@ -315,7 +332,7 @@ func TestLogAPILogTailIncludesHistory(t *testing.T) {
 
 	createReceiveLogsFixture(t, registry)
 
-	c := newFakeContainer("123", "", agent.ContainerConfig{}, nil)
+	c := newFakeContainer("123", "", volumes{}, agent.ContainerConfig{}, false, nil)
 	registry.register(c)
 
 	// UDP has some weirdness with processing, so we use the container log's subscription
@@ -388,9 +405,14 @@ func TestLogAPICanRetrieveLastLines(t *testing.T) {
 	defer os.RemoveAll(testContainerRoot)
 
 	var (
+		agentMem          int64   = 1000
+		agentCPU          float64 = 2
+		configuredVolumes         = map[string]struct{}{"/tmp": struct{}{}}
+		debug                     = false
+
 		registry = newRegistry()
 		pdb      = newPortDB(lowTestPort, highTestPort)
-		api      = newAPI(testContainerRoot, registry, pdb)
+		api      = newAPI(testContainerRoot, registry, pdb, configuredVolumes, agentCPU, agentMem, debug)
 		server   = httptest.NewServer(api)
 	)
 	defer pdb.exit()
@@ -398,7 +420,7 @@ func TestLogAPICanRetrieveLastLines(t *testing.T) {
 
 	createReceiveLogsFixture(t, registry)
 
-	c := newFakeContainer("123", "", agent.ContainerConfig{}, nil)
+	c := newFakeContainer("123", "", volumes{}, agent.ContainerConfig{}, false, nil)
 	registry.register(c)
 
 	// UDP has some weirdness with processing, so we use the container log's subscription
@@ -447,9 +469,14 @@ func TestFailedCreateDestroysContainer(t *testing.T) {
 	newContainer = newFakeContainer
 
 	var (
+		agentMem          int64   = 1000
+		agentCPU          float64 = 2
+		configuredVolumes         = map[string]struct{}{"/tmp": struct{}{}}
+		debug                     = false
+
 		registry = newRegistry()
 		pdb      = newPortDB(lowTestPort, highTestPort)
-		api      = newAPI(testContainerRoot, registry, pdb)
+		api      = newAPI(testContainerRoot, registry, pdb, configuredVolumes, agentCPU, agentMem, debug)
 		server   = httptest.NewServer(api)
 		client   = agent.MustNewClient(server.URL)
 	)

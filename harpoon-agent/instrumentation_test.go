@@ -16,7 +16,7 @@ import (
 func TestReceiveLogInstrumentation(t *testing.T) {
 	registry := newRegistry()
 	createReceiveLogsFixture(t, registry)
-	c := newFakeContainer("123", "", agent.ContainerConfig{}, nil)
+	c := newFakeContainer("123", "", volumes{}, agent.ContainerConfig{}, false, nil)
 	registry.register(c)
 	linec := make(chan string, 10) // Plenty of room before anything gets dropped
 	c.Logs().notify(linec)
@@ -47,11 +47,11 @@ func TestLogInstrumentationNotifyWithoutWatchers(t *testing.T) {
 	registry := newRegistry()
 	createReceiveLogsFixture(t, registry)
 
-	registry.register(newFakeContainer("123", "", agent.ContainerConfig{}, nil))
+	registry.register(newFakeContainer("123", "", volumes{}, agent.ContainerConfig{}, false, nil))
 
 	// Create a second container which shouldn't receive any notifications
 	// for the first channel.  This channel
-	nonDestinationContainer := newFakeContainer("456", "", agent.ContainerConfig{}, nil)
+	nonDestinationContainer := newFakeContainer("456", "", volumes{}, agent.ContainerConfig{}, false, nil)
 	registry.register(nonDestinationContainer)
 	nonDestinationLinec := make(chan string, 1)
 	nonDestinationContainer.Logs().notify(nonDestinationLinec)
@@ -70,7 +70,7 @@ func TestLogInstrumentationNotifyWatchers(t *testing.T) {
 	registry := newRegistry()
 	createReceiveLogsFixture(t, registry)
 
-	c := newFakeContainer("123", "", agent.ContainerConfig{}, nil)
+	c := newFakeContainer("123", "", volumes{}, agent.ContainerConfig{}, false, nil)
 	registry.register(c)
 	linec1 := make(chan string, 1)
 	linec2 := make(chan string, 1)
@@ -92,7 +92,7 @@ func TestLogInstrumentationNotifyWithBlockedWatcher(t *testing.T) {
 	registry := newRegistry()
 	createReceiveLogsFixture(t, registry)
 
-	c := newFakeContainer("123", "", agent.ContainerConfig{}, nil)
+	c := newFakeContainer("123", "", volumes{}, agent.ContainerConfig{}, false, nil)
 	registry.register(c)
 	linec1 := make(chan string, 1)
 	linec2 := make(chan string) // Blocked channel
