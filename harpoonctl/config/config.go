@@ -21,106 +21,83 @@ var Command = cli.Command{
 	Description: "Create a container configuration file.",
 	Action:      configAction,
 	Flags: []cli.Flag{
-		artifactFlag,
-		portFlag,
-		envFlag,
-		workingDirFlag,
-		execFlag,
-		memFlag,
-		cpuFlag,
-		fdFlag,
-		tmpFlag,
-		volFlag,
-		startupFlag,
-		shutdownFlag,
-		restartFlag,
+		cli.StringFlag{
+			Name:  "artifact_url",
+			Value: "http://ent.int.s-cloud.net/iss/simpleweb.tar.gz",
+			Usage: "artifact URL",
+		},
+		cli.StringSliceFlag{
+			Name:  "port",
+			Value: &defaultPortFlag,
+			Usage: "port to allocate, NAME:PORT, e.g. HTTP:0 (autoassign), ROOTKIT:31337 [repeatable]",
+		},
+		cli.StringSliceFlag{
+			Name:  "env",
+			Value: &defaultEnvFlag,
+			Usage: "env var to set, KEY=VAL [repeatable]",
+		},
+		cli.StringFlag{
+			Name:  "working_dir",
+			Value: "/",
+			Usage: "working dir in container, before executing command",
+		},
+		cli.StringFlag{
+			Name:  "exec",
+			Value: "./simpleweb -listen=$PORT_HTTP -message=$MSG",
+			Usage: "command to execute, with spaces to separate arguments",
+		},
+		cli.IntFlag{
+			Name:  "mem",
+			Value: 64,
+			Usage: "memory limit (MB)",
+		},
+		cli.Float64Flag{
+			Name:  "cpu",
+			Value: 0.1,
+			Usage: "CPU limit (fractional CPUs)",
+		},
+		cli.IntFlag{
+			Name:  "fd",
+			Value: 32768,
+			Usage: "file descriptor limit (ulimit -n)",
+		},
+		cli.StringSliceFlag{
+			Name:  "tmp",
+			Value: &cli.StringSlice{},
+			Usage: "tmp mount to create, PATH:SIZE, e.g. /tmp:-1 (unlimited), /var/scratch:1024 [repeatable]",
+		},
+		cli.StringSliceFlag{
+			Name:  "vol",
+			Value: &cli.StringSlice{},
+			Usage: "host volume to mount, DST:SRC, e.g. /metrics:/data/prometheus/apiv2 [repeatable]",
+		},
+		cli.DurationFlag{
+			Name:  "startup",
+			Value: 3 * time.Second,
+			Usage: "maximum time for container to start up",
+		},
+		cli.DurationFlag{
+			Name:  "shutdown",
+			Value: 3 * time.Second,
+			Usage: "maximum time for container to shut down",
+		},
+		cli.StringFlag{
+			Name:  "restart",
+			Value: agent.OnFailureRestart,
+			Usage: fmt.Sprintf("restart policy: %s, %s, %s", agent.NoRestart, agent.OnFailureRestart, agent.AlwaysRestart),
+		},
 	},
 	HideHelp: true,
 }
 
-var artifactFlag = cli.StringFlag{
-	Name:  "artifact_url",
-	Value: "http://ent.int.s-cloud.net/iss/simpleweb.tar.gz",
-	Usage: "artifact URL",
-}
-
-var defaultPortFlag = cli.StringSlice([]string{"HTTP:0"})
-var portFlag = cli.StringSliceFlag{
-	Name:  "port",
-	Value: &defaultPortFlag,
-	Usage: "port to allocate, NAME:PORT, e.g. HTTP:0 (autoassign), ROOTKIT:31337 [repeatable]",
-}
-
-var defaultEnvFlag = cli.StringSlice([]string{"MSG=Hello, 世界"})
-var envFlag = cli.StringSliceFlag{
-	Name:  "env",
-	Value: &defaultEnvFlag,
-	Usage: "env var to set, KEY=VAL [repeatable]",
-}
-
-var workingDirFlag = cli.StringFlag{
-	Name:  "working_dir",
-	Value: "/",
-	Usage: "working dir in container, before executing command",
-}
-
-var execFlag = cli.StringFlag{
-	Name:  "exec",
-	Value: "./simpleweb -listen=$PORT_HTTP -message=$MSG",
-	Usage: "command to execute, with spaces to separate arguments",
-}
-
-var memFlag = cli.IntFlag{
-	Name:  "mem",
-	Value: 64,
-	Usage: "memory limit (MB)",
-}
-
-var cpuFlag = cli.Float64Flag{
-	Name:  "cpu",
-	Value: 0.1,
-	Usage: "CPU limit (fractional CPUs)",
-}
-
-var fdFlag = cli.IntFlag{
-	Name:  "fd",
-	Value: 32768,
-	Usage: "file descriptor limit (ulimit -n)",
-}
-
-var tmpFlag = cli.StringSliceFlag{
-	Name:  "tmp",
-	Value: &cli.StringSlice{},
-	Usage: "tmp mount to create, PATH:SIZE, e.g. /tmp:-1 (unlimited), /var/scratch:1024 [repeatable]",
-}
-
-var volFlag = cli.StringSliceFlag{
-	Name:  "vol",
-	Value: &cli.StringSlice{},
-	Usage: "host volume to mount, DST:SRC, e.g. /metrics:/data/prometheus/apiv2 [repeatable]",
-}
-
-var startupFlag = cli.DurationFlag{
-	Name:  "startup",
-	Value: 3 * time.Second,
-	Usage: "maximum time for container to start up",
-}
-
-var shutdownFlag = cli.DurationFlag{
-	Name:  "shutdown",
-	Value: 3 * time.Second,
-	Usage: "maximum time for container to shut down",
-}
-
-var restartFlag = cli.StringFlag{
-	Name:  "restart",
-	Value: agent.OnFailureRestart,
-	Usage: fmt.Sprintf("restart policy: %s, %s, %s", agent.NoRestart, agent.OnFailureRestart, agent.AlwaysRestart),
-}
+var (
+	defaultPortFlag = cli.StringSlice([]string{"HTTP:0"})
+	defaultEnvFlag  = cli.StringSlice([]string{"MSG=Hello, 世界"})
+)
 
 func configAction(c *cli.Context) {
 	ports := map[string]uint16{}
-	for _, s := range portFlag.Value.Value() {
+	for _, s := range c.StringSlice("port") {
 		t := strings.SplitN(s, ":", 2)
 
 		if t[0] == "" || t[1] == "" {
@@ -136,7 +113,7 @@ func configAction(c *cli.Context) {
 	}
 
 	env := map[string]string{}
-	for _, s := range envFlag.Value.Value() {
+	for _, s := range c.StringSlice("env") {
 		t := strings.SplitN(s, "=", 2)
 
 		if t[0] == "" || t[1] == "" {
@@ -146,12 +123,20 @@ func configAction(c *cli.Context) {
 		env[t[0]] = t[1]
 	}
 
-	if fdFlag.Value < 0 {
-		log.Fatalf("-fd %d: must be >= 0", fdFlag.Value)
+	if mem := c.Int("mem"); mem <= 0 {
+		log.Fatalf("-mem %d: must be > 0", mem)
+	}
+
+	if cpu := c.Float64("cpu"); cpu <= 0.0 {
+		log.Fatalf("-cpu %.2f: must be > 0.0", cpu)
+	}
+
+	if fd := c.Int("fd"); fd < 0 {
+		log.Fatalf("-fd %d: must be >= 0", fd)
 	}
 
 	tmp := map[string]int{}
-	for _, s := range tmpFlag.Value.Value() {
+	for _, s := range c.StringSlice("tmp") {
 		t := strings.SplitN(s, ":", 2)
 
 		if t[0] == "" || t[1] == "" {
@@ -167,7 +152,7 @@ func configAction(c *cli.Context) {
 	}
 
 	volumes := map[string]string{}
-	for _, s := range volFlag.Value.Value() {
+	for _, s := range c.StringSlice("vol") {
 		t := strings.SplitN(s, ":", 2)
 
 		if t[0] == "" || t[1] == "" {
@@ -178,27 +163,27 @@ func configAction(c *cli.Context) {
 	}
 
 	cfg := agent.ContainerConfig{
-		ArtifactURL: artifactFlag.Value,
+		ArtifactURL: c.String("artifact_url"),
 		Ports:       ports,
 		Env:         env,
 		Command: agent.Command{
-			WorkingDir: workingDirFlag.Value,
-			Exec:       strings.Split(execFlag.Value, " "), // TODO(pb): maybe something nicer
+			WorkingDir: c.String("working_dir"),
+			Exec:       strings.Split(c.String("exec"), " "), // TODO(pb): maybe something nicer
 		},
 		Resources: agent.Resources{
-			Mem: uint64(memFlag.Value),
-			CPU: cpuFlag.Value,
-			FD:  uint64(fdFlag.Value),
+			Mem: uint64(c.Int("mem")),
+			CPU: c.Float64("cpu"),
+			FD:  uint64(c.Int("fd")),
 		},
 		Storage: agent.Storage{
 			Tmp:     tmp,
 			Volumes: volumes,
 		},
 		Grace: agent.Grace{
-			Startup:  agent.JSONDuration{Duration: startupFlag.Value},
-			Shutdown: agent.JSONDuration{Duration: shutdownFlag.Value},
+			Startup:  agent.JSONDuration{Duration: c.Duration("startup")},
+			Shutdown: agent.JSONDuration{Duration: c.Duration("shutdown")},
 		},
-		Restart: agent.Restart(restartFlag.Value),
+		Restart: agent.Restart(c.String("restart")),
 	}
 
 	if err := cfg.Valid(); err != nil {
