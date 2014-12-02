@@ -48,6 +48,10 @@
 			"Rev": "3161cccfa22c6243e02aa984cf2886d022024cec"
 		},
 		{
+			"ImportPath": "github.com/ghemawat/stream",
+			"Rev": "1de8871849b912efc5d0b1fe5dfc2124fe31b8a2"
+		},
+		{
 			"ImportPath": "github.com/godbus/dbus",
 			"Comment": "0-11-gcfab99a",
 			"Rev": "cfab99a9500db4ba03067996059d2fc425090bf3"
