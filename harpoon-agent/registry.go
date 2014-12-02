@@ -115,13 +115,14 @@ func (r *registry) stop(c chan<- agent.ContainerInstance) {
 func (r *registry) loop() {
 	// Report state changes in any container to all of our subscribers.
 	for containerInstance := range r.statec {
-		func() {
-			r.RLock()
-			defer r.RUnlock()
-
-			for subc := range r.subscribers {
-				subc <- containerInstance
-			}
-		}()
+		r.RLock()
+		s := make(map[chan<- agent.ContainerInstance]struct{}, len(r.subscribers))
+		for k, v := range r.subscribers {
+			s[k] = v
+		}
+		r.RUnlock()
+		for subc := range s {
+			subc <- containerInstance
+		}
 	}
 }
