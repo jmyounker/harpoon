@@ -21,12 +21,12 @@ var psCommand = cli.Command{
 	Usage:       "Print tasks",
 	Description: "Display all tasks (containers) that the scheduler is aware of.",
 	Action:      psAction,
-	Flags:       []cli.Flag{longFlag},
-}
-
-var longFlag = cli.BoolFlag{
-	Name:  "l, long",
-	Usage: "long output",
+	Flags: []cli.Flag{
+		cli.BoolFlag{
+			Name:  "l, long",
+			Usage: "long output",
+		},
+	},
 }
 
 func psAction(c *cli.Context) {

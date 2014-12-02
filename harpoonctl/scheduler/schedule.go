@@ -19,7 +19,6 @@ var scheduleCommand = cli.Command{
 	Usage:       "schedule jobconfig.json",
 	Description: "Schedules a job, as specified by jobconfig.json.",
 	Action:      scheduleAction,
-	Flags:       []cli.Flag{},
 }
 
 func scheduleAction(c *cli.Context) {
