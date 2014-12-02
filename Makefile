@@ -23,9 +23,9 @@ GODEP := $(GOBIN)/godep
 ARCHIVE := harpoon-latest.$(GOOS)-$(GOARCH).tar.gz
 DISTDIR ?= $(CURDIR)/dist/$(GOOS)-$(GOARCH)
 
-LDFLAGS    := -X main.Version $(VERSION)\
-              -X main.CommitID $(REV) \
-              -X main.ExternalReleaseVersion $(EXTRELVER)
+LDFLAGS := -X main.Version $(VERSION) \
+           -X main.CommitID $(REV) \
+           -X main.ExternalReleaseVersion $(EXTRELVER)
 
 default:
 
