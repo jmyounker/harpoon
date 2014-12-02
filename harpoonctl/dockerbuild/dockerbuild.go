@@ -65,8 +65,8 @@ var (
 	dockerEnv     = os.Environ()
 )
 
-func buildAction(ctx *cli.Context) {
-	if err := checkFlags(ctx); err != nil {
+func buildAction(c *cli.Context) {
+	if err := checkFlags(c); err != nil {
 		log.Fatalf("%s", err)
 	}
 
@@ -75,10 +75,10 @@ func buildAction(ctx *cli.Context) {
 	}
 
 	var err error
-	if ctx.String("context") != "" {
-		err = buildContext(ctx.String("context"), ctx.String("image"), ctx.String("tag"), ctx.String("output"))
+	if c.String("context") != "" {
+		err = buildContext(c.String("context"), c.String("image"), c.String("tag"), c.String("output"))
 	} else {
-		err = buildManual(ctx.String("from"), ctx.StringSlice("add"), ctx.String("image"), ctx.String("tag"), ctx.String("output"))
+		err = buildManual(c.String("from"), c.StringSlice("add"), c.String("image"), c.String("tag"), c.String("output"))
 	}
 
 	if err != nil {
@@ -134,21 +134,21 @@ func buildContext(contextPath, image, tag, file string) error {
 	return nil
 }
 
-func checkFlags(ctx *cli.Context) error {
-	if contextPath := ctx.String("context"); contextPath != "" {
+func checkFlags(c *cli.Context) error {
+	if contextPath := c.String("context"); contextPath != "" {
 		if fi, err := os.Stat(contextPath); err != nil {
 			return fmt.Errorf("--context %q: %s", contextPath, err)
 		} else if !fi.IsDir() {
 			return fmt.Errorf("--context %q: not a directory", contextPath)
 		}
 	} else {
-		if ctx.String("from") == defaultFrom {
+		if c.String("from") == defaultFrom {
 			return fmt.Errorf("must specify --from")
 		}
-		if ctx.String("image") == defaultImage {
+		if c.String("image") == defaultImage {
 			return fmt.Errorf("must specify --image")
 		}
-		if ctx.String("tag") == defaultTag {
+		if c.String("tag") == defaultTag {
 			return fmt.Errorf("must specify --tag")
 		}
 	}
