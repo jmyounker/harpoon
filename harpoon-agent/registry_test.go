@@ -55,3 +55,30 @@ func TestLogRoutingOfDefectiveMessages(t *testing.T) {
 	// not routed.  It's better than nothing.
 	expectNoLogLines(t, linec, 100*time.Millisecond)
 }
+
+func TestNonBlockingLoop(t *testing.T) {
+	r := newRegistry()
+	c := newFakeContainer("123", "", volumes{}, agent.ContainerConfig{}, false, nil)
+	r.register(c)
+	statec := make(chan agent.ContainerInstance)
+	statec2 := make(chan agent.ContainerInstance)
+	r.notify(statec)
+	r.notify(statec2)
+
+	go r.loop()
+	go func() {
+		for i := 0; i < 2; i++ {
+			c.(*fakeContainer).updateStatus(agent.ContainerStatusFinished)
+		}
+	}()
+	<-statec
+	cic := make(chan map[string]agent.ContainerInstance)
+	go func() {
+		cic <- r.instances()
+	}()
+	select {
+	case <-cic:
+	case <-time.After(time.Second):
+		t.Fatal("Deadlocked")
+	}
+}
