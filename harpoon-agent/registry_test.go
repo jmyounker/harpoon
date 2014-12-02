@@ -76,6 +76,9 @@ func TestNonBlockingLoop(t *testing.T) {
 	go func() {
 		cic <- r.instances()
 	}()
+	// r.loop() is currently blocking waiting for a read on statec2
+	// at this point is where handleContainerStream calls r.instances(), which
+	// previously blocked waiting to acquire the lock held onto by r.loop()
 	select {
 	case <-cic:
 	case <-time.After(time.Second):
