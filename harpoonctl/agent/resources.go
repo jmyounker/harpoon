@@ -19,12 +19,12 @@ var resourcesCommand = cli.Command{
 	Usage:       "Print agent host resources",
 	Description: "Display instantaneous total and reserved CPU, memory, etc. resources of agent(s).",
 	Action:      resourcesAction,
-	Flags:       []cli.Flag{longFlag},
-}
-
-var longFlag = cli.BoolFlag{
-	Name:  "l, long",
-	Usage: "long output",
+	Flags: []cli.Flag{
+		cli.BoolFlag{
+			Name:  "l, long",
+			Usage: "long output",
+		},
+	},
 }
 
 func resourcesAction(c *cli.Context) {
