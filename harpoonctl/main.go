@@ -10,6 +10,7 @@ import (
 
 	"github.com/soundcloud/harpoon/harpoonctl/agent"
 	"github.com/soundcloud/harpoon/harpoonctl/config"
+	"github.com/soundcloud/harpoon/harpoonctl/dockerbuild"
 	"github.com/soundcloud/harpoon/harpoonctl/log"
 	"github.com/soundcloud/harpoon/harpoonctl/scheduler"
 )
@@ -19,11 +20,21 @@ import (
 
 func main() {
 	(&cli.App{
-		Name:                 "harpoonctl",
-		Usage:                "Interact with Harpoon platform components.",
-		Version:              version(),
-		Commands:             []cli.Command{agent.Command, scheduler.Command, config.Command},
-		Flags:                []cli.Flag{verboseFlag, timeoutFlag},
+		Name:     "harpoonctl",
+		Usage:    "Interact with Harpoon platform components.",
+		Version:  version(),
+		Commands: []cli.Command{agent.Command, scheduler.Command, config.Command, dockerbuild.Command},
+		Flags: []cli.Flag{
+			cli.BoolFlag{
+				Name:  "v, verbose",
+				Usage: "print verbose output",
+			},
+			cli.DurationFlag{
+				Name:  "t, timeout",
+				Value: 3 * time.Second,
+				Usage: "HTTP connection timeout",
+			},
+		},
 		EnableBashCompletion: false,
 		HideHelp:             true,
 		HideVersion:          true,
@@ -34,17 +45,6 @@ func main() {
 		Author:               "Infrastructure Software and Services",
 		Email:                "iss@soundcloud.com",
 	}).Run(os.Args)
-}
-
-var verboseFlag = cli.BoolFlag{
-	Name:  "v, verbose",
-	Usage: "print verbose output",
-}
-
-var timeoutFlag = cli.DurationFlag{
-	Name:  "t, timeout",
-	Value: 3 * time.Second,
-	Usage: "HTTP connection timeout",
 }
 
 func before(c *cli.Context) error {

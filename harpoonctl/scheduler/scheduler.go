@@ -19,27 +19,26 @@ var Command = cli.Command{
 	Usage:       "Control a Harpoon scheduler",
 	Description: "Interact with a Harpoon scheduler.",
 	Subcommands: []cli.Command{registryCommand, psCommand, scheduleCommand, unscheduleCommand, migrateCommand},
-	Flags:       []cli.Flag{endpointFlag, schedulerFlag},
-	Before:      parseEndpoint,
-	HideHelp:    true,
+	Flags: []cli.Flag{
+		cli.StringFlag{
+			Name:  "e, endpoint",
+			Value: "",
+			Usage: "scheduler endpoint (overrides --scheduler)",
+		},
+		cli.StringFlag{
+			Name:  "s, scheduler",
+			Value: "default",
+			Usage: "read scheduler endpoint from " + schedulerPath + "/default",
+		},
+	},
+	Before:   parseEndpoint,
+	HideHelp: true,
 }
 
 var (
 	schedulerPath    = filepath.Join(os.Getenv("HOME"), ".harpoonctl", "scheduler")
 	defaultScheduler = filepath.Join(schedulerPath, "default")
 )
-
-var endpointFlag = cli.StringFlag{
-	Name:  "e, endpoint",
-	Value: "",
-	Usage: "scheduler endpoint (overrides --scheduler)",
-}
-
-var schedulerFlag = cli.StringFlag{
-	Name:  "s, scheduler",
-	Value: "default",
-	Usage: "read scheduler endpoint from " + schedulerPath + "/default",
-}
 
 var endpoint *url.URL
 

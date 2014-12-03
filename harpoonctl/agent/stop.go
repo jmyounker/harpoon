@@ -16,7 +16,6 @@ var stopCommand = cli.Command{
 	Usage:       "stop <id>",
 	Description: "Stops a running container.",
 	Action:      stopAction,
-	Flags:       []cli.Flag{},
 }
 
 func stopAction(c *cli.Context) {

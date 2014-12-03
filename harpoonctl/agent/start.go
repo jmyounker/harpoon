@@ -16,7 +16,6 @@ var startCommand = cli.Command{
 	Usage:       "start <id>",
 	Description: "Starts a created, finished, or failed container.",
 	Action:      startAction,
-	Flags:       []cli.Flag{},
 }
 
 func startAction(c *cli.Context) {

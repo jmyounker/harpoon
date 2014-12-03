@@ -21,7 +21,12 @@ var psCommand = cli.Command{
 	Usage:       "Print instances on agent(s)",
 	Description: "Display instances running on agent(s).",
 	Action:      psAction,
-	Flags:       []cli.Flag{longFlag},
+	Flags: []cli.Flag{
+		cli.BoolFlag{
+			Name:  "l, long",
+			Usage: "long output",
+		},
+	},
 }
 
 func psAction(c *cli.Context) {

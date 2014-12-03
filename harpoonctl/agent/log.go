@@ -17,13 +17,13 @@ var logCommand = cli.Command{
 	Usage:       "log <id>",
 	Description: "Streams logs from a running container.",
 	Action:      logAction,
-	Flags:       []cli.Flag{historyFlag},
-}
-
-var historyFlag = cli.IntFlag{
-	Name:  "n, history",
-	Value: 0,
-	Usage: "historical log lines to include",
+	Flags: []cli.Flag{
+		cli.IntFlag{
+			Name:  "n, history",
+			Value: 0,
+			Usage: "historical log lines to include",
+		},
+	},
 }
 
 func logAction(c *cli.Context) {

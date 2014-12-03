@@ -19,7 +19,6 @@ var unscheduleCommand = cli.Command{
 	Usage:       "unschedule <jobconfig.json / hash>",
 	Description: "Unschedules a job, as specified by jobconfig.json or hash.",
 	Action:      unscheduleAction,
-	Flags:       []cli.Flag{},
 }
 
 func unscheduleAction(c *cli.Context) {

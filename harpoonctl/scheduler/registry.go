@@ -20,7 +20,6 @@ var registryCommand = cli.Command{
 	Usage:       "Print scheduler registry",
 	Description: "Display current view of the scheduler's persisted registry, containing all scheduled jobs.",
 	Action:      registryAction,
-	Flags:       []cli.Flag{},
 }
 
 func registryAction(c *cli.Context) {

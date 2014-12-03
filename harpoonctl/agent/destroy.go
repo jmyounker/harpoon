@@ -16,7 +16,6 @@ var destroyCommand = cli.Command{
 	Usage:       "destroy <id>",
 	Description: "Destroys a stopped container.",
 	Action:      destroyAction,
-	Flags:       []cli.Flag{},
 }
 
 func destroyAction(c *cli.Context) {

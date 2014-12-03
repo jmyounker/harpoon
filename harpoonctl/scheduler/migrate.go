@@ -22,7 +22,6 @@ var migrateCommand = cli.Command{
 	Usage:       "migrate old.json new.json",
 	Description: "Interactively migrate an existing job (old.json) to a new configuration (new.json).",
 	Action:      migrateAction,
-	Flags:       []cli.Flag{},
 }
 
 func migrateAction(c *cli.Context) {

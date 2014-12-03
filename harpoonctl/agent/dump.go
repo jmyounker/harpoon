@@ -19,7 +19,6 @@ var dumpCommand = cli.Command{
 	Usage:       "dump <id>",
 	Description: "Dumps current state of a container to stdout as JSON.",
 	Action:      dumpAction,
-	Flags:       []cli.Flag{},
 }
 
 func dumpAction(c *cli.Context) {

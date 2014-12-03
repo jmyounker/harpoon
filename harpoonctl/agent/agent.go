@@ -30,7 +30,18 @@ var Command = cli.Command{
 		destroyCommand,
 		eventsCommand,
 	},
-	Flags:    []cli.Flag{endpointFlag, clusterFlag},
+	Flags: []cli.Flag{
+		cli.StringSliceFlag{
+			Name:  "e, endpoint",
+			Value: &cli.StringSlice{},
+			Usage: "agent endpoint(s) (repeatable, overrides --cluster)",
+		},
+		cli.StringFlag{
+			Name:  "c, cluster",
+			Value: "default",
+			Usage: "read agent endpoint(s) from " + clusterPath + "/default",
+		},
+	},
 	Before:   parseEndpoints,
 	HideHelp: true,
 }
@@ -39,18 +50,6 @@ var (
 	clusterPath    = filepath.Join(os.Getenv("HOME"), ".harpoonctl", "cluster") // like pdsh: $HOME/.dsh/group/foo
 	defaultCluster = filepath.Join(clusterPath, "default")
 )
-
-var endpointFlag = cli.StringSliceFlag{
-	Name:  "e, endpoint",
-	Value: &cli.StringSlice{},
-	Usage: "agent endpoint(s) (repeatable, overrides --cluster)",
-}
-
-var clusterFlag = cli.StringFlag{
-	Name:  "c, cluster",
-	Value: "default",
-	Usage: "read agent endpoint(s) from " + clusterPath + "/default",
-}
 
 var endpoints = []*url.URL{}
 

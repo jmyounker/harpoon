@@ -20,7 +20,6 @@ var createCommand = cli.Command{
 	Usage:       "create <config.json> <id>",
 	Description: "Creates (allocates) and starts a container.",
 	Action:      createAction,
-	Flags:       []cli.Flag{},
 }
 
 func createAction(c *cli.Context) {
