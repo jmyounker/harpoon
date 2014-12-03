@@ -171,7 +171,7 @@ func buildContext(contextPath, tag, output string) error {
 		Args:   args,
 		Env:    dockerEnv,
 		Stdout: verboseWriter{},
-		Stderr: errorWriter{},
+		Stderr: verboseWriter{},
 	}
 
 	if err := cmd.Run(); err != nil {
@@ -332,13 +332,6 @@ type verboseWriter struct{}
 
 func (w verboseWriter) Write(p []byte) (int, error) {
 	log.Verbosef("%s", bytes.TrimSpace(p))
-	return len(p), nil
-}
-
-type errorWriter struct{}
-
-func (w errorWriter) Write(p []byte) (int, error) {
-	log.Errorf("%s", bytes.TrimSpace(p))
 	return len(p), nil
 }
 
