@@ -3,6 +3,7 @@ package dockerbuild
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -35,22 +36,22 @@ var Command = cli.Command{
 		},
 		cli.StringSliceFlag{
 			Name:  "add",
+			Value: &cli.StringSlice{},
 			Usage: "SRC:DST, file(s) to include in your container (ADD src dst) [repeatable]",
-		},
-		cli.StringFlag{
-			Name:  "image",
-			Value: defaultImage,
-			Usage: "Name for built image",
 		},
 		cli.StringFlag{
 			Name:  "tag",
 			Value: defaultTag,
-			Usage: "Tag for built container",
+			Usage: "Tag for built image",
 		},
 		cli.StringFlag{
 			Name:  "output",
 			Value: defaultOutput,
-			Usage: "Output filename, or stdout",
+			Usage: "Output filename, or URL to POST",
+		},
+		cli.BoolFlag{
+			Name:  "keep",
+			Usage: "keep intermediate context directory",
 		},
 	},
 	HideHelp: true,
@@ -76,9 +77,9 @@ func buildAction(c *cli.Context) {
 
 	var err error
 	if c.String("context") != "" {
-		err = buildContext(c.String("context"), c.String("image"), c.String("tag"), c.String("output"))
+		err = buildContext(c.String("context"), c.String("tag"), c.String("output"))
 	} else {
-		err = buildManual(c.String("from"), c.StringSlice("add"), c.String("image"), c.String("tag"), c.String("output"))
+		err = buildManual(c.String("from"), c.StringSlice("add"), c.String("tag"), c.String("output"), c.Bool("keep"))
 	}
 
 	if err != nil {
@@ -86,33 +87,79 @@ func buildAction(c *cli.Context) {
 	}
 }
 
-func buildManual(from string, add []string, image, tag, file string) error {
+func buildManual(from string, add []string, tag, output string, keep bool) error {
+	// Create the context directory
 	contextPath := fmt.Sprintf(".harpoonctl-dockerbuild-%d", time.Now().UTC().UnixNano())
 	if err := os.MkdirAll(contextPath, 0775); err != nil {
 		return fmt.Errorf("when making temporary context directory: %s", err)
 	}
 
-	defer os.RemoveAll(contextPath)
+	if !keep {
+		defer os.RemoveAll(contextPath)
+	}
 
-	var buf bytes.Buffer
-	fmt.Fprintf(&buf, "FROM %s", from)
+	// Parse out all the --add files.
+	type addTuple struct {
+		srcAbs string
+		srcRel string
+		dst    string
+	}
+
+	var t []addTuple
+
 	for _, pair := range add {
 		srcdst := strings.SplitN(pair, ":", 2)
-		src, dst := srcdst[0], srcdst[1]
-		if src == "" || dst == "" {
-			return fmt.Errorf("--add %q invalid", add)
+		if len(srcdst) != 2 {
+			return fmt.Errorf("--add %q: invalid format", pair)
 		}
-		fmt.Fprintf(&buf, "ADD %s %s", src, dst)
+
+		src, dst := srcdst[0], srcdst[1]
+
+		srcAbs, err := filepath.Abs(src)
+		if err != nil {
+			return fmt.Errorf("--add %q: %s", pair, err)
+		}
+
+		if _, err := os.Stat(srcAbs); err != nil {
+			return fmt.Errorf("--add %q: %s", pair, err)
+		}
+
+		srcRel := filepath.Base(srcAbs)
+		t = append(t, addTuple{srcAbs, srcRel, dst})
+	}
+
+	// Copy each --add file to the context directory.
+	for _, t := range t {
+		var (
+			src = t.srcAbs
+			dst = filepath.Join(contextPath, t.srcRel)
+		)
+
+		log.Verbosef("cp %s %s", src, dst)
+
+		if err := cp(src, dst); err != nil {
+			return err
+		}
+	}
+
+	// Build the Dockerfile.
+	var (
+		buf = bytes.Buffer{}
+		w   = teeWriter{&buf, verboseWriter{}}
+	)
+	fmt.Fprintf(w, "FROM %s\n", from)
+	for _, t := range t {
+		fmt.Fprintf(w, "ADD %s %s\n", t.srcRel, t.dst)
 	}
 
 	if err := ioutil.WriteFile(filepath.Join(contextPath, "Dockerfile"), buf.Bytes(), 0775); err != nil {
 		return fmt.Errorf("when writing Dockerfile: %s", err)
 	}
 
-	return buildContext(contextPath, image, tag, file)
+	return buildContext(contextPath, tag, output)
 }
 
-func buildContext(contextPath, image, tag, file string) error {
+func buildContext(contextPath, tag, output string) error {
 	args := []string{dockerPath, "build"}
 	if tag != defaultTag {
 		args = append(args, "-t", tag)
@@ -131,6 +178,75 @@ func buildContext(contextPath, image, tag, file string) error {
 		return fmt.Errorf("docker build: %s", err)
 	}
 
+	if err := exec.Command(
+		dockerPath,
+		"run",
+		"--entrypoint",
+		"echo",
+		tag,
+		"no-op",
+	).Run(); err != nil {
+		return fmt.Errorf("docker run: %s", err)
+	}
+
+	buf, err := exec.Command(
+		dockerPath,
+		"ps",
+		"--latest",
+		"--quiet",
+	).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("docker ps --latest: %s", err)
+	}
+
+	containerID := strings.TrimSpace(string(buf))
+
+	log.Verbosef("image %q → container ID %s", tag, containerID)
+
+	return export(containerID, output)
+}
+
+func export(containerID, output string) error {
+	if output == "" || output == defaultOutput {
+		panic("invalid --output escaped first-pass checking")
+	}
+
+	var (
+		chain    = []string{dockerPath, "export", containerID}
+		compress = false
+		upload   = false
+	)
+
+	if strings.HasSuffix(output, ".tar") {
+		// OK
+	} else if strings.HasSuffix(output, ".tar.gz") || strings.HasSuffix(output, ".tgz") {
+		compress = true
+	} else {
+		return fmt.Errorf("only .tar, .tar.gz, and .tgz are supported")
+	}
+
+	if strings.HasPrefix(output, "http") {
+		upload = true
+	}
+
+	if compress {
+		chain = append(chain, "|", "gzip", "-9")
+	}
+
+	if upload {
+		chain = append(chain, "|", "curl", "-Ss", "-XPOST", "--data-binary", "@-", output)
+	} else {
+		chain = append(chain, ">", output)
+	}
+
+	str := strings.Join(chain, " ")
+
+	log.Verbosef(str)
+
+	if err := exec.Command("sh", "-c", str).Run(); err != nil {
+		return fmt.Errorf("docker export: %s", err)
+	}
+
 	return nil
 }
 
@@ -145,11 +261,11 @@ func checkFlags(c *cli.Context) error {
 		if c.String("from") == defaultFrom {
 			return fmt.Errorf("must specify --from")
 		}
-		if c.String("image") == defaultImage {
-			return fmt.Errorf("must specify --image")
-		}
 		if c.String("tag") == defaultTag {
 			return fmt.Errorf("must specify --tag")
+		}
+		if c.String("output") == defaultOutput {
+			return fmt.Errorf("must specify --output")
 		}
 	}
 
@@ -224,4 +340,46 @@ type errorWriter struct{}
 func (w errorWriter) Write(p []byte) (int, error) {
 	log.Errorf("%s", bytes.TrimSpace(p))
 	return len(p), nil
+}
+
+type teeWriter struct{ a, b io.Writer }
+
+func (w teeWriter) Write(p []byte) (int, error) {
+	n0, err0 := w.a.Write(p)
+	if err0 != nil {
+		return n0, err0
+	}
+
+	n1, err1 := w.b.Write(p)
+	if err1 != nil {
+		return n1, err1
+	}
+
+	if n0 != n1 {
+		panic(fmt.Sprintf("teeWriter had irregular writes: %d != %d", n0, n1))
+	}
+
+	return n0, nil
+}
+
+func cp(srcFilename, dstFilename string) error {
+	src, err := os.Open(srcFilename)
+	if err != nil {
+		return err
+	}
+
+	defer src.Close()
+
+	dst, err := os.Create(dstFilename)
+	if err != nil {
+		return err
+	}
+
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, src); err != nil {
+		return err
+	}
+
+	return nil
 }
