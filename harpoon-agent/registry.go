@@ -3,7 +3,6 @@ package main
 import "github.com/soundcloud/harpoon/harpoon-agent/lib"
 
 type registry struct {
-	m              map[string]container
 	statec         chan agent.ContainerInstance
 	removec        chan string
 	notifyc        chan chan<- agent.ContainerInstance
@@ -13,9 +12,6 @@ type registry struct {
 	acceptUpdatesc chan bool
 	getc           chan actionGet
 	registerc      chan actionRegister
-	subscribers    map[chan<- agent.ContainerInstance]struct{}
-
-	acceptUpdates bool
 }
 
 type actionGet struct {
@@ -30,7 +26,6 @@ type actionRegister struct {
 
 func newRegistry() *registry {
 	r := &registry{
-		m:              map[string]container{},
 		statec:         make(chan agent.ContainerInstance),
 		removec:        make(chan string),
 		notifyc:        make(chan chan<- agent.ContainerInstance),
@@ -40,7 +35,6 @@ func newRegistry() *registry {
 		acceptUpdatesc: make(chan bool),
 		getc:           make(chan actionGet),
 		registerc:      make(chan actionRegister),
-		subscribers:    map[chan<- agent.ContainerInstance]struct{}{},
 	}
 
 	go r.loop()
@@ -68,12 +62,12 @@ func (r *registry) register(c container) bool {
 	return <-outc
 }
 
-func (r *registry) registerUnsafe(c container) bool {
-	if _, ok := r.m[c.Instance().ID]; ok {
+func (r *registry) registerUnsafe(m map[string]container, c container) bool {
+	if _, ok := m[c.Instance().ID]; ok {
 		return false
 	}
 
-	r.m[c.Instance().ID] = c
+	m[c.Instance().ID] = c
 
 	// The container sends us a copy of its associated ContainerInstance every
 	// time the container changes state. This needs to happen outside of the
@@ -118,11 +112,16 @@ func (r *registry) stop(c chan<- agent.ContainerInstance) {
 
 // Report state changes in any container to all of our subscribers.
 func (r *registry) loop() {
+	var (
+		m           = make(map[string]container)
+		subscribers = make(map[chan<- agent.ContainerInstance]struct{})
+		// acceptUpdates bool
+	)
 	// Report state changes in any container to all of our subscribers.
 	for {
 		select {
 		case containerInstance := <-r.statec:
-			for subc := range r.subscribers {
+			for subc := range subscribers {
 				// Each channel send is being executed in a separate goroutine
 				// because each subscriber can call back into this for-select
 				// loop, causing a deadlock.
@@ -134,25 +133,25 @@ func (r *registry) loop() {
 				}(subc)
 			}
 		case id := <-r.removec:
-			delete(r.m, id)
+			delete(m, id)
 		case c := <-r.notifyc:
-			r.subscribers[c] = struct{}{}
-		case b := <-r.acceptUpdatesc:
-			r.acceptUpdates = b
+			subscribers[c] = struct{}{}
+		case <-r.acceptUpdatesc:
+			// acceptUpdates = b
 		case c := <-r.stopc:
-			delete(r.subscribers, c)
+			delete(subscribers, c)
 		case outc := <-r.lenc:
-			outc <- len(r.m)
+			outc <- len(m)
 		case outc := <-r.instancesc:
-			m := make(map[string]agent.ContainerInstance, len(r.m))
-			for id, container := range r.m {
-				m[id] = container.Instance()
+			mc := make(map[string]agent.ContainerInstance, len(m))
+			for id, container := range m {
+				mc[id] = container.Instance()
 			}
-			outc <- m
+			outc <- mc
 		case action := <-r.getc:
-			action.outc <- r.m[action.id]
+			action.outc <- m[action.id]
 		case action := <-r.registerc:
-			action.outc <- r.registerUnsafe(action.c)
+			action.outc <- r.registerUnsafe(m, action.c)
 		}
 	}
 }
