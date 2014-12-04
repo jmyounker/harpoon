@@ -1,4 +1,4 @@
 # Architecture
 
-![](http://i.imgur.com/IljbWrn.png)
+![](http://i.imgur.com/Elhtik6.png)
 
