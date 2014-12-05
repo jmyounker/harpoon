@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
@@ -9,14 +10,15 @@ import (
 type fakeContainer struct {
 	agent.ContainerInstance
 
-	logs *containerLog
-
+	logs        *containerLog
 	subscribers map[chan<- agent.ContainerInstance]struct{}
-
-	actionRequestc chan actionRequest
-	subc           chan chan<- agent.ContainerInstance
-	unsubc         chan chan<- agent.ContainerInstance
-	quitc          chan chan struct{}
+	createc     chan createRequest
+	destroyc    chan destroyRequest
+	startc      chan startRequest
+	stopc       chan stopRequest
+	subc        chan chan<- agent.ContainerInstance
+	unsubc      chan chan<- agent.ContainerInstance
+	quitc       chan chan struct{}
 }
 
 // Satisfaction guaranteed.
@@ -28,19 +30,23 @@ func newFakeContainer(
 	_ volumes,
 	config agent.ContainerConfig,
 	_ bool,
-	_ *portDB) container {
+	_ *portDB,
+) container {
 	c := &fakeContainer{
 		ContainerInstance: agent.ContainerInstance{
 			ID:              id,
 			ContainerStatus: agent.ContainerStatusRunning,
 			ContainerConfig: config,
 		},
-		logs:           newContainerLog(containerLogRingBufferSize),
-		subscribers:    map[chan<- agent.ContainerInstance]struct{}{},
-		actionRequestc: make(chan actionRequest),
-		subc:           make(chan chan<- agent.ContainerInstance),
-		unsubc:         make(chan chan<- agent.ContainerInstance),
-		quitc:          make(chan chan struct{}),
+		logs:        newContainerLog(containerLogRingBufferSize),
+		subscribers: map[chan<- agent.ContainerInstance]struct{}{},
+		createc:     make(chan createRequest),
+		destroyc:    make(chan destroyRequest),
+		startc:      make(chan startRequest),
+		stopc:       make(chan stopRequest),
+		subc:        make(chan chan<- agent.ContainerInstance),
+		unsubc:      make(chan chan<- agent.ContainerInstance),
+		quitc:       make(chan chan struct{}),
 	}
 
 	go c.loop()
@@ -48,22 +54,22 @@ func newFakeContainer(
 	return c
 }
 
-func (c *fakeContainer) Create() error {
-	req := actionRequest{
-		action: containerCreate,
-		res:    make(chan error),
+func (c *fakeContainer) Create(unregister func(), downloadTimeout time.Duration) error {
+	req := createRequest{
+		unregister:      unregister,
+		downloadTimeout: downloadTimeout,
+		resp:            make(chan error),
 	}
-	c.actionRequestc <- req
-	return <-req.res
+	c.createc <- req
+	return <-req.resp
 }
 
 func (c *fakeContainer) Destroy() error {
-	req := actionRequest{
-		action: containerDestroy,
-		res:    make(chan error),
+	req := destroyRequest{
+		resp: make(chan error),
 	}
-	c.actionRequestc <- req
-	return <-req.res
+	c.destroyc <- req
+	return <-req.resp
 }
 
 func (c *fakeContainer) Logs() *containerLog {
@@ -75,21 +81,19 @@ func (c *fakeContainer) Instance() agent.ContainerInstance {
 }
 
 func (c *fakeContainer) Start() error {
-	req := actionRequest{
-		action: containerStart,
-		res:    make(chan error),
+	req := startRequest{
+		resp: make(chan error),
 	}
-	c.actionRequestc <- req
-	return <-req.res
+	c.startc <- req
+	return <-req.resp
 }
 
 func (c *fakeContainer) Stop() error {
-	req := actionRequest{
-		action: containerStop,
-		res:    make(chan error),
+	req := stopRequest{
+		resp: make(chan error),
 	}
-	c.actionRequestc <- req
-	return <-req.res
+	c.stopc <- req
+	return <-req.resp
 }
 
 func (c *fakeContainer) Recover() error {
@@ -113,19 +117,14 @@ func (c *fakeContainer) Unsubscribe(ch chan<- agent.ContainerInstance) {
 func (c *fakeContainer) loop() {
 	for {
 		select {
-		case req := <-c.actionRequestc:
-			switch req.action {
-			case containerCreate:
-				req.res <- c.create()
-			case containerDestroy:
-				req.res <- c.destroy()
-			case containerStart:
-				req.res <- c.start()
-			case containerStop:
-				req.res <- c.stop()
-			default:
-				panic("unknown action")
-			}
+		case req := <-c.createc:
+			req.resp <- c.create()
+		case req := <-c.destroyc:
+			req.resp <- c.destroy()
+		case req := <-c.startc:
+			req.resp <- c.start()
+		case req := <-c.stopc:
+			req.resp <- c.stop()
 		case ch := <-c.subc:
 			c.subscribers[ch] = struct{}{}
 		case ch := <-c.unsubc:

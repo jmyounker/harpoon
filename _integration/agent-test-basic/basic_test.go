@@ -21,9 +21,10 @@ func TestAgent(t *testing.T) {
 				Exec:       []string{"./true"},
 			},
 			Resources: agent.Resources{
-				Memory: 32,
-				CPUs:   1,
+				Mem: 32,
+				CPU: 1,
 			},
+			Restart: "no",
 		}
 	)
 
@@ -32,33 +33,39 @@ func TestAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Create container
+	statuses := map[agent.ContainerStatus]struct{}{
+		agent.ContainerStatusCreated: struct{}{},
+	}
+	wc := client.Wait("basic-test", statuses, time.Second)
 	if err := client.Put("basic-test", config); err != nil {
 		t.Fatal(err)
 	}
-
-	if _, err := client.Get("basic-test"); err != nil {
-		t.Fatal(err)
+	w := <-wc
+	if w.Err != nil {
+		t.Fatal(w.Err)
 	}
 
-	statuses := map[agent.ContainerStatus]struct{}{
-		agent.ContainerStatusRunning:  struct{}{},
+	// Start container.  When successful the container will transition
+	// from created->running->finished.
+	statuses = map[agent.ContainerStatus]struct{}{
 		agent.ContainerStatusFinished: struct{}{},
-		agent.ContainerStatusFailed:   struct{}{},
+	}
+	wc = client.Wait("basic-test", statuses, 2*time.Second)
+	if err := client.Start("basic-test"); err != nil {
+		t.Fatal(err)
+	}
+	w = <-wc
+	if w.Err != nil {
+		t.Fatalf("Never reached finished state: %s", w.Err)
 	}
 
-	status, err := client.Wait("basic-test", statuses, time.Second)
-	if err != nil {
+	// Destroy container
+	if err := client.Destroy("basic-test"); err != nil {
 		t.Fatal(err)
 	}
 
-	if status == agent.ContainerStatusFailed {
-		t.Fatal("container failed")
-	}
-
-	if err := client.Delete("basic-test"); err != nil {
-		t.Fatal(err)
-	}
-
+	// Verify that it's gone.
 	if _, err := client.Get("basic-test"); err != agent.ErrContainerNotExist {
 		t.Fatal(err)
 	}

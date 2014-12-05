@@ -72,7 +72,13 @@ do
   fi
 done
 
+echo "==== Agent: Basic Tests ===="
 go test -v agent-test-basic/basic_test.go -integ.agent.url=${AGENT_URL}
+
+echo "==== Agent: Failed Creation Tests ===="
+go test -v agent-test-basic/failed_creation_test.go -integ.agent.url=${AGENT_URL}
+
+echo $logfile
 
 logfile=$PWD/scheduler.log
 
@@ -96,6 +102,9 @@ do
   fi
 done
 
-go test -v scheduler-test-basic/basic_test.go -integ.scheduler.url=${SCHEDULER_URL} -integ.agent.url=${AGENT_URL}
+# These scheduler tests are *completely* broken.  They won't even build.  This problem is Issue #137.
+echo "==== Scheduler: Basic Tests ===="
+echo "**** SCHEDULER TESTS ARE CURRENTLY DISABLED DUE TO CODE ROT. SEE ISSUE #137 ****"
+# go test -v scheduler-test-basic/basic_test.go -integ.scheduler.url=${SCHEDULER_URL} -integ.agent.url=${AGENT_URL}
 
 echo $logfile

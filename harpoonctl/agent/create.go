@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/codegangsta/cli"
 
@@ -18,8 +19,18 @@ import (
 var createCommand = cli.Command{
 	Name:        "create",
 	Usage:       "create <config.json> <id>",
-	Description: "Creates (allocates) and starts a container.",
+	Description: "Creates (allocates) a container.",
 	Action:      createAction,
+	Flags:       []cli.Flag{timeoutFlag},
+}
+
+var timeoutFlag = cli.DurationFlag{
+	Name: "t, timeout, download.timeout",
+	// thirty seconds of extra padding to account for the
+	// potential overhead involved in makinging the create call
+	// itself.
+	Value: agent.DefaultDownloadTimeout + (30 * time.Second),
+	Usage: "Creation timeout",
 }
 
 func createAction(c *cli.Context) {
@@ -28,8 +39,9 @@ func createAction(c *cli.Context) {
 	}
 
 	var (
-		filename = c.Args()[0]
-		id       = c.Args()[1]
+		filename        = c.Args()[0]
+		id              = c.Args()[1]
+		downloadTimeout = c.Duration("download.timeout")
 	)
 
 	f, err := os.Open(filename)
@@ -54,8 +66,28 @@ func createAction(c *cli.Context) {
 		log.Fatalf("%s: %s", u.Host, err)
 	}
 
+	// Start listening for client creation before we issue the Create call, otherwise
+	// there is a small window in which we can loose responses from the client.
+	wanted := map[agent.ContainerStatus]struct{}{
+		agent.ContainerStatusCreated: struct{}{},
+		agent.ContainerStatusDeleted: struct{}{},
+	}
+	wc := client.Wait(id, wanted, downloadTimeout)
+
+	// Issue create
 	if err := client.Put(id, cfg); err != nil {
 		log.Fatalf("%s: %s", u.Host, err)
+	}
+
+	// Check results from create
+	w := <-wc
+
+	if w.Err != nil {
+		log.Fatalf("%s: %s", u.Host, w.Err)
+	}
+
+	if w.Status == agent.ContainerStatusDeleted {
+		log.Fatalf("%s: container creation failed", id)
 	}
 
 	log.Printf("%s: create %s (%s) OK", u.Host, id, filename)

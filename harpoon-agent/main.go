@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"os"
 	"time"
+
+	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
 var (
@@ -35,6 +37,7 @@ func main() {
 		addr              = flag.String("addr", ":3333", "address to listen on")
 		portsStart        = flag.Uint64("ports.start", 30000, "starting of port allocation range")
 		portsEnd          = flag.Uint64("ports.end", 32767, "ending of port allocation range")
+		downloadTimeout   = flag.Duration("download.timeout", agent.DefaultDownloadTimeout+(30*time.Second), "max artifact download time")
 	)
 	flag.Var(&configuredVolumes, "vol", "repeatable list of available volumes")
 
@@ -62,7 +65,7 @@ func main() {
 	r := newRegistry()
 	pdb := newPortDB(portsStart16, portsEnd16)
 	defer pdb.exit()
-	api := newAPI(*containerRoot, r, pdb, configuredVolumes, *agentCPU, *agentMem, *debug)
+	api := newAPI(*containerRoot, r, pdb, configuredVolumes, *agentCPU, *agentMem, *downloadTimeout, *debug)
 
 	go receiveLogs(r, *logAddr)
 

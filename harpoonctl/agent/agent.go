@@ -23,12 +23,13 @@ var Command = cli.Command{
 		resourcesCommand,
 		psCommand,
 		dumpCommand,
-		logCommand,
 		createCommand,
+		runCommand,
 		startCommand,
 		stopCommand,
 		destroyCommand,
 		eventsCommand,
+		logCommand,
 	},
 	Flags: []cli.Flag{
 		cli.StringSliceFlag{

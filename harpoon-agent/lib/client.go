@@ -442,8 +442,23 @@ func (c client) Log(id string, history int) (<-chan string, Stopper, error) {
 	}
 }
 
-// Wait waits to receive event with information about container with the passed id with one of the statuses
-func (c client) Wait(id string, statuses map[ContainerStatus]struct{}, timeout time.Duration) (ContainerStatus, error) {
+// Wait waits asynchronously for the specified events from container id.
+// It does not wait for its results to be read.
+func (c client) Wait(id string, statuses map[ContainerStatus]struct{}, timeout time.Duration) chan WaitResult {
+	rc := make(chan WaitResult)
+	go func() {
+		stat, err := c.wait(id, statuses, timeout)
+		if err != nil {
+			rc <- WaitResult{Status: "", Err: err}
+			return
+		}
+		rc <- WaitResult{Status: stat, Err: err}
+	}()
+	return rc
+}
+
+// wait waits synchronously for specified events from container id.
+func (c client) wait(id string, statuses map[ContainerStatus]struct{}, timeout time.Duration) (ContainerStatus, error) {
 	events, stopper, err := c.Events()
 	if err != nil {
 		return "", err

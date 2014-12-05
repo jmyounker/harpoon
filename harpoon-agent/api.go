@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/bernerdschaefer/eventsource"
 	"github.com/bmizerany/pat"
@@ -20,12 +21,13 @@ type api struct {
 	*portDB
 	*registry
 
-	enabled bool
-	cpu     float64
-	vols    volumes
-	root    string
-	debug   bool
-	mem     int64
+	enabled         bool
+	root            string
+	vols            volumes
+	cpu             float64
+	mem             int64
+	downloadTimeout time.Duration
+	debug           bool
 	sync.RWMutex
 }
 
@@ -42,19 +44,21 @@ func newAPI(
 	vols volumes,
 	cpu float64,
 	mem int64,
+	downloadTimeout time.Duration,
 	debug bool,
 ) *api {
 	var (
 		mux = pat.New()
 		api = &api{
-			Handler:  mux,
-			root:     root,
-			registry: r,
-			portDB:   pdb,
-			vols:     vols,
-			cpu:      cpu,
-			debug:    debug,
-			mem:      mem,
+			Handler:         mux,
+			root:            root,
+			registry:        r,
+			portDB:          pdb,
+			vols:            vols,
+			cpu:             cpu,
+			mem:             mem,
+			downloadTimeout: downloadTimeout,
+			debug:           debug,
 		}
 	)
 
@@ -127,16 +131,8 @@ func (a *api) handleCreate(w http.ResponseWriter, r *http.Request) {
 
 	undo = append(undo, func() { a.registry.remove(id) })
 
-	if err := container.Create(); err != nil {
+	if err := container.Create(func() { a.registry.remove(id) }, a.downloadTimeout); err != nil {
 		log.Printf("[%s] create: %s", id, err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	undo = append(undo, func() { container.Destroy() })
-
-	if err := container.Start(); err != nil {
-		log.Printf("[%s] create, start: %s", id, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

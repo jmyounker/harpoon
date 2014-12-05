@@ -31,10 +31,6 @@ func TestSubscribeUnsubscribe(t *testing.T) {
 		t.Errorf("want %q, have %q", want, have)
 	}
 
-	if want, have := agent.ContainerStatusRunning, (<-ch)["foo"].Containers["bar"].ContainerStatus; want != have {
-		t.Errorf("want %q, have %q", want, have)
-	}
-
 	r.Unsubscribe(ch)
 
 	select {

@@ -29,10 +29,11 @@ func TestContainerList(t *testing.T) {
 		agentCPU          float64 = 2
 		configuredVolumes         = map[string]struct{}{"/tmp": struct{}{}}
 		debug                     = false
+		timeout                   = agent.DefaultDownloadTimeout
 
 		registry = newRegistry()
 		pdb      = newPortDB(lowTestPort, highTestPort)
-		api      = newAPI(testContainerRoot, registry, pdb, configuredVolumes, agentCPU, agentMem, debug)
+		api      = newAPI(testContainerRoot, registry, pdb, configuredVolumes, agentCPU, agentMem, timeout, debug)
 		server   = httptest.NewServer(api)
 	)
 
@@ -140,10 +141,11 @@ func TestAgentHostResources(t *testing.T) {
 		agentCPU          float64 = 2
 		configuredVolumes         = map[string]struct{}{"/tmp": struct{}{}}
 		debug                     = false
+		timeout                   = agent.DefaultDownloadTimeout
 
 		registry  = newRegistry()
 		pdb       = newPortDB(lowTestPort, highTestPort)
-		api       = newAPI(testContainerRoot, registry, pdb, configuredVolumes, agentCPU, agentMem, debug)
+		api       = newAPI(testContainerRoot, registry, pdb, configuredVolumes, agentCPU, agentMem, timeout, debug)
 		server    = httptest.NewServer(api)
 		client, _ = agent.NewClient(server.URL)
 	)
@@ -235,10 +237,11 @@ func TestLogAPICanTailLogs(t *testing.T) {
 		agentCPU          float64
 		configuredVolumes map[string]struct{}
 		debug             = false
+		timeout           = agent.DefaultDownloadTimeout
 
 		registry = newRegistry()
 		pdb      = newPortDB(lowTestPort, highTestPort)
-		api      = newAPI(testContainerRoot, registry, pdb, configuredVolumes, agentCPU, agentMem, debug)
+		api      = newAPI(testContainerRoot, registry, pdb, configuredVolumes, agentCPU, agentMem, timeout, debug)
 		server   = httptest.NewServer(api)
 	)
 	defer pdb.exit()
@@ -321,10 +324,11 @@ func TestLogAPILogTailIncludesHistory(t *testing.T) {
 		agentCPU          float64 = 2
 		configuredVolumes         = map[string]struct{}{"/tmp": struct{}{}}
 		debug                     = false
+		timeout                   = agent.DefaultDownloadTimeout
 
 		registry = newRegistry()
 		pdb      = newPortDB(lowTestPort, highTestPort)
-		api      = newAPI(testContainerRoot, registry, pdb, configuredVolumes, agentCPU, agentMem, debug)
+		api      = newAPI(testContainerRoot, registry, pdb, configuredVolumes, agentCPU, agentMem, timeout, debug)
 		server   = httptest.NewServer(api)
 	)
 	defer pdb.exit()
@@ -409,10 +413,11 @@ func TestLogAPICanRetrieveLastLines(t *testing.T) {
 		agentCPU          float64 = 2
 		configuredVolumes         = map[string]struct{}{"/tmp": struct{}{}}
 		debug                     = false
+		timeout                   = agent.DefaultDownloadTimeout
 
 		registry = newRegistry()
 		pdb      = newPortDB(lowTestPort, highTestPort)
-		api      = newAPI(testContainerRoot, registry, pdb, configuredVolumes, agentCPU, agentMem, debug)
+		api      = newAPI(testContainerRoot, registry, pdb, configuredVolumes, agentCPU, agentMem, timeout, debug)
 		server   = httptest.NewServer(api)
 	)
 	defer pdb.exit()
@@ -473,10 +478,11 @@ func TestFailedCreateDestroysContainer(t *testing.T) {
 		agentCPU          float64 = 2
 		configuredVolumes         = map[string]struct{}{"/tmp": struct{}{}}
 		debug                     = false
+		timeout                   = agent.DefaultDownloadTimeout
 
 		registry = newRegistry()
 		pdb      = newPortDB(lowTestPort, highTestPort)
-		api      = newAPI(testContainerRoot, registry, pdb, configuredVolumes, agentCPU, agentMem, debug)
+		api      = newAPI(testContainerRoot, registry, pdb, configuredVolumes, agentCPU, agentMem, timeout, debug)
 		server   = httptest.NewServer(api)
 		client   = agent.MustNewClient(server.URL)
 	)

@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
@@ -21,7 +22,7 @@ import (
 // container is a high level interface to an operating system container. The
 // API interacts directly with this interface.
 type container interface {
-	Create() error
+	Create(unregisterAtFailure func(), downloadTimeout time.Duration) error
 	Instance() agent.ContainerInstance
 	Destroy() error
 	Start() error
@@ -46,17 +47,16 @@ type realContainer struct {
 	containerRoot     string
 	portDB            *portDB
 	logs              *containerLog
-
-	supervisor      *supervisor
-	containerStatec chan agent.ContainerProcessState
-
-	subscribers map[chan<- agent.ContainerInstance]struct{}
-
-	actionc chan actionRequest
-	subc    chan chan<- agent.ContainerInstance
-	unsubc  chan chan<- agent.ContainerInstance
-
-	quitc chan chan struct{}
+	supervisor        *supervisor
+	containerStatec   chan agent.ContainerProcessState
+	subscribers       map[chan<- agent.ContainerInstance]struct{}
+	createc           chan createRequest
+	destroyc          chan destroyRequest
+	startc            chan startRequest
+	stopc             chan stopRequest
+	subc              chan chan<- agent.ContainerInstance
+	unsubc            chan chan<- agent.ContainerInstance
+	quitc             chan chan struct{}
 }
 
 // Satisfaction guaranteed.
@@ -82,14 +82,15 @@ func newRealContainer(
 		debug:             debug,
 		portDB:            pdb,
 		logs:              newContainerLog(containerLogRingBufferSize),
-
-		subscribers: map[chan<- agent.ContainerInstance]struct{}{},
-
-		actionc:         make(chan actionRequest),
-		subc:            make(chan chan<- agent.ContainerInstance),
-		unsubc:          make(chan chan<- agent.ContainerInstance),
-		containerStatec: make(chan agent.ContainerProcessState),
-		quitc:           make(chan chan struct{}),
+		subscribers:       map[chan<- agent.ContainerInstance]struct{}{},
+		createc:           make(chan createRequest),
+		destroyc:          make(chan destroyRequest),
+		startc:            make(chan startRequest),
+		stopc:             make(chan stopRequest),
+		subc:              make(chan chan<- agent.ContainerInstance),
+		unsubc:            make(chan chan<- agent.ContainerInstance),
+		containerStatec:   make(chan agent.ContainerProcessState),
+		quitc:             make(chan chan struct{}),
 	}
 
 	go c.loop()
@@ -97,22 +98,22 @@ func newRealContainer(
 	return c
 }
 
-func (c *realContainer) Create() error {
-	req := actionRequest{
-		action: containerCreate,
-		res:    make(chan error),
+func (c *realContainer) Create(unregister func(), downloadTimeout time.Duration) error {
+	req := createRequest{
+		unregister:      unregister,
+		downloadTimeout: downloadTimeout,
+		resp:            make(chan error),
 	}
-	c.actionc <- req
-	return <-req.res
+	c.createc <- req
+	return <-req.resp
 }
 
 func (c *realContainer) Destroy() error {
-	req := actionRequest{
-		action: containerDestroy,
-		res:    make(chan error),
+	req := destroyRequest{
+		resp: make(chan error),
 	}
-	c.actionc <- req
-	return <-req.res
+	c.destroyc <- req
+	return <-req.resp
 }
 
 func (c *realContainer) Logs() *containerLog {
@@ -124,21 +125,19 @@ func (c *realContainer) Instance() agent.ContainerInstance {
 }
 
 func (c *realContainer) Start() error {
-	req := actionRequest{
-		action: containerStart,
-		res:    make(chan error),
+	req := startRequest{
+		resp: make(chan error),
 	}
-	c.actionc <- req
-	return <-req.res
+	c.startc <- req
+	return <-req.resp
 }
 
 func (c *realContainer) Stop() error {
-	req := actionRequest{
-		action: containerStop,
-		res:    make(chan error),
+	req := stopRequest{
+		resp: make(chan error),
 	}
-	c.actionc <- req
-	return <-req.res
+	c.stopc <- req
+	return <-req.resp
 }
 
 func (c *realContainer) Subscribe(ch chan<- agent.ContainerInstance) {
@@ -153,41 +152,35 @@ func (c *realContainer) loop() {
 	defer c.logs.exit()
 
 	for {
+		// All methods here must be nonblocking.
 		select {
-		case req := <-c.actionc:
-			// All of these methods must be nonblocking
-			switch req.action {
-			case containerCreate:
-				incContainerCreate(1)
-				err := c.create()
-				if err != nil {
-					incContainerCreateFailure(1)
-				}
-				req.res <- err
-
-			case containerDestroy:
-				incContainerDestroy(1)
-				err := c.destroy()
-				req.res <- err
-				if err == nil {
-					return
-				}
-
-			case containerStart:
-				incContainerStart(1)
-				err := c.start()
-				if err != nil {
-					incContainerStartFailure(1)
-				}
-				req.res <- err
-
-			case containerStop:
-				incContainerStop(1)
-				req.res <- c.stop()
-
-			default:
-				panic(fmt.Sprintf("unknown action %q", req.action))
+		case req := <-c.createc:
+			incContainerCreate(1)
+			err := c.create(req.unregister, req.downloadTimeout)
+			if err != nil {
+				incContainerCreateFailure(1)
 			}
+			req.resp <- err
+
+		case req := <-c.destroyc:
+			incContainerDestroy(1)
+			err := c.destroy()
+			req.resp <- err
+			if err == nil {
+				return
+			}
+
+		case req := <-c.startc:
+			incContainerStart(1)
+			err := c.start()
+			if err != nil {
+				incContainerStartFailure(1)
+			}
+			req.resp <- err
+
+		case req := <-c.stopc:
+			incContainerStop(1)
+			req.resp <- c.stop()
 
 		case ch := <-c.subc:
 			c.subscribers[ch] = struct{}{}
@@ -196,9 +189,10 @@ func (c *realContainer) loop() {
 			c.ContainerInstance.ContainerProcessState = state
 			if state.Up {
 				c.updateStatus(agent.ContainerStatusRunning)
+				continue
 			}
 
-			if state.Up || state.Restarting {
+			if state.Restarting {
 				continue
 			}
 
@@ -270,19 +264,25 @@ func (c *realContainer) Exit() {
 	<-q
 }
 
-func (c *realContainer) create() error {
+func (c *realContainer) create(unregister func(), timeout time.Duration) error {
 	var (
 		rundir = filepath.Join(c.containerRoot, c.ID)
 		logdir = filepath.Join("/srv/harpoon/log/", c.ID)
 
-		agentJSONPath     = filepath.Join(rundir, "agent.json")
-		rootfsSymlinkPath = filepath.Join(rundir, "rootfs")
-		logSymlinkPath    = filepath.Join(rundir, "log")
+		agentJSONPath = filepath.Join(rundir, "agent.json")
 	)
 
 	if err := c.validateConfig(); err != nil {
 		return err
 	}
+
+	success := false
+	defer func() {
+		if !success {
+			c.destroy()
+			unregister()
+		}
+	}()
 
 	err := c.assignPorts()
 	if err != nil {
@@ -320,24 +320,52 @@ func (c *realContainer) create() error {
 	if c.debug {
 		log.Printf("agent file written to: %s", agentJSONPath)
 	}
-	// TODO(pb): it's a problem that this is blocking
-	rootfs, err := c.fetchArtifact()
+
+	go c.secondPhaseCreate(unregister, timeout)
+
+	success = true
+	return nil
+}
+
+func (c *realContainer) secondPhaseCreate(unregister func(), timeout time.Duration) {
+	var (
+		rundir = filepath.Join(c.containerRoot, c.ID)
+		logdir = filepath.Join("/srv/harpoon/log/", c.ID)
+
+		rootfsSymlinkPath = filepath.Join(rundir, "rootfs")
+		logSymlinkPath    = filepath.Join(rundir, "log")
+	)
+
+	success := false
+	defer func() {
+		if !success {
+			c.destroy()
+			unregister()
+		}
+	}()
+
+	rootfs, err := c.fetchArtifact(timeout)
 	if err != nil {
-		return fmt.Errorf("fetch: %s", err)
+		log.Printf("fetch: %s", err)
+		return
 	}
 
 	if err := os.Symlink(rootfs, rootfsSymlinkPath); err != nil && !os.IsExist(err) {
-		return fmt.Errorf("symlink rootfs: %s", err)
+		log.Printf("symlink rootfs: %s", err)
+		return
 	}
 
 	if err := os.Symlink(logdir, logSymlinkPath); err != nil && !os.IsExist(err) {
-		return fmt.Errorf("symlink log: %s", err)
+		log.Printf("symlink log: %s", err)
+		return
 	}
 
 	if c.debug {
 		log.Printf("artifact successfully retrieved and unpacked")
 	}
-	return nil
+
+	success = true
+	c.updateStatus(agent.ContainerStatusCreated)
 }
 
 func (c *realContainer) validateConfig() error {
@@ -402,7 +430,7 @@ func (c *realContainer) destroy() error {
 	return nil
 }
 
-func (c *realContainer) fetchArtifact() (string, error) {
+func (c *realContainer) fetchArtifact(timeout time.Duration) (string, error) {
 	var (
 		artifactURL                            = c.ContainerConfig.ArtifactURL
 		artifactPath, artifactCompression, err = getArtifactDetails(artifactURL)
@@ -422,8 +450,10 @@ func (c *realContainer) fetchArtifact() (string, error) {
 		return "", err
 	}
 
-	resp, err := http.Get(artifactURL)
+	client := http.Client{Timeout: timeout}
+	resp, err := client.Get(artifactURL)
 	if err != nil {
+		incContainerArtifactDownloadFailure(1)
 		return "", err
 	}
 	defer resp.Body.Close()
@@ -504,11 +534,6 @@ const (
 	containerStop                    = "stop"
 )
 
-type actionRequest struct {
-	action containerAction
-	res    chan error
-}
-
 func extractArtifact(src io.Reader, dst string, compression string) (err error) {
 	defer func() {
 		if err != nil {
@@ -552,4 +577,22 @@ func getArtifactDetails(artifactURL string) (string, string, error) {
 	default:
 		return "", "", fmt.Errorf("unknown suffix for artifact url: %s", artifactURL)
 	}
+}
+
+type createRequest struct {
+	unregister      func()
+	downloadTimeout time.Duration
+	resp            chan error
+}
+
+type destroyRequest struct {
+	resp chan error
+}
+
+type startRequest struct {
+	resp chan error
+}
+
+type stopRequest struct {
+	resp chan error
 }

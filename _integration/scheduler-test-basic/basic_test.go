@@ -56,6 +56,7 @@ func TestBasicTaskSchedule(t *testing.T) {
 				Startup:  agent.JSONDuration{time.Second},
 				Shutdown: agent.JSONDuration{time.Second},
 			},
+			Restart: "no",
 		},
 	}
 
@@ -110,6 +111,7 @@ func TestUnscheduleNonexistentTask(t *testing.T) {
 				Startup:  agent.JSONDuration{time.Second},
 				Shutdown: agent.JSONDuration{time.Second},
 			},
+			Restart: "no",
 		},
 	}
 
@@ -162,6 +164,7 @@ func TestImpossibleTasks(t *testing.T) {
 				Startup:  agent.JSONDuration{time.Second},
 				Shutdown: agent.JSONDuration{time.Second},
 			},
+			Restart: "no",
 		},
 	}
 
@@ -216,32 +219,33 @@ func TestDirectScheduleOnAgent(t *testing.T) {
 			Startup:  agent.JSONDuration{time.Second},
 			Shutdown: agent.JSONDuration{time.Second},
 		},
-	}
-
-	if err := client.Put("basic-test", cfg); err != nil {
-		t.Fatal(err)
+		Restart: "no",
 	}
 
 	statuses := map[agent.ContainerStatus]struct{}{
 		agent.ContainerStatusCreated: struct{}{},
 	}
+	wc := client.Wait("basic-test", statuses, 2*time.Second)
 
-	status, err := client.Wait("basic-test", statuses, time.Second)
-	if err != nil {
+	if err := client.Put("basic-test", cfg); err != nil {
 		t.Fatal(err)
+	}
+
+	w := <-wc
+	if wc.Err != nil {
+		t.Fatal(Err)
 	}
 
 	statuses = map[agent.ContainerStatus]struct{}{
 		agent.ContainerStatusDeleted: struct{}{},
 	}
-
-	status, err = client.Wait("basic-test", statuses, time.Second)
-	if err != nil {
-		t.Fatal(err)
+	w = <-client.Wait("basic-test", statuses, 2*time.Second)
+	if w.Err != nil {
+		t.Fatal(w.Err)
 	}
 
-	if status != agent.ContainerStatusDeleted {
-		t.Fatalf("incorrect status %s", status)
+	if w.Status != agent.ContainerStatusDeleted {
+		t.Fatalf("incorrect status %s", w.Status)
 	}
 }
 
@@ -285,6 +289,7 @@ func TestTaskConsumesAllAllowedResources(t *testing.T) {
 				Startup:  agent.JSONDuration{time.Second},
 				Shutdown: agent.JSONDuration{time.Second},
 			},
+			Restart: "no",
 		},
 	}
 
@@ -349,6 +354,7 @@ func TestTaskScheduledWhenResourcesAreFree(t *testing.T) {
 				Startup:  agent.JSONDuration{time.Second},
 				Shutdown: agent.JSONDuration{time.Second},
 			},
+			Restart: "no",
 		},
 	}
 
@@ -431,6 +437,7 @@ func TestScheduleMultipleIndependentTasksThatFit(t *testing.T) {
 				Startup:  agent.JSONDuration{time.Second},
 				Shutdown: agent.JSONDuration{time.Second},
 			},
+			Restart: "no",
 		},
 	}
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
@@ -91,7 +92,6 @@ func (c *fakeClient) Events() (<-chan agent.StateEvent, agent.Stopper, error) {
 	)
 
 	c.out[outc] = struct{}{} // subscribe
-
 	// initial snapshot
 	instances := map[string]agent.ContainerInstance{}
 	for id, st := range c.instances {
@@ -137,10 +137,6 @@ func (c *fakeClient) Put(id string, _ agent.ContainerConfig) error {
 	}
 
 	c.instances[id] = agent.ContainerStatusCreated
-
-	c.broadcast(id)
-
-	c.instances[id] = agent.ContainerStatusRunning
 
 	c.broadcast(id)
 
@@ -232,6 +228,53 @@ func (c *fakeClient) Destroy(id string) error {
 	delete(c.instances, id)
 
 	return nil
+}
+
+// Wait and wait are taken verbatim from the client lib.
+func (c *fakeClient) Wait(id string, statuses map[agent.ContainerStatus]struct{}, timeout time.Duration) chan agent.WaitResult {
+	rc := make(chan agent.WaitResult)
+	go func() {
+		stat, err := c.wait(id, statuses, timeout)
+		if err != nil {
+			rc <- agent.WaitResult{Status: "", Err: err}
+			return
+		}
+		rc <- agent.WaitResult{Status: stat, Err: err}
+	}()
+	return rc
+}
+
+// wait waits synchronously for specified events from container id.
+func (c *fakeClient) wait(id string, statuses map[agent.ContainerStatus]struct{}, timeout time.Duration) (agent.ContainerStatus, error) {
+	events, stopper, err := c.Events()
+	if err != nil {
+		return "", err
+	}
+	defer stopper.Stop()
+
+	timeoutc := make(chan struct{})
+	go func() {
+		<-time.After(timeout)
+		close(timeoutc)
+	}()
+
+	for {
+		select {
+		case event := <-events:
+			container, ok := event.Containers[id]
+			if !ok {
+				continue
+			}
+
+			if _, ok := statuses[container.ContainerStatus]; ok {
+				return container.ContainerStatus, nil
+			}
+		case _, ok := <-timeoutc:
+			if !ok {
+				return "", agent.ErrTimeout
+			}
+		}
+	}
 }
 
 func (c *fakeClient) broadcast(id string) {

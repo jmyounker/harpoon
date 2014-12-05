@@ -58,8 +58,15 @@ function shutdown {
 
   sudo kill -SIGTERM $pid
 
-  ( sleep 5 && sudo kill -SIGKILL $pid) & kill_pid=$!
+  # Can't do the sensible thing with wait because nsinit is detached from
+  # our process.
+  for i in 1 2 3 5; do
+    found=$(ps wwaux | awk '{print $2}' | grep "^${pid}$" | wc -l)
+    if [ $found -eq 0 ]; then
+      return
+    fi
+    sleep 1
+  done
 
-  wait $pid
-  kill $kill_pid
+  kill SIGKILL $pid
 }

@@ -4,6 +4,7 @@ package agentrepr
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -90,6 +91,7 @@ type Client interface {
 	Start(string) error
 	Stop(string) error
 	Destroy(string) error
+	Wait(string, map[agent.ContainerStatus]struct{}, time.Duration) chan agent.WaitResult
 }
 
 // New returns a new representation.
@@ -162,7 +164,29 @@ func (r *representation) Schedule(id string, c agent.ContainerConfig) error {
 
 	r.outstanding.want(id, agent.ContainerStatusRunning, r.successc, r.failurec)
 
+	statuses := map[agent.ContainerStatus]struct{}{
+		agent.ContainerStatusCreated: struct{}{},
+		agent.ContainerStatusDeleted: struct{}{},
+	}
+	wc := r.Client.Wait(id, statuses, agent.DefaultDownloadTimeout)
+
 	if err := r.Client.Put(id, c); err != nil {
+		r.outstanding.remove(id)
+		return err
+	}
+
+	w := <-wc
+	if w.Err != nil {
+		r.outstanding.remove(id)
+		return w.Err
+	}
+
+	if w.Status == agent.ContainerStatusDeleted {
+		r.outstanding.remove(id)
+		return fmt.Errorf("task ID %s could not be created.", id)
+	}
+
+	if err := r.Client.Start(id); err != nil {
 		r.outstanding.remove(id)
 		return err
 	}

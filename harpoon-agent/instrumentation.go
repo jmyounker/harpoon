@@ -28,6 +28,7 @@ var (
 	expvarLogUndeliveredLines                = expvar.NewInt("log_undelivered_lines_total")
 	expvarContainerCreate                    = expvar.NewInt("container_creates_total")
 	expvarContainerCreateFailures            = expvar.NewInt("container_create_failures_total")
+	expvarContainerArtifactDownloadFailures  = expvar.NewInt("container_artifact_download_failures")
 	expvarContainerRecoveryAttempts          = expvar.NewInt("container_recovery_attempts_total")
 	expvarContainerDestroy                   = expvar.NewInt("container_destroys_total")
 	expvarContainerStart                     = expvar.NewInt("container_start_total")
@@ -85,6 +86,13 @@ var (
 		Name:      "container_create_failures_total",
 		Help:      "Number of times that the container create operation failed.",
 	})
+	prometheusContainerArtifactDownloadFailures = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "harpoon",
+		Subsystem: "agent",
+		Name:      "container_artifact_download_failures_total",
+		Help:      "Number of times that an artifact download failed during a container create operation.",
+	})
+
 	prometheusContainerRecoveryAttempts = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "agent",
@@ -188,6 +196,11 @@ func incContainerCreate(n int) {
 func incContainerCreateFailure(n int) {
 	expvarContainerCreateFailures.Add(int64(n))
 	prometheusContainerCreateFailures.Add(float64(n))
+}
+
+func incContainerArtifactDownloadFailure(n int) {
+	expvarContainerArtifactDownloadFailures.Add(int64(n))
+	prometheusContainerArtifactDownloadFailures.Add(float64(n))
 }
 
 func incContainerStop(n int) {

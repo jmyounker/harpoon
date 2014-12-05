@@ -7,6 +7,10 @@ import (
 	"time"
 )
 
+// DefaultDownloadTimeout is the default timespan for the artifact download.
+// Download times longer than this result in ErrTimeout and a deleted container.
+const DefaultDownloadTimeout = 120 * time.Second
+
 // Agent describes the agent API (v0) spec in the Go domain.
 //
 // The only notable change from the spec doc is that `log` is only available
@@ -14,17 +18,23 @@ import (
 // have been received.
 type Agent interface {
 	Endpoint() string
-	Put(containerID string, containerConfig ContainerConfig) error                                                  // PUT /containers/{id}
-	Get(containerID string) (ContainerInstance, error)                                                              // GET /containers/{id}
-	Start(containerID string) error                                                                                 // POST /containers/{id}/start
-	Stop(containerID string) error                                                                                  // POST /containers/{id}/stop
-	Replace(newContainerID, oldContainerID string) error                                                            // PUT /containers/{newID}?replace={oldID}
-	Destroy(containerID string) error                                                                               // DELETE /containers/{id}
-	Containers() (map[string]ContainerInstance, error)                                                              // GET /containers
-	Events() (<-chan StateEvent, Stopper, error)                                                                    // GET /containers with request header Accept: text/event-stream
-	Log(containerID string, history int) (<-chan string, Stopper, error)                                            // GET /containers/{id}/log?history=10
-	Resources() (HostResources, error)                                                                              // GET /resources
-	Wait(containerID string, statuses map[ContainerStatus]struct{}, timeout time.Duration) (ContainerStatus, error) // Waits for event with one of the statuses
+	Put(containerID string, containerConfig ContainerConfig) error                                         // PUT /containers/{id}
+	Get(containerID string) (ContainerInstance, error)                                                     // GET /containers/{id}
+	Start(containerID string) error                                                                        // POST /containers/{id}/start
+	Stop(containerID string) error                                                                         // POST /containers/{id}/stop
+	Replace(newContainerID, oldContainerID string) error                                                   // PUT /containers/{newID}?replace={oldID}
+	Destroy(containerID string) error                                                                      // DELETE /containers/{id}
+	Containers() (map[string]ContainerInstance, error)                                                     // GET /containers
+	Events() (<-chan StateEvent, Stopper, error)                                                           // GET /containers with request header Accept: text/event-stream
+	Log(containerID string, history int) (<-chan string, Stopper, error)                                   // GET /containers/{id}/log?history=10
+	Resources() (HostResources, error)                                                                     // GET /resources
+	Wait(containerID string, statuses map[ContainerStatus]struct{}, timeout time.Duration) chan WaitResult // Waits asynchronously for event with one of the statuses
+}
+
+// WaitResult carries the result of a client.Wait() call.
+type WaitResult struct {
+	Status ContainerStatus
+	Err    error
 }
 
 // ContainerConfig describes the information necessary to start a container on
@@ -273,7 +283,8 @@ type ContainerStatus string
 const (
 	// ContainerStatusCreated indicates the container has been successfully
 	// PUT on the agent, but hasn't yet been started. Once a container leaves
-	// the created state, it will never come back.
+	// the created state, it will only come back if the agent is restarted
+	// while the container is in a stopped state.
 	ContainerStatusCreated ContainerStatus = "created"
 
 	// ContainerStatusRunning indicates the container is succesfully running
