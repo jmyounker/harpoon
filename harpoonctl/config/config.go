@@ -28,13 +28,13 @@ var Command = cli.Command{
 		},
 		cli.StringSliceFlag{
 			Name:  "port",
-			Value: &defaultPortFlag,
-			Usage: "port to allocate, NAME:PORT, e.g. HTTP:0 (autoassign), ROOTKIT:31337 [repeatable]",
+			Value: &cli.StringSlice{},
+			Usage: "NAME:PORT, port to allocate, e.g. HTTP:0 (autoassign), ROOTKIT:31337 [repeatable]",
 		},
 		cli.StringSliceFlag{
 			Name:  "env",
-			Value: &defaultEnvFlag,
-			Usage: "env var to set, KEY=VAL [repeatable]",
+			Value: &cli.StringSlice{},
+			Usage: "KEY=VAL, env var to set [repeatable]",
 		},
 		cli.StringFlag{
 			Name:  "working_dir",
@@ -64,12 +64,12 @@ var Command = cli.Command{
 		cli.StringSliceFlag{
 			Name:  "tmp",
 			Value: &cli.StringSlice{},
-			Usage: "tmp mount to create, PATH:SIZE, e.g. /tmp:-1 (unlimited), /var/scratch:1024 [repeatable]",
+			Usage: "PATH:SIZE, tmp mount to create, e.g. /tmp:-1 (unlimited), /var/scratch:1024 [repeatable]",
 		},
 		cli.StringSliceFlag{
 			Name:  "vol",
 			Value: &cli.StringSlice{},
-			Usage: "host volume to mount, DST:SRC, e.g. /metrics:/data/prometheus/apiv2 [repeatable]",
+			Usage: "DST:SRC, host volume to mount, e.g. /metrics:/data/prometheus/apiv2 [repeatable]",
 		},
 		cli.DurationFlag{
 			Name:  "startup",
@@ -90,15 +90,14 @@ var Command = cli.Command{
 	HideHelp: true,
 }
 
-var (
-	defaultPortFlag = cli.StringSlice([]string{"HTTP:0"})
-	defaultEnvFlag  = cli.StringSlice([]string{"MSG=Hello, 世界"})
-)
-
 func configAction(c *cli.Context) {
 	ports := map[string]uint16{}
 	for _, s := range c.StringSlice("port") {
 		t := strings.SplitN(s, ":", 2)
+
+		if len(t) != 2 {
+			log.Fatalf("-port %q: invalid", s)
+		}
 
 		if t[0] == "" || t[1] == "" {
 			log.Fatalf("-port %q: invalid", s)
@@ -115,6 +114,10 @@ func configAction(c *cli.Context) {
 	env := map[string]string{}
 	for _, s := range c.StringSlice("env") {
 		t := strings.SplitN(s, "=", 2)
+
+		if len(t) != 2 {
+			log.Fatalf("-env %q: invalid", s)
+		}
 
 		if t[0] == "" || t[1] == "" {
 			log.Fatalf("-env %q: invalid", s)
