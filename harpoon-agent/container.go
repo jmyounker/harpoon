@@ -264,7 +264,7 @@ func (c *realContainer) Exit() {
 	<-q
 }
 
-func (c *realContainer) create(unregister func(), timeout time.Duration) error {
+func (c *realContainer) create(unregister func(), downloadTimeout time.Duration) error {
 	var (
 		rundir = filepath.Join(c.containerRoot, c.ID)
 		logdir = filepath.Join("/srv/harpoon/log/", c.ID)
@@ -321,13 +321,13 @@ func (c *realContainer) create(unregister func(), timeout time.Duration) error {
 		log.Printf("agent file written to: %s", agentJSONPath)
 	}
 
-	go c.secondPhaseCreate(unregister, timeout)
+	go c.secondPhaseCreate(unregister, downloadTimeout)
 
 	success = true
 	return nil
 }
 
-func (c *realContainer) secondPhaseCreate(unregister func(), timeout time.Duration) {
+func (c *realContainer) secondPhaseCreate(unregister func(), downloadTimeout time.Duration) {
 	var (
 		rundir = filepath.Join(c.containerRoot, c.ID)
 		logdir = filepath.Join("/srv/harpoon/log/", c.ID)
@@ -344,7 +344,7 @@ func (c *realContainer) secondPhaseCreate(unregister func(), timeout time.Durati
 		}
 	}()
 
-	rootfs, err := c.fetchArtifact(timeout)
+	rootfs, err := c.fetchArtifact(downloadTimeout)
 	if err != nil {
 		log.Printf("fetch: %s", err)
 		return
@@ -430,7 +430,7 @@ func (c *realContainer) destroy() error {
 	return nil
 }
 
-func (c *realContainer) fetchArtifact(timeout time.Duration) (string, error) {
+func (c *realContainer) fetchArtifact(downloadTimeout time.Duration) (string, error) {
 	var (
 		artifactURL                            = c.ContainerConfig.ArtifactURL
 		artifactPath, artifactCompression, err = getArtifactDetails(artifactURL)
@@ -440,7 +440,7 @@ func (c *realContainer) fetchArtifact(timeout time.Duration) (string, error) {
 		return "", err
 	}
 
-	log.Printf("fetching url %s to %s", artifactURL, artifactPath)
+	log.Printf("fetching URL %s to %s", artifactURL, artifactPath)
 
 	if _, err := os.Stat(artifactPath); err == nil {
 		return artifactPath, nil
@@ -450,7 +450,7 @@ func (c *realContainer) fetchArtifact(timeout time.Duration) (string, error) {
 		return "", err
 	}
 
-	client := http.Client{Timeout: timeout}
+	client := http.Client{Timeout: downloadTimeout}
 	resp, err := client.Get(artifactURL)
 	if err != nil {
 		incContainerArtifactDownloadFailure(1)

@@ -25,12 +25,9 @@ var createCommand = cli.Command{
 }
 
 var timeoutFlag = cli.DurationFlag{
-	Name: "t, timeout, download.timeout",
-	// thirty seconds of extra padding to account for the
-	// potential overhead involved in makinging the create call
-	// itself.
-	Value: agent.DefaultDownloadTimeout + (30 * time.Second),
-	Usage: "Creation timeout",
+	Name:  "t, timeout",
+	Value: agent.DefaultDownloadTimeout + (30 * time.Second), // +30s for call overhead
+	Usage: "Total timeout for remote artifact download and invocation",
 }
 
 func createAction(c *cli.Context) {
@@ -39,11 +36,15 @@ func createAction(c *cli.Context) {
 	}
 
 	var (
-		filename        = c.Args()[0]
-		id              = c.Args()[1]
-		downloadTimeout = c.Duration("download.timeout")
+		filename = c.Args()[0]
+		id       = c.Args()[1]
+		timeout  = c.Duration("timeout")
 	)
 
+	create(filename, id, timeout, false)
+}
+
+func create(filename, id string, timeout time.Duration, andStart bool) {
 	f, err := os.Open(filename)
 	if err != nil {
 		log.Fatalf("%s: %s", filename, err)
@@ -59,29 +60,29 @@ func createAction(c *cli.Context) {
 		log.Fatalf("%s: %s", filename, err)
 	}
 
-	u := chooseEndpoint(c)
+	u := chooseEndpoint()
 
 	client, err := agent.NewClient(u.String())
 	if err != nil {
 		log.Fatalf("%s: %s", u.Host, err)
 	}
 
-	// Start listening for client creation before we issue the Create call, otherwise
-	// there is a small window in which we can loose responses from the client.
+	// Start listening for client creation before we issue the Create call,
+	// otherwise there is a small window in which we can lose responses from
+	// the client.
 	wanted := map[agent.ContainerStatus]struct{}{
 		agent.ContainerStatusCreated: struct{}{},
 		agent.ContainerStatusDeleted: struct{}{},
 	}
-	wc := client.Wait(id, wanted, downloadTimeout)
+	wc := client.Wait(id, wanted, timeout)
 
-	// Issue create
+	// Issue create.
 	if err := client.Put(id, cfg); err != nil {
 		log.Fatalf("%s: %s", u.Host, err)
 	}
 
-	// Check results from create
+	// Check results from create.
 	w := <-wc
-
 	if w.Err != nil {
 		log.Fatalf("%s: %s", u.Host, w.Err)
 	}
@@ -90,10 +91,17 @@ func createAction(c *cli.Context) {
 		log.Fatalf("%s: container creation failed", id)
 	}
 
-	log.Printf("%s: create %s (%s) OK", u.Host, id, filename)
+	if andStart {
+		if err := client.Start(id); err != nil {
+			log.Fatalf("%s: %s", u.Host, err)
+		}
+		log.Printf("%s: run %s (%s) OK", u.Host, id, filename)
+	} else {
+		log.Printf("%s: create %s (%s) OK", u.Host, id, filename)
+	}
 }
 
-func chooseEndpoint(c *cli.Context) *url.URL {
+func chooseEndpoint() *url.URL {
 	if len(endpoints) <= 0 {
 		panic("impossible")
 	}

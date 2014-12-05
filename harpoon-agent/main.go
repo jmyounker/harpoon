@@ -37,7 +37,7 @@ func main() {
 		addr              = flag.String("addr", ":3333", "address to listen on")
 		portsStart        = flag.Uint64("ports.start", 30000, "starting of port allocation range")
 		portsEnd          = flag.Uint64("ports.end", 32767, "ending of port allocation range")
-		downloadTimeout   = flag.Duration("download.timeout", agent.DefaultDownloadTimeout+(30*time.Second), "max artifact download time")
+		downloadTimeout   = flag.Duration("download.timeout", agent.DefaultDownloadTimeout, "max artifact download time")
 	)
 	flag.Var(&configuredVolumes, "vol", "repeatable list of available volumes")
 
