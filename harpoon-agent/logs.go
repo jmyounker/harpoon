@@ -22,28 +22,24 @@ const (
 )
 
 type containerLog struct {
-	entries       *ringBuffer
-	notifications map[chan string]struct{}
-	addc          chan string
-	lastc         chan logLast
-	notifyc       chan chan string
-	stopc         chan chan string
-	quitc         chan chan struct{}
+	addc    chan string
+	lastc   chan logLast
+	notifyc chan chan string
+	stopc   chan chan string
+	quitc   chan chan struct{}
 }
 
 // newContainerLog allocates and initializes a ring-buffered log structure for
 // a single active container.
 func newContainerLog(bufferSize int) *containerLog {
 	cl := &containerLog{
-		entries:       newRingBuffer(bufferSize),
-		notifications: make(map[chan string]struct{}),
-		addc:          make(chan string),
-		lastc:         make(chan logLast),
-		notifyc:       make(chan chan string),
-		stopc:         make(chan chan string),
-		quitc:         make(chan chan struct{}),
+		addc:    make(chan string),
+		lastc:   make(chan logLast),
+		notifyc: make(chan chan string),
+		stopc:   make(chan chan string),
+		quitc:   make(chan chan struct{}),
 	}
-	go cl.loop()
+	go cl.loop(bufferSize)
 	return cl
 }
 
@@ -95,54 +91,37 @@ func (cl *containerLog) exit() {
 }
 
 // loop processes incoming commands
-func (cl *containerLog) loop() {
+func (cl *containerLog) loop(bufferSize int) {
+	var (
+		entries       = newRingBuffer(bufferSize)
+		notifications = make(map[chan string]struct{})
+	)
 	for {
 		select {
 		case line := <-cl.addc:
-			cl.insert(line)
+			entries.insert(line)
+			for linec := range notifications {
+				select {
+				case linec <- line:
+					incLogDeliverableLines(1)
+				default:
+					incLogUndeliveredLines(1)
+				}
+			}
 		case msg := <-cl.lastc:
-			msg.last <- cl.entries.last(msg.count)
+			msg.last <- entries.last(msg.count)
 		case linec := <-cl.notifyc:
-			cl.addNotifier(linec)
+			notifications[linec] = struct{}{}
 		case linec := <-cl.stopc:
-			cl.removeNotifier(linec)
+			close(linec)
+			delete(notifications, linec)
 		case q := <-cl.quitc:
-			cl.removeNotifiers()
+			for linec := range notifications {
+				close(linec)
+			}
 			close(q)
 			return
 		}
-	}
-}
-
-// insert a log line into the buffer and notifies listeners
-func (cl *containerLog) insert(line string) {
-	cl.entries.insert(line)
-
-	for linec := range cl.notifications {
-		select {
-		case linec <- line:
-			incLogDeliverableLines(1)
-		default:
-			incLogUndeliveredLines(1)
-		}
-	}
-}
-
-// addNotifier adds a listener
-func (cl *containerLog) addNotifier(linec chan string) {
-	cl.notifications[linec] = struct{}{}
-}
-
-// removeLister removes linec from the notification list
-func (cl *containerLog) removeNotifier(linec chan string) {
-	close(linec)
-	delete(cl.notifications, linec)
-}
-
-// removeNotifiers removes all linecs from the notification list
-func (cl *containerLog) removeNotifiers() {
-	for linec := range cl.notifications {
-		cl.removeNotifier(linec)
 	}
 }
 
