@@ -83,7 +83,7 @@ func TestContainerList(t *testing.T) {
 		nil,
 	)
 
-	registry.m["123"] = cont
+	registry.register(cont)
 	registry.statec <- cont.Instance()
 
 	ev, err = es.Read()

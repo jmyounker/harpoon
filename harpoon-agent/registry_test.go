@@ -82,6 +82,6 @@ func TestNonBlockingLoop(t *testing.T) {
 	select {
 	case <-cic:
 	case <-time.After(time.Second):
-		t.Fatal("Deadlocked")
+		t.Fatal("deadlocked")
 	}
 }
