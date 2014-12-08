@@ -45,7 +45,7 @@ func TestSupervisor(t *testing.T) {
 
 	// container process OOMs
 	select {
-	case container.waitc <- agent.ContainerExitStatus{OOMed: true}:
+	case container.waitc <- agent.ContainerExitStatus{Cause: agent.OOM}:
 	case <-time.After(time.Millisecond):
 		panic("supervisor did not consume exit status")
 	}
@@ -58,7 +58,7 @@ func TestSupervisor(t *testing.T) {
 		panic("supervisor did not sent state update after OOM")
 	}
 
-	if state.ContainerExitStatus.OOMed != true {
+	if state.ContainerExitStatus.Cause != agent.OOM {
 		t.Fatal("status reported did not include OOM")
 	}
 
@@ -88,7 +88,7 @@ func TestSupervisor(t *testing.T) {
 	}
 
 	select {
-	case container.waitc <- agent.ContainerExitStatus{Exited: true, ExitStatus: 0}:
+	case container.waitc <- agent.ContainerExitStatus{Cause: agent.Exit, ExitStatus: 0}:
 	case <-time.After(time.Millisecond):
 		panic("supervisor did not consume container exit status")
 	}
@@ -211,7 +211,7 @@ func TestAlwaysRestartPolicy(t *testing.T) {
 		}
 
 		select {
-		case container.waitc <- agent.ContainerExitStatus{Exited: true, ExitStatus: exitStatus}:
+		case container.waitc <- agent.ContainerExitStatus{Cause: agent.Exit, ExitStatus: exitStatus}:
 		case <-time.After(time.Millisecond):
 			panic("unable to send exit status")
 		}
@@ -274,7 +274,7 @@ func TestNoRestartPolicy(t *testing.T) {
 		}
 
 		select {
-		case container.waitc <- agent.ContainerExitStatus{Exited: true, ExitStatus: exitStatus}:
+		case container.waitc <- agent.ContainerExitStatus{Cause: agent.Exit, ExitStatus: exitStatus}:
 		case <-time.After(time.Millisecond):
 			panic("unable to send exit status")
 		}
@@ -333,7 +333,7 @@ func TestOnFailureRestartPolicy(t *testing.T) {
 		}
 
 		select {
-		case container.waitc <- agent.ContainerExitStatus{Exited: true, ExitStatus: exitStatus}:
+		case container.waitc <- agent.ContainerExitStatus{Cause: agent.Exit, ExitStatus: exitStatus}:
 		case <-time.After(time.Millisecond):
 			panic("unable to send exit status")
 		}

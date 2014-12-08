@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"time"
 
@@ -136,11 +137,10 @@ func (s *supervisor) Run(metricsTick <-chan time.Time, restartTimer func() <-cha
 			state.Up = false
 			state.ContainerExitStatus = exitStatus
 
-			if exitStatus.OOMed {
+			switch exitStatus.Cause {
+			case agent.OOM:
 				state.OOMs++
-			}
-
-			if exitStatus.Exited {
+			case agent.Exit:
 				switch s.container.Config().Restart {
 				case agent.NoRestart:
 					state.Restarting = false
@@ -151,14 +151,15 @@ func (s *supervisor) Run(metricsTick <-chan time.Time, restartTimer func() <-cha
 				default:
 					panic("invalid restart policy")
 				}
-			}
-
-			if !state.Restarting {
-				metricsTick = nil
+			case agent.Signal:
+			default:
+				panic(fmt.Sprintf("unknown termination state: %s", exitStatus.Cause))
 			}
 
 			if state.Restarting {
 				restart = restartTimer()
+			} else {
+				metricsTick = nil
 			}
 
 			s.broadcast(state)

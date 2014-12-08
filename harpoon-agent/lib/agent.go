@@ -363,19 +363,14 @@ type ContainerProcessState struct {
 
 // ContainerExitStatus contains the exit status of a container.
 type ContainerExitStatus struct {
-	// Exited is true when the container exited on its own, or in response to
-	// handling a signal. ExitStatus will be >= 0 when Exited is true.
-	Exited     bool `json:"exited,omitempty"`
-	ExitStatus int  `json:"exit_status,omitempty"`
+	// The reason the container terminated.
+	Cause ExitCause `json:"cause"`
 
-	// Signaled is true when the container was killed with a signal. Signal
-	// will be > 0 when Signaled is true.
-	Signaled bool `json:"signaled,omitempty"`
-	Signal   int  `json:"signal,omitempty"`
+	// ExitStatus will be >= 0 when Cause is Exit.
+	ExitStatus int `json:"exit_status,omitempty"`
 
-	// OOMed is true if the container was killed for exceeding its memory
-	// limit.
-	OOMed bool `json:"oomed,omitempty"`
+	// Signal will be > 0 when Cause is Signal.
+	Signal int `json:"signal,omitempty"`
 }
 
 // ContainerMetrics contains detailed historical information about a unique
@@ -385,3 +380,17 @@ type ContainerMetrics struct {
 	MemoryUsage uint64 `json:"memory_usage"` // memory usage in bytes
 	MemoryLimit uint64 `json:"memory_limit"` // memory limit in bytes
 }
+
+type ExitCause string
+
+const (
+	// Exit indicates the container exited on its own, or in response to handling
+	// a signal.
+	Exit ExitCause = "exited"
+
+	// Signal indicates the container was killed with a signal.
+	Signal = "signal"
+
+	// OOM indicates the container was killed for exceeding its memory limit.
+	OOM = "oomed"
+)
