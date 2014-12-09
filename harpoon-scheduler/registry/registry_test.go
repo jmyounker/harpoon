@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 	"github.com/soundcloud/harpoon/harpoon-configstore/lib"
 	"github.com/soundcloud/harpoon/harpoon-scheduler/registry"
 )
@@ -42,8 +43,8 @@ func TestRegistryStartStop(t *testing.T) {
 	defer registry.Unsubscribe(updatec)
 
 	var (
-		job1 = configstore.JobConfig{Job: "table"}
-		job2 = configstore.JobConfig{Job: "chair"}
+		job1 = configstore.JobConfig{ContainerConfig: agent.ContainerConfig{Job: "table"}}
+		job2 = configstore.JobConfig{ContainerConfig: agent.ContainerConfig{Job: "chair"}}
 	)
 
 	if err := registry.Schedule(job1); err != nil {
@@ -90,7 +91,7 @@ func TestRegistrySaveLoad(t *testing.T) {
 	var (
 		filename  = "registry-test-save-load.json"
 		registry1 = registry.New(filename)
-		job       = configstore.JobConfig{Job: "π"}
+		job       = configstore.JobConfig{ContainerConfig: agent.ContainerConfig{Job: "π"}}
 	)
 
 	defer os.Remove(filename)
