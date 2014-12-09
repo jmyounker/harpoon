@@ -18,8 +18,8 @@ func TestRemoveDuplicates(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 
 	jobConfig := configstore.JobConfig{
-		Job:   "a",
-		Scale: 1,
+		ContainerConfig: agent.ContainerConfig{Job: "a"},
+		Scale:           1,
 	}
 
 	state := agent.StateEvent{
@@ -54,8 +54,8 @@ func TestRespectPending(t *testing.T) {
 	Debugf = t.Logf
 
 	jobConfig := configstore.JobConfig{
-		Job:   "a",
-		Scale: 2,
+		ContainerConfig: agent.ContainerConfig{Job: "a"},
+		Scale:           2,
 	}
 
 	want := map[string]configstore.JobConfig{
@@ -94,9 +94,11 @@ func TestRespectPending(t *testing.T) {
 
 func TestRespectResourceReservedForPendingTasks(t *testing.T) {
 	jobConfig := configstore.JobConfig{
-		Job:             "a",
-		Scale:           2,
-		ContainerConfig: agent.ContainerConfig{Resources: agent.Resources{Mem: 512}},
+		Scale: 2,
+		ContainerConfig: agent.ContainerConfig{
+			Job:       "a",
+			Resources: agent.Resources{Mem: 512},
+		},
 	}
 
 	want := map[string]configstore.JobConfig{
@@ -157,8 +159,8 @@ func TestPendingExpiration(t *testing.T) {
 	Debugf = t.Logf
 
 	jobConfig := configstore.JobConfig{
-		Job:   "a",
-		Scale: 2,
+		ContainerConfig: agent.ContainerConfig{Job: "a"},
+		Scale:           2,
 	}
 
 	want := map[string]configstore.JobConfig{
@@ -231,8 +233,8 @@ func TestRetryingMutation(t *testing.T) {
 	Debugf = t.Logf
 
 	jobConfig := configstore.JobConfig{
-		Job:   "a",
-		Scale: 1,
+		ContainerConfig: agent.ContainerConfig{Job: "a"},
+		Scale:           1,
 	}
 
 	state := agent.StateEvent{
@@ -358,7 +360,7 @@ func TestSchedulerRestartsDisappearingTasksIndefinitely(t *testing.T) {
 
 	// Schedule a job with scale = 3
 
-	jobConfig := configstore.JobConfig{Job: "a", Scale: 3}
+	jobConfig := configstore.JobConfig{ContainerConfig: agent.ContainerConfig{Job: "a"}, Scale: 3}
 	desire.set(map[string]configstore.JobConfig{"a": jobConfig})
 	time.Sleep(time.Millisecond)
 
