@@ -7,6 +7,7 @@ go:
 install:
   - make dep
   - go get code.google.com/p/go.tools/cmd/vet || go get golang.org/x/tools/cmd/vet
+  - go install github.com/docker/libcontainer/nsinit
 
-script: ./misc/check-style.sh && go test -v ./...
+script: ./misc/check-style.sh && go test -v ./... && _integration/run.sh
 
