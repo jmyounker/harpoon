@@ -138,9 +138,9 @@ func (s *supervisor) Run(metricsTick <-chan time.Time, restartTimer func() <-cha
 			state.ContainerExitStatus = exitStatus
 
 			switch exitStatus.Cause {
-			case agent.OOM:
+			case agent.TermOOM:
 				state.OOMs++
-			case agent.Exit:
+			case agent.TermExit:
 				switch s.container.Config().Restart {
 				case agent.NoRestart:
 					state.Restarting = false
@@ -151,9 +151,9 @@ func (s *supervisor) Run(metricsTick <-chan time.Time, restartTimer func() <-cha
 				default:
 					panic("invalid restart policy")
 				}
-			case agent.Signal:
+			case agent.TermSignal:
 			default:
-				panic(fmt.Sprintf("unknown termination state: %s", exitStatus.Cause))
+				panic(fmt.Sprintf("unknown termination state: '%s'", exitStatus.Cause))
 			}
 
 			if state.Restarting {

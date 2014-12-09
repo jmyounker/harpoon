@@ -384,13 +384,12 @@ type ContainerMetrics struct {
 type ExitCause string
 
 const (
-	// Exit indicates the container exited on its own, or in response to handling
-	// a signal.
-	Exit ExitCause = "exited"
+	// Exit indicates the container exited on its own.
+	TermExit ExitCause = "exited"
 
 	// Signal indicates the container was killed with a signal.
-	Signal = "signal"
+	TermSignal = "signal"
 
 	// OOM indicates the container was killed for exceeding its memory limit.
-	OOM = "oomed"
+	TermOOM = "oomed"
 )

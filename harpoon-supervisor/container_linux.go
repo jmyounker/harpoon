@@ -187,16 +187,16 @@ func (c *container) Wait() agent.ContainerExitStatus {
 		// notification and the container exits from SIGKILL, report exit status as
 		// OOMed.
 		return agent.ContainerExitStatus{
-			Cause: agent.OOM,
+			Cause: agent.TermOOM,
 		}
 	case ws.Exited():
 		return agent.ContainerExitStatus{
-			Cause:      agent.Exit,
+			Cause:      agent.TermExit,
 			ExitStatus: ws.ExitStatus(),
 		}
 	case ws.Signaled():
 		return agent.ContainerExitStatus{
-			Cause:  agent.Signal,
+			Cause:  agent.TermSignal,
 			Signal: int(ws.Signal()),
 		}
 	}
