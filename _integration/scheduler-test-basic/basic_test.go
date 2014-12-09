@@ -55,7 +55,7 @@ func TestBasicTaskSchedule(t *testing.T) {
 		},
 	}
 
-	if _, err := scheduler.Schedule(cfg); err != nil {
+	if err := scheduler.Schedule(cfg); err != nil {
 		t.Fatal(err)
 	}
 
@@ -65,7 +65,7 @@ func TestBasicTaskSchedule(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err = scheduler.UnscheduleConfig(cfg); err != nil {
+	if err = scheduler.UnscheduleConfig(cfg); err != nil {
 		t.Fatal(err)
 	}
 
@@ -105,7 +105,7 @@ func TestUnscheduleNonexistentTask(t *testing.T) {
 		},
 	}
 
-	if _, err = scheduler.UnscheduleConfig(cfg); err == nil {
+	if err = scheduler.UnscheduleConfig(cfg); err == nil {
 		t.Fatal("unscheduling unexisting config should return error")
 	}
 
@@ -166,7 +166,7 @@ func TestImpossibleTasks(t *testing.T) {
 		cfg.Resources.CPU = input.cpus
 		cfg.Resources.Mem = input.mem
 
-		if _, err := scheduler.Schedule(cfg); err == nil {
+		if err := scheduler.Schedule(cfg); err == nil {
 			t.Fatalf("%d: incorrect scheduling", i)
 		}
 
@@ -174,7 +174,7 @@ func TestImpossibleTasks(t *testing.T) {
 			t.Fatalf("%d error: %v", i, err)
 		}
 
-		if _, err = scheduler.UnscheduleConfig(cfg); err == nil {
+		if err = scheduler.UnscheduleConfig(cfg); err == nil {
 			t.Fatalf("%d: incorrect unscheduling", i)
 		}
 
@@ -273,7 +273,7 @@ func TestTaskConsumesAllAllowedResources(t *testing.T) {
 		},
 	}
 
-	if _, err := scheduler.Schedule(cfg); err != nil {
+	if err := scheduler.Schedule(cfg); err != nil {
 		t.Fatal(err)
 	}
 
@@ -283,7 +283,7 @@ func TestTaskConsumesAllAllowedResources(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err = clientScheduler.Unschedule(cfg); err != nil {
+	if err = scheduler.UnscheduleConfig(cfg); err != nil {
 		t.Fatal(err)
 	}
 
@@ -295,11 +295,6 @@ func TestTaskConsumesAllAllowedResources(t *testing.T) {
 }
 
 func TestTaskScheduledWhenResourcesAreFree(t *testing.T) {
-	clientScheduler, err := scheduler.NewClient(*schedulerURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	clientAgent, err := agent.NewClient(*agentURL)
 	if err != nil {
 		t.Fatal(err)
@@ -311,8 +306,8 @@ func TestTaskScheduledWhenResourcesAreFree(t *testing.T) {
 	}
 
 	var (
-		mem  = res.Memory.Total
-		cpus = res.CPUs.Total
+		mem  = res.Mem.Total
+		cpus = res.CPU.Total
 	)
 
 	var firstCfg = configstore.JobConfig{
@@ -327,8 +322,8 @@ func TestTaskScheduledWhenResourcesAreFree(t *testing.T) {
 				Exec:       []string{"./true"},
 			},
 			Resources: agent.Resources{
-				Memory: mem / 3,
-				CPUs:   cpus / 3,
+				Mem: mem / 3,
+				CPU: cpus / 3,
 			},
 			Grace: agent.Grace{
 				Startup:  agent.JSONDuration{time.Second},
@@ -340,13 +335,13 @@ func TestTaskScheduledWhenResourcesAreFree(t *testing.T) {
 
 	secondCfg := firstCfg
 	secondCfg.Scale = 4
-	secondCfg.ContainerConfig.Resources = agent.Resources{Memory: mem / 2, CPUs: cpus / 2}
+	secondCfg.ContainerConfig.Resources = agent.Resources{Mem: mem / 2, CPU: cpus / 2}
 
-	if _, err := clientScheduler.Schedule(firstCfg); err != nil {
+	if err := scheduler.Schedule(firstCfg); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := clientScheduler.Schedule(secondCfg); err != nil {
+	if err := scheduler.Schedule(secondCfg); err != nil {
 		t.Fatal(err)
 	}
 
@@ -356,7 +351,7 @@ func TestTaskScheduledWhenResourcesAreFree(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err = clientScheduler.Unschedule(firstCfg); err != nil {
+	if err = scheduler.UnscheduleConfig(firstCfg); err != nil {
 		t.Fatal(err)
 	}
 
@@ -366,7 +361,7 @@ func TestTaskScheduledWhenResourcesAreFree(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err = clientScheduler.Unschedule(secondCfg); err != nil {
+	if err = scheduler.UnscheduleConfig(secondCfg); err != nil {
 		t.Fatal(err)
 	}
 
@@ -378,11 +373,6 @@ func TestTaskScheduledWhenResourcesAreFree(t *testing.T) {
 }
 
 func TestScheduleMultipleIndependentTasksThatFit(t *testing.T) {
-	clientScheduler, err := scheduler.NewClient(*schedulerURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	clientAgent, err := agent.NewClient(*agentURL)
 	if err != nil {
 		t.Fatal(err)
@@ -394,8 +384,8 @@ func TestScheduleMultipleIndependentTasksThatFit(t *testing.T) {
 	}
 
 	var (
-		mem  = res.Memory.Total
-		cpus = res.CPUs.Total
+		mem  = res.Mem.Total
+		cpus = res.CPU.Total
 	)
 
 	var cfg = configstore.JobConfig{
@@ -410,8 +400,8 @@ func TestScheduleMultipleIndependentTasksThatFit(t *testing.T) {
 				Exec:       []string{"./true"},
 			},
 			Resources: agent.Resources{
-				Memory: mem / 10,
-				CPUs:   cpus / 10,
+				Mem: mem / 10,
+				CPU: cpus / 10,
 			},
 			Grace: agent.Grace{
 				Startup:  agent.JSONDuration{time.Second},
@@ -423,7 +413,7 @@ func TestScheduleMultipleIndependentTasksThatFit(t *testing.T) {
 
 	for i := 0; i < 7; i++ {
 		cfg.Product = fmt.Sprintf("product%d", i)
-		if _, err := clientScheduler.Schedule(cfg); err != nil {
+		if err := scheduler.Schedule(cfg); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -436,7 +426,7 @@ func TestScheduleMultipleIndependentTasksThatFit(t *testing.T) {
 
 	for i := 0; i < 7; i++ {
 		cfg.Product = fmt.Sprintf("product%d", i)
-		if _, err := clientScheduler.Unschedule(cfg); err != nil {
+		if err := scheduler.UnscheduleConfig(cfg); err != nil {
 			t.Fatal(err)
 		}
 	}
