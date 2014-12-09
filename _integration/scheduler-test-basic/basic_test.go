@@ -8,7 +8,7 @@ import (
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 	"github.com/soundcloud/harpoon/harpoon-configstore/lib"
-	"github.com/soundcloud/harpoon/harpoon-scheduler/lib"
+	"github.com/soundcloud/harpoon/harpoonctl/scheduler"
 )
 
 var (
@@ -17,11 +17,6 @@ var (
 )
 
 func TestBasicTaskSchedule(t *testing.T) {
-	clientScheduler, err := scheduler.NewClient(*schedulerURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	clientAgent, err := agent.NewClient(*agentURL)
 	if err != nil {
 		t.Fatal(err)
@@ -33,8 +28,8 @@ func TestBasicTaskSchedule(t *testing.T) {
 	}
 
 	var (
-		mem  = res.Memory.Total
-		cpus = res.CPUs.Total
+		mem  = res.Mem.Total
+		cpus = res.CPU.Total
 	)
 
 	var cfg = configstore.JobConfig{
@@ -49,8 +44,8 @@ func TestBasicTaskSchedule(t *testing.T) {
 				Exec:       []string{"./true"},
 			},
 			Resources: agent.Resources{
-				Memory: mem / 3,
-				CPUs:   cpus / 3,
+				Mem: mem / 3,
+				CPU: cpus / 3,
 			},
 			Grace: agent.Grace{
 				Startup:  agent.JSONDuration{time.Second},
@@ -60,7 +55,7 @@ func TestBasicTaskSchedule(t *testing.T) {
 		},
 	}
 
-	if _, err := clientScheduler.Schedule(cfg); err != nil {
+	if _, err := scheduler.Schedule(cfg); err != nil {
 		t.Fatal(err)
 	}
 
@@ -70,7 +65,7 @@ func TestBasicTaskSchedule(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err = clientScheduler.Unschedule(cfg); err != nil {
+	if _, err = scheduler.UnscheduleConfig(cfg); err != nil {
 		t.Fatal(err)
 	}
 
@@ -82,11 +77,6 @@ func TestBasicTaskSchedule(t *testing.T) {
 }
 
 func TestUnscheduleNonexistentTask(t *testing.T) {
-	clientScheduler, err := scheduler.NewClient(*schedulerURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	clientAgent, err := agent.NewClient(*agentURL)
 	if err != nil {
 		t.Fatal(err)
@@ -104,8 +94,8 @@ func TestUnscheduleNonexistentTask(t *testing.T) {
 				Exec:       []string{"./true"},
 			},
 			Resources: agent.Resources{
-				Memory: 100,
-				CPUs:   1,
+				Mem: 100,
+				CPU: 1,
 			},
 			Grace: agent.Grace{
 				Startup:  agent.JSONDuration{time.Second},
@@ -115,7 +105,7 @@ func TestUnscheduleNonexistentTask(t *testing.T) {
 		},
 	}
 
-	if _, err = clientScheduler.Unschedule(cfg); err == nil {
+	if _, err = scheduler.UnscheduleConfig(cfg); err == nil {
 		t.Fatal("unscheduling unexisting config should return error")
 	}
 
@@ -127,11 +117,6 @@ func TestUnscheduleNonexistentTask(t *testing.T) {
 }
 
 func TestImpossibleTasks(t *testing.T) {
-	clientScheduler, err := scheduler.NewClient(*schedulerURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	clientAgent, err := agent.NewClient(*agentURL)
 	if err != nil {
 		t.Fatal(err)
@@ -143,8 +128,8 @@ func TestImpossibleTasks(t *testing.T) {
 	}
 
 	var (
-		mem  = res.Memory.Total
-		cpus = res.CPUs.Total
+		mem  = res.Mem.Total
+		cpus = res.CPU.Total
 	)
 
 	var cfg = configstore.JobConfig{
@@ -157,8 +142,8 @@ func TestImpossibleTasks(t *testing.T) {
 				Exec:       []string{"./true"},
 			},
 			Resources: agent.Resources{
-				Memory: 32,
-				CPUs:   0.5,
+				Mem: 32,
+				CPU: 0.5,
 			},
 			Grace: agent.Grace{
 				Startup:  agent.JSONDuration{time.Second},
@@ -178,10 +163,10 @@ func TestImpossibleTasks(t *testing.T) {
 		{mem, cpus + 1},
 		{mem + 1, cpus + 1},
 	} {
-		cfg.Resources.CPUs = input.cpus
-		cfg.Resources.Memory = input.mem
+		cfg.Resources.CPU = input.cpus
+		cfg.Resources.Mem = input.mem
 
-		if _, err := clientScheduler.Schedule(cfg); err == nil {
+		if _, err := scheduler.Schedule(cfg); err == nil {
 			t.Fatalf("%d: incorrect scheduling", i)
 		}
 
@@ -189,7 +174,7 @@ func TestImpossibleTasks(t *testing.T) {
 			t.Fatalf("%d error: %v", i, err)
 		}
 
-		if _, err = clientScheduler.Unschedule(cfg); err == nil {
+		if _, err = scheduler.UnscheduleConfig(cfg); err == nil {
 			t.Fatalf("%d: incorrect unscheduling", i)
 		}
 
@@ -212,8 +197,8 @@ func TestDirectScheduleOnAgent(t *testing.T) {
 			Exec:       []string{"./true"},
 		},
 		Resources: agent.Resources{
-			Memory: 32,
-			CPUs:   1,
+			Mem: 32,
+			CPU: 1,
 		},
 		Grace: agent.Grace{
 			Startup:  agent.JSONDuration{time.Second},
@@ -232,8 +217,8 @@ func TestDirectScheduleOnAgent(t *testing.T) {
 	}
 
 	w := <-wc
-	if wc.Err != nil {
-		t.Fatal(Err)
+	if w.Err != nil {
+		t.Fatal(w.Err)
 	}
 
 	statuses = map[agent.ContainerStatus]struct{}{
@@ -250,11 +235,6 @@ func TestDirectScheduleOnAgent(t *testing.T) {
 }
 
 func TestTaskConsumesAllAllowedResources(t *testing.T) {
-	clientScheduler, err := scheduler.NewClient(*schedulerURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	clientAgent, err := agent.NewClient(*agentURL)
 	if err != nil {
 		t.Fatal(err)
@@ -266,8 +246,8 @@ func TestTaskConsumesAllAllowedResources(t *testing.T) {
 	}
 
 	var (
-		mem  = res.Memory.Total
-		cpus = res.CPUs.Total
+		mem  = res.Mem.Total
+		cpus = res.CPU.Total
 	)
 
 	var cfg = configstore.JobConfig{
@@ -282,8 +262,8 @@ func TestTaskConsumesAllAllowedResources(t *testing.T) {
 				Exec:       []string{"./true"},
 			},
 			Resources: agent.Resources{
-				Memory: mem / 3,
-				CPUs:   cpus / 3,
+				Mem: mem / 3,
+				CPU: cpus / 3,
 			},
 			Grace: agent.Grace{
 				Startup:  agent.JSONDuration{time.Second},
@@ -293,7 +273,7 @@ func TestTaskConsumesAllAllowedResources(t *testing.T) {
 		},
 	}
 
-	if _, err := clientScheduler.Schedule(cfg); err != nil {
+	if _, err := scheduler.Schedule(cfg); err != nil {
 		t.Fatal(err)
 	}
 

@@ -36,7 +36,7 @@ func unscheduleAction(c *cli.Context) {
 			log.Fatalf("%s: %s", arg, err)
 		}
 
-		if err := unscheduleConfig(cfg); err != nil {
+		if err := UnscheduleConfig(cfg); err != nil {
 			log.Fatalf("%s: %s", arg, err)
 		}
 	} else {
@@ -48,7 +48,7 @@ func unscheduleAction(c *cli.Context) {
 	}
 }
 
-func unscheduleConfig(cfg configstore.JobConfig) error {
+func UnscheduleConfig(cfg configstore.JobConfig) error {
 	if err := cfg.Valid(); err != nil {
 		return err
 	}

@@ -41,14 +41,14 @@ func scheduleAction(c *cli.Context) {
 		log.Fatalf("%s: %s", filename, err)
 	}
 
-	if err := schedule(cfg); err != nil {
+	if err := Schedule(cfg); err != nil {
 		log.Fatalf("%s: %s", endpoint.Host, err)
 	}
 
 	log.Verbosef("schedule %s OK", cfg.Job)
 }
 
-func schedule(cfg configstore.JobConfig) error {
+func Schedule(cfg configstore.JobConfig) error {
 	buf, err := json.Marshal(cfg)
 	if err != nil {
 		return err

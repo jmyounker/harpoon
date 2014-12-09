@@ -112,7 +112,7 @@ func migrate(oldJob, newJob configstore.JobConfig, interruptc chan struct{}) err
 	)
 
 	// Schedule new job.
-	if err := abortable(func() error { return schedule(newJob) }); err != nil {
+	if err := abortable(func() error { return Schedule(newJob) }); err != nil {
 		return fmt.Errorf("request to schedule new job failed: %s", err)
 	}
 
@@ -122,7 +122,7 @@ func migrate(oldJob, newJob configstore.JobConfig, interruptc chan struct{}) err
 	}
 
 	// Unschedule old job.
-	if err := abortable(func() error { return unscheduleConfig(oldJob) }); err != nil {
+	if err := abortable(func() error { return UnscheduleConfig(oldJob) }); err != nil {
 		return fmt.Errorf("request to unschedule old job failed: %s", err)
 	}
 
