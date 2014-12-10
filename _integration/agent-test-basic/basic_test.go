@@ -38,7 +38,7 @@ func TestAgent(t *testing.T) {
 		agent.ContainerStatusCreated: struct{}{},
 	}
 	wc := client.Wait("basic-test", statuses, time.Second)
-	if err := client.Put("basic-test", config); err != nil {
+	if err := client.Create("basic-test", config); err != nil {
 		t.Fatal(err)
 	}
 	w := <-wc
