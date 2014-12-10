@@ -390,7 +390,7 @@ func TestSchedulerRestartsDisappearingTasksIndefinitely(t *testing.T) {
 		"jenkins": agent.StateEvent{Containers: map[string]agent.ContainerInstance{id2: ci2}},
 	})
 	t.Logf("(task 1 has disappeared)")
-	runtime.Gosched()
+	time.Sleep(time.Millisecond)
 
 	// The scheduler (Transform) should restart it
 
@@ -412,7 +412,7 @@ func TestSchedulerRestartsDisappearingTasksIndefinitely(t *testing.T) {
 		"jenkins": agent.StateEvent{Containers: map[string]agent.ContainerInstance{id2: ci2}},
 	})
 	t.Logf("(task 1 has disappeared again)")
-	runtime.Gosched()
+	time.Sleep(time.Millisecond)
 
 	// The scheduler (Transform) should restart it again
 
