@@ -5,13 +5,20 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
 func writeServiceDiscovery(filename string, instances []agent.ContainerInstance) (err error) {
-	f, err := ioutil.TempFile("", "harpoon-agent-service-discovery")
+	if filename == "" {
+		return fmt.Errorf("no file provided")
+	}
+
+	// Ensure that the temp file is in the same filesystem as the registry
+	// save file so that os.Rename() never crosses a filesystem boundary.
+	f, err := ioutil.TempFile(filepath.Dir(filename), "harpoon-scheduler-service-discovery")
 	if err != nil {
 		return err
 	}
@@ -29,6 +36,12 @@ func writeServiceDiscovery(filename string, instances []agent.ContainerInstance)
 	}); err != nil {
 		return err
 	}
+
+	if err := f.Sync(); err != nil {
+		return err
+	}
+
+	f.Close() // double close is OK, I think
 
 	if err = os.Rename(f.Name(), filename); err != nil {
 		return err

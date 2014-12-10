@@ -179,31 +179,41 @@ func (r *Registry) loop(filename string, scheduled map[string]configstore.JobCon
 	}
 }
 
-func save(filename string, scheduled map[string]configstore.JobConfig) error {
+func save(filename string, scheduled map[string]configstore.JobConfig) (err error) {
 	if filename == "" {
 		return nil // no file (and no persistence) is OK
 	}
 
 	// Ensure that the temp file is in the same filesystem as the registry
 	// save file so that os.Rename() never crosses a filesystem boundary.
-	f, err := ioutil.TempFile(filepath.Dir(filename), "harpoon-scheduler-registry_")
+	f, err := ioutil.TempFile(filepath.Dir(filename), "harpoon-scheduler-registry")
 	if err != nil {
 		return err
 	}
 
+	defer func() {
+		if err != nil {
+			os.Remove(f.Name())
+		}
+	}()
+
+	defer f.Close()
+
 	if err := json.NewEncoder(f).Encode(scheduled); err != nil {
-		f.Close()
 		return err
 	}
 
 	if err = f.Sync(); err != nil {
-		f.Close()
 		return err
 	}
 
-	f.Close()
+	f.Close() // double close is OK, I think
 
-	return os.Rename(f.Name(), filename) // atomic
+	if err := os.Rename(f.Name(), filename); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func load(filename string) (map[string]configstore.JobConfig, error) {
