@@ -405,6 +405,8 @@ func TestSchedulerRestartsDisappearingTasksIndefinitely(t *testing.T) {
 		"jenkins": agent.StateEvent{Containers: map[string]agent.ContainerInstance{id2: ci2}},
 	})
 	runtime.Gosched()
+	actual.broadcast() // try to ensure a sync
+	runtime.Gosched()
 	t.Logf("task 1 returned")
 
 	// Disappear the task again
@@ -414,6 +416,8 @@ func TestSchedulerRestartsDisappearingTasksIndefinitely(t *testing.T) {
 		"leeroy":  agent.StateEvent{Containers: map[string]agent.ContainerInstance{id0: ci0}},
 		"jenkins": agent.StateEvent{Containers: map[string]agent.ContainerInstance{id2: ci2}},
 	})
+	runtime.Gosched()
+	actual.broadcast() // try to ensure a sync
 	runtime.Gosched()
 	t.Logf("task 1 disappeared again")
 
