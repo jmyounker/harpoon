@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
@@ -39,7 +40,15 @@ func newConsulServiceDiscovery(filename, reloadCommand string) serviceDiscovery 
 	}
 }
 
-func (sd consulServiceDiscovery) Update(instances map[string]agent.ContainerInstance) error {
+func (sd consulServiceDiscovery) Update(instances map[string]agent.ContainerInstance) (err error) {
+	defer func(begin time.Time) {
+		if err == nil {
+			incSDUpdateSuccessful(time.Since(begin))
+		} else {
+			incSDUpdateFailed(time.Since(begin))
+		}
+	}(time.Now())
+
 	if err := writeInstances(sd.filename, instances); err != nil {
 		return err
 	}
