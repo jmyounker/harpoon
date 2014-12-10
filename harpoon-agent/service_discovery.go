@@ -8,14 +8,19 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
 type serviceDiscovery interface {
-	Update([]agent.ContainerInstance) error
+	Update(map[string]agent.ContainerInstance) error
 }
+
+type nopServiceDiscovery struct{}
+
+func (sd nopServiceDiscovery) Update(_ map[string]agent.ContainerInstance) error { return nil }
 
 type consulServiceDiscovery struct {
 	filename string
@@ -34,12 +39,12 @@ func newConsulServiceDiscovery(filename, reloadCommand string) serviceDiscovery 
 	}
 }
 
-func (d consulServiceDiscovery) Update(instances []agent.ContainerInstance) error {
-	if err := writeInstances(d.filename, instances); err != nil {
+func (sd consulServiceDiscovery) Update(instances map[string]agent.ContainerInstance) error {
+	if err := writeInstances(sd.filename, instances); err != nil {
 		return err
 	}
 
-	if buf, err := exec.Command(d.reload[0], d.reload[1:]...).CombinedOutput(); err != nil {
+	if buf, err := exec.Command(sd.reload[0], sd.reload[1:]...).CombinedOutput(); err != nil {
 		log.Printf("service discovery reload failed\n%s", string(buf))
 		return err
 	}
@@ -47,7 +52,7 @@ func (d consulServiceDiscovery) Update(instances []agent.ContainerInstance) erro
 	return nil
 }
 
-func writeInstances(filename string, instances []agent.ContainerInstance) (err error) {
+func writeInstances(filename string, instances map[string]agent.ContainerInstance) (err error) {
 	if filename == "" {
 		return fmt.Errorf("no file provided")
 	}
@@ -93,8 +98,8 @@ type service struct {
 	Tags []string
 }
 
-func instancesToServices(instances []agent.ContainerInstance) []service {
-	services := []service{}
+func instancesToServices(instances map[string]agent.ContainerInstance) []service {
+	services := serviceSlice{}
 
 	for _, instance := range instances {
 		for portName, port := range instance.ContainerConfig.Ports {
@@ -106,6 +111,8 @@ func instancesToServices(instances []agent.ContainerInstance) []service {
 			})
 		}
 	}
+
+	sort.Sort(services)
 
 	return services
 }
@@ -142,3 +149,9 @@ func hostname() string {
 	}
 	return hostname
 }
+
+type serviceSlice []service
+
+func (a serviceSlice) Len() int           { return len(a) }
+func (a serviceSlice) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a serviceSlice) Less(i, j int) bool { return a[i].ID < a[j].ID }

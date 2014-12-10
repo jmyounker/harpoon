@@ -24,7 +24,7 @@ type registerRequest struct {
 	outc chan bool
 }
 
-func newRegistry() *registry {
+func newRegistry(sd serviceDiscovery) *registry {
 	r := &registry{
 		acceptUpdatesc: make(chan bool),
 		statec:         make(chan agent.ContainerInstance),
@@ -37,7 +37,7 @@ func newRegistry() *registry {
 		getc:           make(chan getRequest),
 	}
 
-	go r.loop()
+	go r.loop(sd)
 
 	return r
 }
@@ -111,7 +111,7 @@ func (r *registry) stop(c chan<- agent.ContainerInstance) {
 }
 
 // Report state changes in any container to all of our subscribers.
-func (r *registry) loop() {
+func (r *registry) loop(sd serviceDiscovery) {
 	var (
 		m           = make(map[string]container)
 		subscribers = make(map[chan<- agent.ContainerInstance]struct{})
@@ -134,12 +134,20 @@ func (r *registry) loop() {
 					s <- containerInstance
 				}(subc)
 			}
+			// TODO: we eventually want to include container state information
+			// in what we send to service discovery, so we'll need to trigger
+			// an Update here, too.
 
 		case req := <-r.registerc:
-			req.outc <- r.registerUnsafe(m, req.c)
+			ok := r.registerUnsafe(m, req.c)
+			if ok {
+				sd.Update(instances(m))
+			}
+			req.outc <- ok
 
 		case id := <-r.removec:
 			delete(m, id)
+			sd.Update(instances(m))
 
 		case c := <-r.notifyc:
 			subscribers[c] = struct{}{}

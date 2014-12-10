@@ -31,7 +31,7 @@ func TestContainerList(t *testing.T) {
 		debug                     = false
 		timeout                   = agent.DefaultDownloadTimeout
 
-		registry = newRegistry()
+		registry = newRegistry(nopServiceDiscovery{})
 		pdb      = newPortDB(lowTestPort, highTestPort)
 		api      = newAPI(testContainerRoot, registry, pdb, configuredVolumes, agentCPU, agentMem, timeout, debug)
 		server   = httptest.NewServer(api)
@@ -143,7 +143,7 @@ func TestAgentHostResources(t *testing.T) {
 		debug                     = false
 		timeout                   = agent.DefaultDownloadTimeout
 
-		registry  = newRegistry()
+		registry  = newRegistry(nopServiceDiscovery{})
 		pdb       = newPortDB(lowTestPort, highTestPort)
 		api       = newAPI(testContainerRoot, registry, pdb, configuredVolumes, agentCPU, agentMem, timeout, debug)
 		server    = httptest.NewServer(api)
@@ -239,7 +239,7 @@ func TestLogAPICanTailLogs(t *testing.T) {
 		debug             = false
 		timeout           = agent.DefaultDownloadTimeout
 
-		registry = newRegistry()
+		registry = newRegistry(nopServiceDiscovery{})
 		pdb      = newPortDB(lowTestPort, highTestPort)
 		api      = newAPI(testContainerRoot, registry, pdb, configuredVolumes, agentCPU, agentMem, timeout, debug)
 		server   = httptest.NewServer(api)
@@ -326,7 +326,7 @@ func TestLogAPILogTailIncludesHistory(t *testing.T) {
 		debug                     = false
 		timeout                   = agent.DefaultDownloadTimeout
 
-		registry = newRegistry()
+		registry = newRegistry(nopServiceDiscovery{})
 		pdb      = newPortDB(lowTestPort, highTestPort)
 		api      = newAPI(testContainerRoot, registry, pdb, configuredVolumes, agentCPU, agentMem, timeout, debug)
 		server   = httptest.NewServer(api)
@@ -415,7 +415,7 @@ func TestLogAPICanRetrieveLastLines(t *testing.T) {
 		debug                     = false
 		timeout                   = agent.DefaultDownloadTimeout
 
-		registry = newRegistry()
+		registry = newRegistry(nopServiceDiscovery{})
 		pdb      = newPortDB(lowTestPort, highTestPort)
 		api      = newAPI(testContainerRoot, registry, pdb, configuredVolumes, agentCPU, agentMem, timeout, debug)
 		server   = httptest.NewServer(api)
@@ -480,7 +480,7 @@ func TestFailedCreateDestroysContainer(t *testing.T) {
 		debug                     = false
 		timeout                   = agent.DefaultDownloadTimeout
 
-		registry = newRegistry()
+		registry = newRegistry(nopServiceDiscovery{})
 		pdb      = newPortDB(lowTestPort, highTestPort)
 		api      = newAPI(testContainerRoot, registry, pdb, configuredVolumes, agentCPU, agentMem, timeout, debug)
 		server   = httptest.NewServer(api)

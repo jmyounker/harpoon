@@ -14,7 +14,7 @@ import (
 )
 
 func TestReceiveLogInstrumentation(t *testing.T) {
-	registry := newRegistry()
+	registry := newRegistry(nopServiceDiscovery{})
 	createReceiveLogsFixture(t, registry)
 	c := newFakeContainer("123", "", volumes{}, agent.ContainerConfig{}, false, nil)
 	registry.register(c)
@@ -44,7 +44,7 @@ func TestReceiveLogInstrumentation(t *testing.T) {
 }
 
 func TestLogInstrumentationNotifyWithoutWatchers(t *testing.T) {
-	registry := newRegistry()
+	registry := newRegistry(nopServiceDiscovery{})
 	createReceiveLogsFixture(t, registry)
 
 	registry.register(newFakeContainer("123", "", volumes{}, agent.ContainerConfig{}, false, nil))
@@ -67,7 +67,7 @@ func TestLogInstrumentationNotifyWithoutWatchers(t *testing.T) {
 }
 
 func TestLogInstrumentationNotifyWatchers(t *testing.T) {
-	registry := newRegistry()
+	registry := newRegistry(nopServiceDiscovery{})
 	createReceiveLogsFixture(t, registry)
 
 	c := newFakeContainer("123", "", volumes{}, agent.ContainerConfig{}, false, nil)
@@ -89,7 +89,7 @@ func TestLogInstrumentationNotifyWatchers(t *testing.T) {
 }
 
 func TestLogInstrumentationNotifyWithBlockedWatcher(t *testing.T) {
-	registry := newRegistry()
+	registry := newRegistry(nopServiceDiscovery{})
 	createReceiveLogsFixture(t, registry)
 
 	c := newFakeContainer("123", "", volumes{}, agent.ContainerConfig{}, false, nil)

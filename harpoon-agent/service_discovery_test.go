@@ -62,7 +62,7 @@ func TestInstancesToServices(t *testing.T) {
 		},
 	}
 
-	instances := []agent.ContainerInstance{instance}
+	instances := map[string]agent.ContainerInstance{instance.ID: instance}
 
 	want := []service{
 		service{
@@ -91,7 +91,7 @@ func TestWriteInstances(t *testing.T) {
 		},
 	}
 
-	instances := []agent.ContainerInstance{instance}
+	instances := map[string]agent.ContainerInstance{instance.ID: instance}
 
 	if err := writeInstances(filename, instances); err != nil {
 		t.Fatal(err)
