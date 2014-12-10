@@ -87,7 +87,7 @@ type representation struct {
 type Client interface {
 	Endpoint() string
 	Events() (<-chan agent.StateEvent, agent.Stopper, error)
-	Put(string, agent.ContainerConfig) error
+	Create(string, agent.ContainerConfig) error
 	Start(string) error
 	Stop(string) error
 	Destroy(string) error
