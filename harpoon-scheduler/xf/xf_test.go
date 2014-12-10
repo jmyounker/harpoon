@@ -380,17 +380,18 @@ func TestSchedulerRestartsDisappearingTasksIndefinitely(t *testing.T) {
 		"leeroy":  agent.StateEvent{Containers: map[string]agent.ContainerInstance{id0: ci0, id1: ci1}},
 		"jenkins": agent.StateEvent{Containers: map[string]agent.ContainerInstance{id2: ci2}},
 	})
-	t.Logf("(all tasks started and running)")
 	runtime.Gosched()
+	t.Logf("all tasks started and running")
 
 	// Disappear one of the tasks
 
+	t.Logf("task 1 disappearing")
 	actual.set(map[string]agent.StateEvent{
 		"leeroy":  agent.StateEvent{Containers: map[string]agent.ContainerInstance{id0: ci0}},
 		"jenkins": agent.StateEvent{Containers: map[string]agent.ContainerInstance{id2: ci2}},
 	})
-	t.Logf("(task 1 has disappeared)")
-	time.Sleep(time.Millisecond)
+	runtime.Gosched()
+	t.Logf("task 1 disappeared")
 
 	// The scheduler (Transform) should restart it
 
@@ -398,33 +399,38 @@ func TestSchedulerRestartsDisappearingTasksIndefinitely(t *testing.T) {
 		t.Fatalf("want %d, have %d", want, have)
 	}
 
+	t.Logf("task 1 returning")
 	actual.set(map[string]agent.StateEvent{
 		"leeroy":  agent.StateEvent{Containers: map[string]agent.ContainerInstance{id0: ci0, id1: ci1}},
 		"jenkins": agent.StateEvent{Containers: map[string]agent.ContainerInstance{id2: ci2}},
 	})
-	t.Logf("(the task comes back)")
 	runtime.Gosched()
+	t.Logf("task 1 returned")
 
 	// Disappear the task again
 
+	t.Logf("task 1 disappearing again")
 	actual.set(map[string]agent.StateEvent{
 		"leeroy":  agent.StateEvent{Containers: map[string]agent.ContainerInstance{id0: ci0}},
 		"jenkins": agent.StateEvent{Containers: map[string]agent.ContainerInstance{id2: ci2}},
 	})
-	t.Logf("(task 1 has disappeared again)")
-	time.Sleep(time.Millisecond)
+	runtime.Gosched()
+	t.Logf("task 1 disappeared again")
 
 	// The scheduler (Transform) should restart it again
 
+	t.Logf("expecting the scheduler to have restarted it by now")
 	if want, have := int32(5), target.schedules; want != have {
 		t.Fatalf("want %d, have %d", want, have)
 	}
 
+	t.Logf("task 1 returning again")
 	actual.set(map[string]agent.StateEvent{
 		"leeroy":  agent.StateEvent{Containers: map[string]agent.ContainerInstance{id0: ci0, id1: ci1}},
 		"jenkins": agent.StateEvent{Containers: map[string]agent.ContainerInstance{id2: ci2}},
 	})
-	t.Logf("(the task comes back again)")
+	runtime.Gosched()
+	t.Logf("task 1 returned again")
 }
 
 type mockTaskScheduler struct {
