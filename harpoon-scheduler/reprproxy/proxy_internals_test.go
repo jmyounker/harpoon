@@ -3,11 +3,11 @@ package reprproxy
 import (
 	"io/ioutil"
 	"log"
+	"runtime"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 
 	"testing"
-	"time"
 )
 
 func TestSubscribers(t *testing.T) {
@@ -89,7 +89,7 @@ func TestAgents(t *testing.T) {
 	}
 
 	a.update([]string{"foo"}, updatec)
-	time.Sleep(time.Millisecond)
+	runtime.Gosched()
 
 	select {
 	case <-updatec:

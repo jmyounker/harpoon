@@ -3,6 +3,7 @@ package agentrepr_test
 import (
 	"io/ioutil"
 	"log"
+	"runtime"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 	"github.com/soundcloud/harpoon/harpoon-scheduler/agentrepr"
@@ -20,7 +21,7 @@ func TestSubscribeUnsubscribe(t *testing.T) {
 		ch = make(chan map[string]agent.StateEvent, 1)
 	)
 
-	time.Sleep(time.Millisecond) // give time to initialize state in agent repr
+	runtime.Gosched() // give time to initialize state in agent repr
 
 	r.Subscribe(ch)
 	<-ch
@@ -48,7 +49,7 @@ func TestSchedule(t *testing.T) {
 		r = agentrepr.New(c)
 	)
 
-	time.Sleep(time.Millisecond)
+	runtime.Gosched()
 
 	if err := r.Schedule("bar", agent.ContainerConfig{}); err != nil {
 		t.Error(err)
@@ -72,7 +73,7 @@ func TestUnschedule(t *testing.T) {
 	c.Put("bar", agent.ContainerConfig{})
 	c.Start("bar")
 
-	time.Sleep(time.Millisecond)
+	runtime.Gosched()
 
 	if want, have := agent.ContainerStatusRunning, r.Snapshot()["foo"].Containers["bar"].ContainerStatus; want != have {
 		t.Errorf("want %q, have %q", want, have)
@@ -95,7 +96,7 @@ func TestUnscheduleFailed(t *testing.T) {
 
 	c.Force("bar", agent.ContainerStatusFailed)
 
-	time.Sleep(time.Millisecond)
+	runtime.Gosched()
 
 	if want, have := agent.ContainerStatusFailed, r.Snapshot()["foo"].Containers["bar"].ContainerStatus; want != have {
 		t.Errorf("want %q, have %q", want, have)
@@ -120,7 +121,7 @@ func TestNoDeadlockAfterSchedule(t *testing.T) {
 		r = agentrepr.New(c)
 	)
 
-	time.Sleep(time.Millisecond)
+	runtime.Gosched()
 
 	if err := r.Schedule("bar", agent.ContainerConfig{}); err != nil {
 		t.Error(err)

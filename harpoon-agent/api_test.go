@@ -180,7 +180,7 @@ func TestAgentHostResources(t *testing.T) {
 		}
 	)
 
-	if err := client.Put(containerID, config); err != nil {
+	if err := client.Create(containerID, config); err != nil {
 		t.Fatal(err)
 	}
 
@@ -489,7 +489,7 @@ func TestFailedCreateDestroysContainer(t *testing.T) {
 	defer pdb.exit()
 	defer server.Close()
 
-	err = client.Put("foo", agent.ContainerConfig{ArtifactURL: failingArtifactURL})
+	err = client.Create("foo", agent.ContainerConfig{ArtifactURL: failingArtifactURL})
 	if err == nil {
 		t.Fatalf("expected error, got none")
 	}

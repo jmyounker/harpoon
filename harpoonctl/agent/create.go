@@ -77,7 +77,7 @@ func create(filename, id string, timeout time.Duration, andStart bool) {
 	wc := client.Wait(id, wanted, timeout)
 
 	// Issue create.
-	if err := client.Put(id, cfg); err != nil {
+	if err := client.Create(id, cfg); err != nil {
 		log.Fatalf("%s: %s", u.Host, err)
 	}
 

@@ -18,7 +18,7 @@ const DefaultDownloadTimeout = 120 * time.Second
 // have been received.
 type Agent interface {
 	Endpoint() string
-	Put(containerID string, containerConfig ContainerConfig) error                                         // PUT /containers/{id}
+	Create(containerID string, containerConfig ContainerConfig) error                                      // PUT /containers/{id}
 	Get(containerID string) (ContainerInstance, error)                                                     // GET /containers/{id}
 	Start(containerID string) error                                                                        // POST /containers/{id}/start
 	Stop(containerID string) error                                                                         // POST /containers/{id}/stop
