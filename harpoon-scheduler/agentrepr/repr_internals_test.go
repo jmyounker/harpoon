@@ -2,8 +2,8 @@ package agentrepr
 
 import (
 	"fmt"
+	"runtime"
 	"testing"
-	"time"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
@@ -149,7 +149,7 @@ func TestOutstanding(t *testing.T) {
 	// no match
 
 	o.signal(map[string]agent.ContainerInstance{"foo": agent.ContainerInstance{ContainerStatus: agent.ContainerStatusCreated}})
-	time.Sleep(time.Millisecond)
+	runtime.Gosched()
 
 	if want, have := true, o.contains("foo"); want != have {
 		t.Errorf("want %v, have %v", want, have)
@@ -158,7 +158,7 @@ func TestOutstanding(t *testing.T) {
 	// match
 
 	o.signal(map[string]agent.ContainerInstance{"foo": agent.ContainerInstance{ContainerStatus: agent.ContainerStatusRunning}})
-	time.Sleep(100 * time.Millisecond)
+	runtime.Gosched()
 
 	if want, have := true, o.contains("foo"); want != have {
 		// will still contain until we remove

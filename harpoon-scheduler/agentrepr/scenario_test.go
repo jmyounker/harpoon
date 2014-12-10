@@ -1,8 +1,8 @@
 package agentrepr_test
 
 import (
+	"runtime"
 	"testing"
-	"time"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 	"github.com/soundcloud/harpoon/harpoon-scheduler/agentrepr"
@@ -15,7 +15,7 @@ func TestCreatedBecomesRunning(t *testing.T) {
 
 	// A representation is built for the client
 	r := agentrepr.New(c)
-	time.Sleep(time.Millisecond)
+	runtime.Gosched()
 
 	// The container is detected as state created
 	if want, have := agent.ContainerStatusCreated, r.Snapshot()["foo"].Containers["bar"].ContainerStatus; want != have {
@@ -23,8 +23,10 @@ func TestCreatedBecomesRunning(t *testing.T) {
 	}
 
 	// A schedule request comes
-	r.Schedule("bar", agent.ContainerConfig{})
-	time.Sleep(time.Millisecond)
+	if err := r.Schedule("bar", agent.ContainerConfig{}); err != nil {
+		t.Fatal(err)
+	}
+	runtime.Gosched()
 
 	// The container is detected as state running
 	if want, have := agent.ContainerStatusRunning, r.Snapshot()["foo"].Containers["bar"].ContainerStatus; want != have {
@@ -40,7 +42,7 @@ func TestFailedBecomesCreated(t *testing.T) {
 
 	// A representation is built for the client
 	r := agentrepr.New(c)
-	time.Sleep(time.Millisecond)
+	runtime.Gosched()
 
 	// The container is detected as state running
 	if want, have := agent.ContainerStatusRunning, r.Snapshot()["foo"].Containers["bar"].ContainerStatus; want != have {
@@ -49,7 +51,7 @@ func TestFailedBecomesCreated(t *testing.T) {
 
 	// The container stops
 	c.Stop("bar")
-	time.Sleep(time.Millisecond)
+	runtime.Gosched()
 
 	// The container is detected as state finished
 	if want, have := agent.ContainerStatusFinished, r.Snapshot()["foo"].Containers["bar"].ContainerStatus; want != have {

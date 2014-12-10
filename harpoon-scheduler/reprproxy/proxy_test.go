@@ -1,8 +1,8 @@
 package reprproxy_test
 
 import (
+	"runtime"
 	"testing"
-	"time"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 	"github.com/soundcloud/harpoon/harpoon-scheduler/reprproxy"
@@ -58,14 +58,14 @@ func TestScheduleUnschedule(t *testing.T) {
 	)
 
 	defer p.Quit()
-	time.Sleep(time.Millisecond) // allow agents to be updated
+	runtime.Gosched() // allow agents to be updated
 
 	if err := p.Schedule("unknown-endpoint", "bar", agent.ContainerConfig{}); err == nil {
 		t.Errorf("wanted error, got none")
 	}
 
 	p.Schedule("foo", "bar", agent.ContainerConfig{})
-	time.Sleep(time.Millisecond) // allow request loop to receive created + start events
+	runtime.Gosched() // allow request loop to receive created + start events
 
 	if want, have := agent.ContainerStatusRunning, p.Snapshot()["foo"].Containers["bar"].ContainerStatus; want != have {
 		t.Errorf("want %q, have %q", want, have)
@@ -76,7 +76,7 @@ func TestScheduleUnschedule(t *testing.T) {
 	}
 
 	p.Unschedule("foo", "bar")
-	time.Sleep(time.Millisecond) // allow request loop to receive stopped + deleted events
+	runtime.Gosched() // allow request loop to receive stopped + deleted events
 
 	if want, have := 0, len(p.Snapshot()["foo"].Containers); want != have {
 		t.Errorf("want %d, have %d", want, have)

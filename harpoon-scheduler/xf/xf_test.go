@@ -3,6 +3,7 @@ package xf
 import (
 	"io/ioutil"
 	"log"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -354,13 +355,13 @@ func TestSchedulerRestartsDisappearingTasksIndefinitely(t *testing.T) {
 	})
 
 	go Transform(desire, actual, target)
-	time.Sleep(time.Millisecond) // let Transform subscribe
+	runtime.Gosched() // let Transform subscribe
 
 	// Schedule a job with scale = 3
 
 	jobConfig := configstore.JobConfig{Job: "a", Scale: 3}
 	desire.set(map[string]configstore.JobConfig{"a": jobConfig})
-	time.Sleep(time.Millisecond)
+	runtime.Gosched()
 
 	if want, have := int32(3), target.schedules; want != have {
 		t.Fatalf("want %d, have %d", want, have)
@@ -380,7 +381,7 @@ func TestSchedulerRestartsDisappearingTasksIndefinitely(t *testing.T) {
 		"jenkins": agent.StateEvent{Containers: map[string]agent.ContainerInstance{id2: ci2}},
 	})
 	t.Logf("(all tasks started and running)")
-	time.Sleep(time.Millisecond)
+	runtime.Gosched()
 
 	// Disappear one of the tasks
 
@@ -389,7 +390,7 @@ func TestSchedulerRestartsDisappearingTasksIndefinitely(t *testing.T) {
 		"jenkins": agent.StateEvent{Containers: map[string]agent.ContainerInstance{id2: ci2}},
 	})
 	t.Logf("(task 1 has disappeared)")
-	time.Sleep(time.Millisecond)
+	runtime.Gosched()
 
 	// The scheduler (Transform) should restart it
 
@@ -402,7 +403,7 @@ func TestSchedulerRestartsDisappearingTasksIndefinitely(t *testing.T) {
 		"jenkins": agent.StateEvent{Containers: map[string]agent.ContainerInstance{id2: ci2}},
 	})
 	t.Logf("(the task comes back)")
-	time.Sleep(time.Millisecond)
+	runtime.Gosched()
 
 	// Disappear the task again
 
@@ -411,7 +412,7 @@ func TestSchedulerRestartsDisappearingTasksIndefinitely(t *testing.T) {
 		"jenkins": agent.StateEvent{Containers: map[string]agent.ContainerInstance{id2: ci2}},
 	})
 	t.Logf("(task 1 has disappeared again)")
-	time.Sleep(time.Millisecond)
+	runtime.Gosched()
 
 	// The scheduler (Transform) should restart it again
 
