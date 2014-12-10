@@ -78,7 +78,7 @@ func TestInstancesToServices(t *testing.T) {
 	}
 }
 
-func TestWriteServiceDiscovery(t *testing.T) {
+func TestWriteInstances(t *testing.T) {
 	filename := "test-write-service-discovery.json"
 
 	instance := agent.ContainerInstance{
@@ -93,7 +93,7 @@ func TestWriteServiceDiscovery(t *testing.T) {
 
 	instances := []agent.ContainerInstance{instance}
 
-	if err := writeServiceDiscovery(filename, instances); err != nil {
+	if err := writeInstances(filename, instances); err != nil {
 		t.Fatal(err)
 	}
 

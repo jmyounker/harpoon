@@ -4,14 +4,50 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
-func writeServiceDiscovery(filename string, instances []agent.ContainerInstance) (err error) {
+type serviceDiscovery interface {
+	Update([]agent.ContainerInstance) error
+}
+
+type consulServiceDiscovery struct {
+	filename string
+	reload   []string
+}
+
+func newConsulServiceDiscovery(filename, reloadCommand string) serviceDiscovery {
+	args := strings.Split(reloadCommand, " ")
+	if len(args) <= 0 {
+		panic(fmt.Sprintf("invalid reload command %q", reloadCommand))
+	}
+
+	return &consulServiceDiscovery{
+		filename: filename,
+		reload:   args,
+	}
+}
+
+func (d consulServiceDiscovery) Update(instances []agent.ContainerInstance) error {
+	if err := writeInstances(d.filename, instances); err != nil {
+		return err
+	}
+
+	if buf, err := exec.Command(d.reload[0], d.reload[1:]...).CombinedOutput(); err != nil {
+		log.Printf("service discovery reload failed\n%s", string(buf))
+		return err
+	}
+
+	return nil
+}
+
+func writeInstances(filename string, instances []agent.ContainerInstance) (err error) {
 	if filename == "" {
 		return fmt.Errorf("no file provided")
 	}
