@@ -47,8 +47,8 @@ function make_rootfs {
     $rootfs/etc/hostname \
     $rootfs/etc/resolv.conf
 
-  cp $(which busybox) $rootfs/bin/busybox
-  $rootfs/bin/busybox --install $rootfs/bin/
+  cp $(which busybox) $rootfs/bin/
+  $rootfs/bin/busybox --install .
 }
 
 # shutdown sends SIGTERM and waits for the process to exit. If it takes longer
