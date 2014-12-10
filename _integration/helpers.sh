@@ -47,7 +47,7 @@ function make_rootfs {
     $rootfs/etc/hostname \
     $rootfs/etc/resolv.conf
 
-  cp $(which busybox) $rootfs/bin/
+  cp $(which busybox) $rootfs/bin/busybox
   $rootfs/bin/busybox --install $rootfs/bin/
 }
 
