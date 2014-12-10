@@ -218,8 +218,8 @@ func (c client) Resources() (HostResources, error) {
 	}
 }
 
-// Put implements the Agent interface.
-func (c client) Put(id string, cfg ContainerConfig) error {
+// Create implements the Agent interface.
+func (c client) Create(id string, cfg ContainerConfig) error {
 	var body bytes.Buffer
 	if err := json.NewEncoder(&body).Encode(cfg); err != nil {
 		return fmt.Errorf("problem encoding container config (%s)", err)
