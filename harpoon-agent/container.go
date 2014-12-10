@@ -20,7 +20,8 @@ import (
 )
 
 // container is a high level interface to an operating system container. The
-// API interacts directly with this interface.
+// API interacts directly with this interface. Implementers of this interface
+// must be safe for concurrent access.
 type container interface {
 	Create(unregisterAtFailure func(), downloadTimeout time.Duration) error
 	Instance() agent.ContainerInstance

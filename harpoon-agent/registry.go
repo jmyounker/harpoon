@@ -10,31 +10,31 @@ type registry struct {
 	lenc           chan chan<- int
 	instancesc     chan chan<- map[string]agent.ContainerInstance
 	acceptUpdatesc chan bool
-	getc           chan actionGet
-	registerc      chan actionRegister
+	getc           chan getRequest
+	registerc      chan registerRequest
 }
 
-type actionGet struct {
+type getRequest struct {
 	id   string
 	outc chan container
 }
 
-type actionRegister struct {
+type registerRequest struct {
 	c    container
 	outc chan bool
 }
 
 func newRegistry() *registry {
 	r := &registry{
+		acceptUpdatesc: make(chan bool),
 		statec:         make(chan agent.ContainerInstance),
+		registerc:      make(chan registerRequest),
 		removec:        make(chan string),
 		notifyc:        make(chan chan<- agent.ContainerInstance),
 		stopc:          make(chan chan<- agent.ContainerInstance),
 		lenc:           make(chan chan<- int),
 		instancesc:     make(chan chan<- map[string]agent.ContainerInstance),
-		acceptUpdatesc: make(chan bool),
-		getc:           make(chan actionGet),
-		registerc:      make(chan actionRegister),
+		getc:           make(chan getRequest),
 	}
 
 	go r.loop()
@@ -48,7 +48,7 @@ func (r *registry) remove(id string) {
 
 func (r *registry) get(id string) (container, bool) {
 	outc := make(chan container)
-	r.getc <- actionGet{id: id, outc: outc}
+	r.getc <- getRequest{id: id, outc: outc}
 	c := <-outc
 	if c == nil {
 		return c, false
@@ -58,7 +58,7 @@ func (r *registry) get(id string) (container, bool) {
 
 func (r *registry) register(c container) bool {
 	outc := make(chan bool)
-	r.registerc <- actionRegister{c: c, outc: outc}
+	r.registerc <- registerRequest{c: c, outc: outc}
 	return <-outc
 }
 
@@ -120,38 +120,49 @@ func (r *registry) loop() {
 	// Report state changes in any container to all of our subscribers.
 	for {
 		select {
+		case <-r.acceptUpdatesc:
+			// acceptUpdates = b
+
 		case containerInstance := <-r.statec:
 			for subc := range subscribers {
 				// Each channel send is being executed in a separate goroutine
 				// because each subscriber can call back into this for-select
-				// loop, causing a deadlock.
-				// If we move goroutine up one level around the for-range loop
-				// on r.subscribers, we allow concurrent access to the
-				// r.subscribers map.
+				// loop, causing a deadlock. If we move goroutine up one level
+				// around the for-range loop on r.subscribers, we allow
+				// concurrent access to the r.subscribers map.
 				go func(s chan<- agent.ContainerInstance) {
 					s <- containerInstance
 				}(subc)
 			}
+
+		case req := <-r.registerc:
+			req.outc <- r.registerUnsafe(m, req.c)
+
 		case id := <-r.removec:
 			delete(m, id)
+
 		case c := <-r.notifyc:
 			subscribers[c] = struct{}{}
-		case <-r.acceptUpdatesc:
-			// acceptUpdates = b
+
 		case c := <-r.stopc:
 			delete(subscribers, c)
+
 		case outc := <-r.lenc:
 			outc <- len(m)
+
 		case outc := <-r.instancesc:
-			mc := make(map[string]agent.ContainerInstance, len(m))
-			for id, container := range m {
-				mc[id] = container.Instance()
-			}
-			outc <- mc
-		case action := <-r.getc:
-			action.outc <- m[action.id]
-		case action := <-r.registerc:
-			action.outc <- r.registerUnsafe(m, action.c)
+			outc <- instances(m)
+
+		case req := <-r.getc:
+			req.outc <- m[req.id]
 		}
 	}
+}
+
+func instances(m map[string]container) map[string]agent.ContainerInstance {
+	instances := make(map[string]agent.ContainerInstance, len(m))
+	for id, container := range m {
+		instances[id] = container.Instance()
+	}
+	return instances
 }
