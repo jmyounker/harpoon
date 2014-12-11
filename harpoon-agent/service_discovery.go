@@ -61,7 +61,7 @@ func (sd consulServiceDiscovery) Update(instances map[string]agent.ContainerInst
 	return nil
 }
 
-func writeInstances(filename string, instances map[string]agent.ContainerInstance) (err error) {
+func writeInstances(filename string, instances map[string]agent.ContainerInstance) (res error) {
 	if filename == "" {
 		return fmt.Errorf("no file provided")
 	}
@@ -74,7 +74,7 @@ func writeInstances(filename string, instances map[string]agent.ContainerInstanc
 	}
 
 	defer func() {
-		if err != nil {
+		if res != nil {
 			os.Remove(f.Name())
 		}
 	}()

@@ -179,7 +179,7 @@ func (r *Registry) loop(filename string, scheduled map[string]configstore.JobCon
 	}
 }
 
-func save(filename string, scheduled map[string]configstore.JobConfig) (err error) {
+func save(filename string, scheduled map[string]configstore.JobConfig) (res error) {
 	if filename == "" {
 		return nil // no file (and no persistence) is OK
 	}
@@ -192,7 +192,7 @@ func save(filename string, scheduled map[string]configstore.JobConfig) (err erro
 	}
 
 	defer func() {
-		if err != nil {
+		if res != nil {
 			os.Remove(f.Name())
 		}
 	}()
