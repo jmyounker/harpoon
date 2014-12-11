@@ -39,7 +39,7 @@ func TestConfigToTags(t *testing.T) {
 	}
 
 	want := []string{
-		"glimpse:harpoon",
+		"glimpse:provider=harpoon",
 		"glimpse:env=prod",
 		"glimpse:job=request-processor",
 		"glimpse:product=android",
