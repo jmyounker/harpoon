@@ -40,9 +40,9 @@ type WaitResult struct {
 // ContainerConfig describes the information necessary to start a container on
 // an agent.
 type ContainerConfig struct {
+	Product      string            `json:"product"`
 	Environment  string            `json:"environment"`
 	Job          string            `json:"job"`
-	Product      string            `json:"product"`
 	HealthChecks []HealthCheck     `json:"health_checks"`
 	ArtifactURL  string            `json:"artifact_url"`
 	Ports        map[string]uint16 `json:"ports"`
@@ -59,16 +59,16 @@ type ContainerConfig struct {
 func (c ContainerConfig) Valid() error {
 	var errs []string
 
+	if c.Product == "" {
+		errs = append(errs, `"product" not set`)
+	}
+
 	if c.Environment == "" {
 		errs = append(errs, `"environment" not set`)
 	}
 
 	if c.Job == "" {
 		errs = append(errs, `"job" not set`)
-	}
-
-	if c.Product == "" {
-		errs = append(errs, `"product" not set`)
 	}
 
 	for i, healthCheck := range c.HealthChecks {
