@@ -12,7 +12,7 @@ import (
 func TestMessagesGetWrittenToLogs(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 
-	registry := newRegistry()
+	registry := newRegistry(nopServiceDiscovery{})
 
 	createReceiveLogsFixture(t, registry)
 
@@ -38,7 +38,7 @@ func TestMessagesGetWrittenToLogs(t *testing.T) {
 }
 
 func TestLogRoutingOfDefectiveMessages(t *testing.T) {
-	registry := newRegistry()
+	registry := newRegistry(nopServiceDiscovery{})
 
 	createReceiveLogsFixture(t, registry)
 
@@ -57,7 +57,7 @@ func TestLogRoutingOfDefectiveMessages(t *testing.T) {
 }
 
 func TestNonBlockingLoop(t *testing.T) {
-	r := newRegistry()
+	r := newRegistry(nopServiceDiscovery{})
 	c := newFakeContainer("123", "", volumes{}, agent.ContainerConfig{}, false, nil)
 	r.register(c)
 	statec := make(chan agent.ContainerInstance)
@@ -65,17 +65,19 @@ func TestNonBlockingLoop(t *testing.T) {
 	r.notify(statec)
 	r.notify(statec2)
 
-	go r.loop()
 	go func() {
 		for i := 0; i < 2; i++ {
 			c.(*fakeContainer).updateStatus(agent.ContainerStatusFinished)
 		}
 	}()
+
 	<-statec
+
 	cic := make(chan map[string]agent.ContainerInstance)
 	go func() {
 		cic <- r.instances()
 	}()
+
 	// r.loop() is currently blocking waiting for a read on statec2
 	// at this point is where handleContainerStream calls r.instances(), which
 	// previously blocked waiting to acquire the lock held onto by r.loop()

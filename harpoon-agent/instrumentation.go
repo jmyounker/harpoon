@@ -2,6 +2,7 @@ package main
 
 import (
 	"expvar"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -37,6 +38,8 @@ var (
 	expvarContainerStatusKilled              = expvar.NewInt("container_status_kill_total")
 	expvarContainerStatusDownSuccessful      = expvar.NewInt("container_status_down_successful_total")
 	expvarContainerStatusForceDownSuccessful = expvar.NewInt("container_status_force_down_successful_total")
+	expvarSDUpdatesSuccessful                = expvar.NewInt("sd_updates_successful_total")
+	expvarSDUpdatesFailed                    = expvar.NewInt("sd_updates_failed_total")
 )
 
 // Derivable metrics:
@@ -92,7 +95,6 @@ var (
 		Name:      "container_artifact_download_failures_total",
 		Help:      "Number of times that an artifact download failed during a container create operation.",
 	})
-
 	prometheusContainerRecoveryAttempts = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "harpoon",
 		Subsystem: "agent",
@@ -140,6 +142,28 @@ var (
 		Subsystem: "agent",
 		Name:      "container_status_force_down_successful_total",
 		Help:      "Number of times that a container was successfully forced down.",
+	})
+	prometheusSDUpdateDuration = prometheus.NewSummaryVec(
+		prometheus.SummaryOpts{
+			Namespace: "harpoon",
+			Subsystem: "agent",
+			Name:      "sd_update_time_nanoseconds",
+			Help:      "Total time spent performing service discovery update invocations.",
+			MaxAge:    10 * time.Second, // like statsd
+		},
+		[]string{"success"},
+	)
+	prometheusSDUpdatesSuccessful = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "harpoon",
+		Subsystem: "agent",
+		Name:      "sd_updates_successful_total",
+		Help:      "Number of times that service discovery was successfully updated.",
+	})
+	prometheusSDUpdatesFailed = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "harpoon",
+		Subsystem: "agent",
+		Name:      "sd_updates_failed_total",
+		Help:      "Number of times that service discovery failed to update.",
 	})
 )
 
@@ -221,4 +245,16 @@ func incContainerStatusDownSuccessful(n int) {
 func incContainerStatusForceDownSuccessful(n int) {
 	expvarContainerStatusForceDownSuccessful.Add(int64(n))
 	prometheusContainerStatusForceDownSuccessful.Add(float64(n))
+}
+
+func incSDUpdateSuccessful(took time.Duration) {
+	expvarSDUpdatesSuccessful.Add(int64(1))
+	prometheusSDUpdatesSuccessful.Add(float64(1))
+	prometheusSDUpdateDuration.With(prometheus.Labels{"success": "true"}).Observe(float64(took.Nanoseconds()))
+}
+
+func incSDUpdateFailed(took time.Duration) {
+	expvarSDUpdatesFailed.Add(int64(1))
+	prometheusSDUpdatesFailed.Add(float64(1))
+	prometheusSDUpdateDuration.With(prometheus.Labels{"success": "false"}).Observe(float64(took.Nanoseconds()))
 }
