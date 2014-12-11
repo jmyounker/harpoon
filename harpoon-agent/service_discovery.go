@@ -129,9 +129,9 @@ func instancesToServices(instances map[string]agent.ContainerInstance) []service
 func configToTags(c agent.ContainerConfig, portName string) []string {
 	return []string{
 		"glimpse:provider=harpoon",
+		fmt.Sprintf("glimpse:product=%s", c.Product),
 		fmt.Sprintf("glimpse:env=%s", c.Environment),
 		fmt.Sprintf("glimpse:job=%s", c.Job),
-		fmt.Sprintf("glimpse:product=%s", c.Product),
 		fmt.Sprintf("glimpse:service=%s", serviceize(portName)),
 	}
 }
