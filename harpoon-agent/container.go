@@ -267,7 +267,7 @@ func (c *realContainer) Exit() {
 func (c *realContainer) create(unregister func(), downloadTimeout time.Duration) error {
 	var (
 		rundir = filepath.Join(c.containerRoot, c.ID)
-		logdir = filepath.Join("/srv/harpoon/log/", c.ID)
+		logdir = filepath.Join("/tmp/harpoon/log", c.ID)
 
 		agentJSONPath = filepath.Join(rundir, "agent.json")
 	)
@@ -330,7 +330,7 @@ func (c *realContainer) create(unregister func(), downloadTimeout time.Duration)
 func (c *realContainer) secondPhaseCreate(unregister func(), downloadTimeout time.Duration) {
 	var (
 		rundir = filepath.Join(c.containerRoot, c.ID)
-		logdir = filepath.Join("/srv/harpoon/log/", c.ID)
+		logdir = filepath.Join("/tmp/harpoon/log", c.ID)
 
 		rootfsSymlinkPath = filepath.Join(rundir, "rootfs")
 		logSymlinkPath    = filepath.Join(rundir, "log")
