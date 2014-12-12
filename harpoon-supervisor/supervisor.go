@@ -13,7 +13,7 @@ var errNotDown = errors.New("supervisor not down")
 // A Supervisor manages a Container process.
 type Supervisor interface {
 	// Run starts the supervisor. It blocks until Exit is called.
-	Run(metricsTick <-chan time.Time, restartTimer func() <-chan time.Time)
+	Run(metricsTick <-chan time.Time)
 
 	Subscribe(chan<- agent.ContainerProcessState)
 	Unsubscribe(chan<- agent.ContainerProcessState)
@@ -95,72 +95,32 @@ func (s *supervisor) Exited() <-chan struct{} {
 	return s.exited
 }
 
-func (s *supervisor) Run(metricsTick <-chan time.Time, restartTimer func() <-chan time.Time) {
+func (s *supervisor) Run(metricsTick <-chan time.Time) {
 	var (
 		state          agent.ContainerProcessState
 		containerExitc chan agent.ContainerExitStatus
-		restart        <-chan time.Time
 	)
 
 	defer close(s.exited)
 
+	s.broadcast(agent.ContainerProcessState{SupervisorStatus: agent.SupervisorStatusStarting})
+
 	if err := s.container.Start(); err != nil {
-		state = agent.ContainerProcessState{Err: err.Error()}
+		state = agent.ContainerProcessState{Err: err.Error(), SupervisorStatus: agent.SupervisorStatusDown}
 		metricsTick = nil
 	} else {
-		state = agent.ContainerProcessState{Up: true, Restarting: true}
-
+		state = agent.ContainerProcessState{Up: true, SupervisorStatus: agent.SupervisorStatusUp}
 		containerExitc = make(chan agent.ContainerExitStatus, 1)
 		go func() { containerExitc <- s.container.Wait() }()
 	}
 
 	for {
 		select {
-		case <-restart:
-			if err := s.container.Start(); err != nil {
-				state.Err = err.Error()
-				state.Restarting = false
-
-				continue
-			}
-
-			state.Up = true
-			state.Restarts++
-			state.ContainerExitStatus = agent.ContainerExitStatus{}
-
-			containerExitc = make(chan agent.ContainerExitStatus, 1)
-			go func() { containerExitc <- s.container.Wait() }()
-			s.broadcast(state)
-
 		case exitStatus := <-containerExitc:
+			state.SupervisorStatus = agent.SupervisorStatusDown
 			state.Up = false
 			state.ContainerExitStatus = exitStatus
-
-			if exitStatus.OOMed {
-				state.OOMs++
-			}
-
-			if exitStatus.Exited {
-				switch s.container.Config().Restart {
-				case agent.NoRestart:
-					state.Restarting = false
-				case agent.AlwaysRestart:
-					state.Restarting = true
-				case agent.OnFailureRestart:
-					state.Restarting = exitStatus.ExitStatus != 0
-				default:
-					panic("invalid restart policy")
-				}
-			}
-
-			if !state.Restarting {
-				metricsTick = nil
-			}
-
-			if state.Restarting {
-				restart = restartTimer()
-			}
-
+			metricsTick = nil
 			s.broadcast(state)
 
 		case <-metricsTick:
@@ -168,15 +128,13 @@ func (s *supervisor) Run(metricsTick <-chan time.Time, restartTimer func() <-cha
 			s.broadcast(state)
 
 		case sig := <-s.downc:
-			state.Restarting = false
-
+			state.SupervisorStatus = agent.SupervisorStatusStopping
 			if state.Up {
 				s.container.Signal(sig)
 				continue
 			}
 
 			metricsTick = nil
-			restart = nil
 			s.broadcast(state)
 
 		case c := <-s.subscribec:
@@ -187,12 +145,14 @@ func (s *supervisor) Run(metricsTick <-chan time.Time, restartTimer func() <-cha
 			delete(s.subscribers, c)
 
 		case c := <-s.exitc:
-			if state.Up || state.Restarting {
+			if state.SupervisorStatus != agent.SupervisorStatusDown {
 				c <- errNotDown
 				continue
 			}
 
+			state.SupervisorStatus = agent.SupervisorStatusExit
 			c <- nil
+			s.broadcast(state)
 			return
 		}
 	}

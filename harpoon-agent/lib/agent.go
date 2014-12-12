@@ -287,6 +287,14 @@ const (
 	// while the container is in a stopped state.
 	ContainerStatusCreated ContainerStatus = "created"
 
+	// ContainerStatusStarting indicates the container is attempting to transition
+	// from a completion state (finished, failed) to starting.
+	ContainerStatusRestartWait ContainerStatus = "restart_wait"
+
+	// ContainerStatusStarting indicates the container is attempting to transition
+	// from a down state (created, stopped, restart_wait) to running.
+	ContainerStatusStarting ContainerStatus = "starting"
+
 	// ContainerStatusRunning indicates the container is succesfully running
 	// from the perspective of the agent. It implies nothing about the
 	// healthiness of the process.
@@ -335,6 +343,8 @@ func (d *JSONDuration) UnmarshalJSON(buf []byte) error {
 
 // ContainerProcessState contains the state of a container.
 type ContainerProcessState struct {
+	SupervisorStatus `json:"status"`
+
 	// Up signals whether the container process is running.
 	Up bool `json:"up"`
 
@@ -360,6 +370,28 @@ type ContainerProcessState struct {
 
 	ContainerMetrics `json:"container_metrics"`
 }
+
+type SupervisorStatus string
+
+const (
+	// SupervisorStatusStarting indicates that the container process is beginning
+	SupervisorStatusStarting = "starting"
+
+	// SupervisorStatusUp indicates that the container is up and running
+	SupervisorStatusUp = "up"
+
+	// SupervisorStatusStopping indicates that the supervisor is attempting to stop
+	// the container.
+	SupervisorStatusStopping = "stopping"
+
+	// SupervisorStatusExit indicates that the container has terminated or failed to start.
+	// The supervisor terminates after sending this message.
+	SupervisorStatusDown = "down"
+
+	// SupervisorStatusExit indicates that the container has terminated or failed to start.
+	// The supervisor terminates after sending this message.
+	SupervisorStatusExit = "exit"
+)
 
 // ContainerExitStatus contains the exit status of a container.
 type ContainerExitStatus struct {

@@ -171,10 +171,12 @@ func (c *realContainer) loop() {
 			}
 
 		case req := <-c.startc:
+			c.updateStatus(agent.ContainerStatusRestartWait)
 			incContainerStart(1)
 			err := c.start()
 			if err != nil {
 				incContainerStartFailure(1)
+				// set container state to Failed in containerStatec via a goroutine
 			}
 			req.resp <- err
 
@@ -207,7 +209,6 @@ func (c *realContainer) loop() {
 			}
 
 			c.updateStatus(agent.ContainerStatusFinished)
-
 			c.supervisor.Exit()
 
 		case ch := <-c.unsubc:

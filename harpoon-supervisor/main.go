@@ -74,9 +74,5 @@ func main() {
 	go signalHandler.Run()
 	go controller.Run()
 
-	restartTimer := func() <-chan time.Time {
-		return time.After(time.Second)
-	}
-
-	supervisor.Run(time.Tick(3*time.Second), restartTimer)
+	supervisor.Run(time.Tick(3 * time.Second))
 }

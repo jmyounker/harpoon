@@ -17,7 +17,7 @@ type testSupervisor struct {
 	exited       chan struct{}
 }
 
-func (*testSupervisor) Run(metricsTick <-chan time.Time, restartTimer func() <-chan time.Time) {}
+func (*testSupervisor) Run(metricsTick <-chan time.Time) {}
 
 func (s *testSupervisor) Subscribe(c chan<- agent.ContainerProcessState) {
 	s.subscribec <- c
