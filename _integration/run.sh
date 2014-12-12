@@ -56,7 +56,7 @@ logfile=$PWD/agent.log
 echo "run: starting agent at localhost:${AGENT_PORT}"
 {
   pushd $rootfs >/dev/null
-  harpoon-agent -addr ":${AGENT_PORT}" > $logfile 2>&1  & AGENT_PID=$!
+  harpoon-agent -run "/tmp/harpoon" -addr ":${AGENT_PORT}" > $logfile 2>&1  & AGENT_PID=$!
   popd >/dev/null
 } || abort "unable to start harpoon-agent"
 trap "shutdown $AGENT_PID" EXIT
