@@ -7,7 +7,9 @@ go:
 install:
   - apt-get update; sudo apt-get install runit
   - sudo mkdir -p /run/harpoon/
-  - sudo chown daemon:daemon /run/harpoon
+  - sudo chown root:root /run/harpoon
+  - sudo mkdir -p /srv/harpoon/log
+  - sudo chown root:root /srv/harpoon/log
   - make dep
   - go get code.google.com/p/go.tools/cmd/vet || go get golang.org/x/tools/cmd/vet
   - go install github.com/docker/libcontainer/nsinit
