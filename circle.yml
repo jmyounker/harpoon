@@ -1,0 +1,17 @@
+dependencies:
+  post:
+    - apt-get update; sudo apt-get install runit
+    - go get github.com/tools/godep
+    - godep restore
+    - go install github.com/docker/libcontainer/nsinit
+    - go get code.google.com/p/go.tools/cmd/vet || go get golang.org/x/tools/cmd/vet
+test:
+  pre:
+    - sudo mkdir -p /srv/harpoon/log
+    - sudo chmod 666 /srv/harpoon/log
+    - mkdir -p $HOME/.go_workspace/src/github.com/soundcloud/harpoon
+    - mv $HOME/harpoon/* $HOME/.go_workspace/src/github.com/soundcloud/harpoon
+  override:
+    - cd $HOME/.go_workspace/src/github.com/soundcloud/harpoon && ./misc/check-style.sh
+    - cd $HOME/.go_workspace/src/github.com/soundcloud/harpoon && go test -v ./...
+    - cd $HOME/.go_workspace/src/github.com/soundcloud/harpoon && ./_integration/run.sh

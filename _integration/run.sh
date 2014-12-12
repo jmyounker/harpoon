@@ -31,14 +31,7 @@ make_rootfs $rootfs || abort "run: unable to create rootfs"
 install -D $(which svlogd) $rootfs/bin/
 
 echo "run: install harpoon binaries"
-GOBIN=$rootfs/srv/harpoon/bin go install github.com/soundcloud/harpoon/...
-
-echo "run: install harpoon libraries"
-for bin in $rootfs/srv/harpoon/bin/*
-do
-  copy_dependencies $bin $rootfs ||
-    abort "run: unable to install dependencies"
-done
+go install github.com/soundcloud/harpoon/...
 
 echo "run: install libcontainer config"
 go run config.go -rootfs /tmp/rootfs >$rootfs/container.json ||
@@ -55,7 +48,7 @@ logfile=$PWD/agent.log
 echo "run: starting agent at localhost:${AGENT_PORT}"
 {
   pushd $rootfs >/dev/null
-  sudo $nsinit exec -- /srv/harpoon/bin/harpoon-agent -addr ":${AGENT_PORT}" > $logfile 2>&1  & AGENT_PID=$!
+  harpoon-agent -run "/tmp/harpoon" -addr ":${AGENT_PORT}" > $logfile 2>&1  & AGENT_PID=$!
   popd >/dev/null
 } || abort "unable to start harpoon-agent"
 trap "shutdown $AGENT_PID" EXIT
@@ -85,7 +78,7 @@ logfile=$PWD/scheduler.log
 echo "run: starting scheduler at localhost:${SCHEDULER_PORT}"
 {
   pushd $rootfs >/dev/null
-  sudo $nsinit exec -- /srv/harpoon/bin/harpoon-scheduler -listen=":${SCHEDULER_PORT}" -agent=${AGENT_URL} > $logfile 2>&1  & SCHEDULER_PID=$!
+  harpoon-scheduler -listen=":${SCHEDULER_PORT}" -agent=${AGENT_URL} > $logfile 2>&1  & SCHEDULER_PID=$!
   popd >/dev/null
 } || abort "unable to start harpoon-scheduler"
 trap "shutdown $SCHEDULER_PID & shutdown $AGENT_PID" EXIT
