@@ -38,6 +38,8 @@ func main() {
 		portsStart        = flag.Uint64("ports.start", 30000, "starting of port allocation range")
 		portsEnd          = flag.Uint64("ports.end", 32767, "ending of port allocation range")
 		downloadTimeout   = flag.Duration("download.timeout", agent.DefaultDownloadTimeout, "max artifact download time")
+		sdFilename        = flag.String("sd.filename", "./harpoon-containers.json", "file to write service information")
+		sdReload          = flag.String("sd.reload", "", "command to execute after writing -sd.filename")
 	)
 	flag.Var(&configuredVolumes, "vol", "repeatable list of available volumes")
 
@@ -62,7 +64,7 @@ func main() {
 		log.Fatal("port range start must be before port range end")
 	}
 
-	r := newRegistry()
+	r := newRegistry(newConsulServiceDiscovery(*sdFilename, *sdReload))
 	pdb := newPortDB(portsStart16, portsEnd16)
 	defer pdb.exit()
 	api := newAPI(*containerRoot, r, pdb, configuredVolumes, *agentCPU, *agentMem, *downloadTimeout, *debug)

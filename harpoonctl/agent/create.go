@@ -150,7 +150,7 @@ func chooseEndpoint() *url.URL {
 			ur.URL.Host,
 			ur.HostResources.CPU.Total-ur.HostResources.CPU.Reserved,
 			ur.HostResources.CPU.Total,
-			ur.HostResources.Mem.Total-ur.HostResources.Mem.Reserved,
+			int64(ur.HostResources.Mem.Total)-int64(ur.HostResources.Mem.Reserved),
 			ur.HostResources.Mem.Total,
 			strings.Join(ur.HostResources.Volumes, ", "),
 		)
