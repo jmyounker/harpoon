@@ -31,14 +31,15 @@ make_rootfs $rootfs || abort "run: unable to create rootfs"
 install -D $(which svlogd) $rootfs/bin/
 
 echo "run: install harpoon binaries"
-GOBIN=$rootfs/srv/harpoon/bin go install github.com/soundcloud/harpoon/...
+# GOBIN=$rootfs/srv/harpoon/bin go install github.com/soundcloud/harpoon/...
+go install github.com/soundcloud/harpoon/...
 
-echo "run: install harpoon libraries"
-for bin in $rootfs/srv/harpoon/bin/*
-do
-  copy_dependencies $bin $rootfs ||
-    abort "run: unable to install dependencies"
-done
+# echo "run: install harpoon libraries"
+# for bin in $rootfs/srv/harpoon/bin/*
+# do
+#   copy_dependencies $bin $rootfs ||
+#     abort "run: unable to install dependencies"
+# done
 
 echo "run: install libcontainer config"
 go run config.go -rootfs /tmp/rootfs >$rootfs/container.json ||
