@@ -15,11 +15,11 @@ addressed.  (E.g. the supervisor dies and the agent looses track of its state; y
 the container explicitly but the restart policy brings it back to life.) 
 
 Addressing these seems to indicate adding more variables, or duplicating code, etc.
-I've mapped out the [supervisor's current implicit state diagram](http://i.imgur.com/CoBXl3n.png),
+I've mapped out the [supervisor's current implicit state diagram](https://cloud.githubusercontent.com/assets/882634/5411707/d04ae674-8203-11e4-9ea8-d7f352b547ed.png),
 and it's a mess.  Rather than splicing in more meta-states to address the collection
 of oddnesses that we've been encountering, it looks more fruitful to clean up both the
 supervisor and agent state machines, and to make them both explicit, resulting in this
-[simplified state machine diagram](http://i.imgur.com/OcO0lET.png).
+[simplified state machine diagram](https://cloud.githubusercontent.com/assets/882634/5411708/d9d7399a-8203-11e4-984f-006ab438b1df.png).
 
 There is one feature set that I'm removing as part of this work.  Orphane supervisors will
 no longer restart containers on their own, as this logic is moving into the agent.
@@ -37,7 +37,7 @@ Moving the restart logic from supervisor to agent has these advantages:
   
   * The agent understands the origin of commands, so it can apply restart policies based on history.  Moving
     restart policy into the agent only adds one additional state to the agent's state machine. (The **Restarting**
-    state in the [agent state diagram](http://i.imgur.com/W9e88cc.png).)
+    state in the [agent state diagram](https://cloud.githubusercontent.com/assets/882634/5411702/b52c7678-8203-11e4-85cc-a8e61bf00e25.png).)
   
   * Simpler interactions between agent and supervisor states.
 
