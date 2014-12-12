@@ -134,9 +134,7 @@ func (r *registry) loop(sd serviceDiscovery) {
 					s <- containerInstance
 				}(subc)
 			}
-			// TODO: we eventually want to include container state information
-			// in what we send to service discovery, so we'll need to trigger
-			// an Update here, too.
+			sd.Update(instances(m)) // state changes are important
 
 		case req := <-r.registerc:
 			ok := r.registerUnsafe(m, req.c)

@@ -25,18 +25,13 @@ func (sd nopServiceDiscovery) Update(_ map[string]agent.ContainerInstance) error
 
 type consulServiceDiscovery struct {
 	filename string
-	reload   []string
+	reload   string
 }
 
 func newConsulServiceDiscovery(filename, reloadCommand string) serviceDiscovery {
-	args := strings.Split(reloadCommand, " ")
-	if len(args) <= 0 {
-		panic(fmt.Sprintf("invalid reload command %q", reloadCommand))
-	}
-
 	return &consulServiceDiscovery{
 		filename: filename,
-		reload:   args,
+		reload:   strings.TrimSpace(reloadCommand),
 	}
 }
 
@@ -53,9 +48,12 @@ func (sd consulServiceDiscovery) Update(instances map[string]agent.ContainerInst
 		return err
 	}
 
-	if buf, err := exec.Command(sd.reload[0], sd.reload[1:]...).CombinedOutput(); err != nil {
-		log.Printf("service discovery reload failed\n%s", string(buf))
-		return err
+	if sd.reload != "" {
+		args := strings.Split(sd.reload, " ")
+		if buf, err := exec.Command(args[0], args[1:]...).CombinedOutput(); err != nil {
+			log.Printf("service discovery reload failed\n%s", string(buf))
+			return err
+		}
 	}
 
 	return nil
@@ -109,8 +107,14 @@ type service struct {
 
 func instancesToServices(instances map[string]agent.ContainerInstance) []service {
 	services := serviceSlice{}
-
 	for _, instance := range instances {
+		switch instance.ContainerStatus {
+		case agent.ContainerStatusRunning: // obviously should be exported
+		case agent.ContainerStatusFailed: // might be flapping; export it, to be safe
+		case agent.ContainerStatusCreated, agent.ContainerStatusFinished, agent.ContainerStatusDeleted:
+			continue // not possible to be discovered
+		}
+
 		for portName, port := range instance.ContainerConfig.Ports {
 			services = append(services, service{
 				ID:   fmt.Sprintf("harpoon:%s:%s", hostname(), instance.ID),
@@ -120,9 +124,7 @@ func instancesToServices(instances map[string]agent.ContainerInstance) []service
 			})
 		}
 	}
-
 	sort.Sort(services)
-
 	return services
 }
 
