@@ -5,6 +5,7 @@ go:
     - tip
 
 install:
+  - apt-get update; sudo apt-get install runit
   - make dep
   - go get code.google.com/p/go.tools/cmd/vet || go get golang.org/x/tools/cmd/vet
   - go install github.com/docker/libcontainer/nsinit
