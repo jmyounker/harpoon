@@ -89,6 +89,10 @@ func writeInstances(filename string, instances map[string]agent.ContainerInstanc
 		return err
 	}
 
+	if err := f.Chmod(0644); err != nil { // rw-r--r--
+		return err
+	}
+
 	f.Close() // double close is OK, I think
 
 	if err = os.Rename(f.Name(), filename); err != nil {
