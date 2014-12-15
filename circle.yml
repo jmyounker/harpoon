@@ -1,6 +1,7 @@
 dependencies:
   post:
-    - apt-get update; sudo apt-get install runit
+    - sudo apt-get update
+    - sudo apt-get install runit
     - go get github.com/tools/godep
     - godep restore
     - go install github.com/docker/libcontainer/nsinit
@@ -8,7 +9,7 @@ dependencies:
 test:
   pre:
     - sudo mkdir -p /srv/harpoon/log
-    - sudo chmod 666 /srv/harpoon/log
+    - sudo chown daemon:daemon /srv/harpoon/log
     - mkdir -p $HOME/.go_workspace/src/github.com/soundcloud/harpoon
     - mv $HOME/harpoon/* $HOME/.go_workspace/src/github.com/soundcloud/harpoon
   override:
