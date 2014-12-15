@@ -16,12 +16,16 @@ import (
 type controller struct {
 	net.Listener
 	Supervisor
+	readyc chan struct{}
+	ready  bool
 }
 
 func newController(ln net.Listener, s Supervisor) *controller {
 	return &controller{
 		Listener:   ln,
 		Supervisor: s,
+		readyc:     make(chan struct{}),
+		ready:      false,
 	}
 }
 
@@ -35,6 +39,7 @@ func (c *controller) Run() {
 		c.Listener.Close()
 	}()
 
+	c.readyc <- struct{}{}
 	for {
 		conn, err := c.Listener.Accept()
 
@@ -50,6 +55,13 @@ func (c *controller) Run() {
 		c := newControllerConn(conn, c.Supervisor)
 		go c.serve()
 	}
+}
+
+func (c *controller) waitReady() {
+	if c.ready {
+		return
+	}
+	<-c.readyc
 }
 
 type controllerConn struct {

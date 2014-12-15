@@ -26,8 +26,12 @@ func TestController(t *testing.T) {
 
 	defer ln.Close()
 
-	go func() { c.Run(); done <- struct{}{} }()
+	go func() {
+		c.Run()
+		done <- struct{}{}
+	}()
 
+	c.waitReady()
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		t.Fatal("unable to dial: ", err)
