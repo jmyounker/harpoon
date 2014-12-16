@@ -16,13 +16,16 @@ import (
 
 func TestController(t *testing.T) {
 	var (
-		s     = newTestSupervisor()
-		ln, _ = net.Listen("tcp", ":0")
-		addr  = ln.Addr().String()
-		c     = newController(ln, s)
+		s       = newTestSupervisor()
+		ln, err = net.Listen("tcp", ":0")
+		addr    = ln.Addr().String()
+		c       = newController(ln, s)
 
 		done = make(chan struct{})
 	)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	defer ln.Close()
 
