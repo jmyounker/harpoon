@@ -21,13 +21,13 @@ var createCommand = cli.Command{
 	Usage:       "Create (allocate) a container",
 	Description: createUsage,
 	Action:      createAction,
-	Flags:       []cli.Flag{timeoutFlag},
+	Flags:       []cli.Flag{downloadTimeoutFlag},
 }
 
 const createUsage = "create <ID> <manifest.json>"
 
-var timeoutFlag = cli.DurationFlag{
-	Name:  "t, timeout",
+var downloadTimeoutFlag = cli.DurationFlag{
+	Name:  "download-timeout",
 	Value: agent.DefaultDownloadTimeout + (30 * time.Second), // +30s for call overhead
 	Usage: "Total timeout for remote artifact download and invocation",
 }
@@ -38,15 +38,16 @@ func createAction(c *cli.Context) {
 	}
 
 	var (
-		id       = c.Args()[0]
-		filename = c.Args()[1]
-		timeout  = c.Duration("timeout")
+		id              = c.Args()[0]
+		filename        = c.Args()[1]
+		downloadTimeout = c.Duration("download-timeout")
+		andStart        = false
 	)
 
-	create(id, filename, timeout, false)
+	create(id, filename, downloadTimeout, andStart)
 }
 
-func create(id, filename string, timeout time.Duration, andStart bool) {
+func create(id, filename string, downloadTimeout time.Duration, andStart bool) {
 	f, err := os.Open(filename)
 	if err != nil {
 		log.Fatalf("%s: %s", filename, err)
@@ -76,7 +77,7 @@ func create(id, filename string, timeout time.Duration, andStart bool) {
 		agent.ContainerStatusCreated: struct{}{},
 		agent.ContainerStatusDeleted: struct{}{},
 	}
-	wc := client.Wait(id, wanted, timeout)
+	wc := client.Wait(id, wanted, downloadTimeout)
 
 	// Issue create.
 	if err := client.Create(id, cfg); err != nil {

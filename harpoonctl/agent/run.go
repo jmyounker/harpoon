@@ -11,7 +11,7 @@ var runCommand = cli.Command{
 	Usage:       "Create and start a container",
 	Description: runUsage,
 	Action:      runAction,
-	Flags:       []cli.Flag{timeoutFlag},
+	Flags:       []cli.Flag{downloadTimeoutFlag},
 }
 
 const runUsage = "run <ID> <manifest.json>"

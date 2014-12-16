@@ -11,7 +11,7 @@ var replaceCommand = cli.Command{
 	Usage:       "Create-or-update and start a container",
 	Description: replaceUsage,
 	Action:      replaceAction,
-	Flags:       []cli.Flag{timeoutFlag},
+	Flags:       []cli.Flag{waitTimeoutFlag, downloadTimeoutFlag},
 }
 
 const replaceUsage = "replace <old ID> <new manifest.json>"
@@ -22,16 +22,22 @@ func replaceAction(c *cli.Context) {
 	}
 
 	var (
-		id       = c.Args()[0]
-		filename = c.Args()[1]
-		timeout  = c.Duration("timeout")
+		id              = c.Args()[0]
+		filename        = c.Args()[1]
+		waitTimeout     = c.Duration("wait-timeout")
+		downloadTimeout = c.Duration("download-timeout")
 	)
 
 	// Most-naïve implementation.
 
-	stop(id)
-	destroy(id)
-	create(filename, id, timeout, true)
+	log.Verbosef("stopping existing %s, if any", id)
+	stop(id, waitTimeout)
+
+	log.Verbosef("destroying existing %s, if any", id)
+	destroy(id, waitTimeout)
+
+	log.Verbosef("starting %s with %s", id, filename)
+	create(id, filename, downloadTimeout, true)
 
 	log.Printf("successfully replaced %s", id)
 }

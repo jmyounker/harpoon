@@ -256,6 +256,7 @@ func export(containerID, output string) error {
 	cmd := exec.Cmd{
 		Path:   shPath,
 		Args:   []string{shPath, "-c", str},
+		Env:    dockerEnv,
 		Stdout: verboseWriter{},
 		Stderr: verboseWriter{},
 	}
