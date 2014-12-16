@@ -22,10 +22,10 @@ func runAction(c *cli.Context) {
 	}
 
 	var (
-		id       = c.Args()[0]
-		filename = c.Args()[1]
-		timeout  = c.Duration("timeout")
+		id              = c.Args()[0]
+		filename        = c.Args()[1]
+		downloadTimeout = c.Duration("download-timeout")
 	)
 
-	create(id, filename, timeout, true)
+	create(id, filename, downloadTimeout, true)
 }
