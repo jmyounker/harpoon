@@ -13,21 +13,27 @@ import (
 
 var destroyCommand = cli.Command{
 	Name:        "destroy",
-	Usage:       "destroy <id>",
-	Description: "Destroys a stopped container.",
+	Usage:       "Destroy a stopped container",
+	Description: destroyUsage,
 	Action:      destroyAction,
 }
 
+const destroyUsage = "destroy <ID>"
+
 func destroyAction(c *cli.Context) {
+	id := c.Args().First()
+	if id == "" {
+		log.Fatalf("usage: %s", destroyUsage)
+	}
+
+	destroy(id)
+}
+
+func destroy(id string) {
 	var (
-		id = c.Args().First()
 		wg = sync.WaitGroup{}
 		ok = int32(0)
 	)
-
-	if id == "" {
-		log.Fatalf("usage: destroy <id>")
-	}
 
 	wg.Add(len(endpoints))
 

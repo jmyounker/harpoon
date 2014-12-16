@@ -18,11 +18,13 @@ import (
 
 var createCommand = cli.Command{
 	Name:        "create",
-	Usage:       "create <config.json> <id>",
-	Description: "Creates (allocates) a container.",
+	Usage:       "Create (allocate) a container",
+	Description: createUsage,
 	Action:      createAction,
 	Flags:       []cli.Flag{timeoutFlag},
 }
+
+const createUsage = "create <ID> <manifest.json>"
 
 var timeoutFlag = cli.DurationFlag{
 	Name:  "t, timeout",
@@ -32,19 +34,19 @@ var timeoutFlag = cli.DurationFlag{
 
 func createAction(c *cli.Context) {
 	if len(c.Args()) != 2 {
-		log.Fatalf("usage: create <config.json> <id>")
+		log.Fatalf("usage: %s", createUsage)
 	}
 
 	var (
-		filename = c.Args()[0]
-		id       = c.Args()[1]
+		id       = c.Args()[0]
+		filename = c.Args()[1]
 		timeout  = c.Duration("timeout")
 	)
 
-	create(filename, id, timeout, false)
+	create(id, filename, timeout, false)
 }
 
-func create(filename, id string, timeout time.Duration, andStart bool) {
+func create(id, filename string, timeout time.Duration, andStart bool) {
 	f, err := os.Open(filename)
 	if err != nil {
 		log.Fatalf("%s: %s", filename, err)

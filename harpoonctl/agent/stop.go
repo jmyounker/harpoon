@@ -13,21 +13,27 @@ import (
 
 var stopCommand = cli.Command{
 	Name:        "stop",
-	Usage:       "stop <id>",
-	Description: "Stops a running container.",
+	Usage:       "Stop a running container",
+	Description: stopUsage,
 	Action:      stopAction,
 }
 
+const stopUsage = "stop <ID>"
+
 func stopAction(c *cli.Context) {
+	id := c.Args().First()
+	if id == "" {
+		log.Fatalf("usage: %s", stopUsage)
+	}
+
+	stop(id)
+}
+
+func stop(id string) {
 	var (
-		id = c.Args().First()
 		wg = sync.WaitGroup{}
 		ok = int32(0)
 	)
-
-	if id == "" {
-		log.Fatalf("usage: stop <id>")
-	}
 
 	wg.Add(len(endpoints))
 

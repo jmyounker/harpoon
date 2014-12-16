@@ -8,22 +8,24 @@ import (
 
 var runCommand = cli.Command{
 	Name:        "run",
-	Usage:       "run <config.json> <id>",
-	Description: "Creates (allocates) and starts a container.",
+	Usage:       "Create and start a container",
+	Description: runUsage,
 	Action:      runAction,
 	Flags:       []cli.Flag{timeoutFlag},
 }
 
+const runUsage = "run <ID> <manifest.json>"
+
 func runAction(c *cli.Context) {
 	if len(c.Args()) != 2 {
-		log.Fatalf("usage: run <config.json> <id>")
+		log.Fatalf("usage: %s", runUsage)
 	}
 
 	var (
-		filename = c.Args()[0]
-		id       = c.Args()[1]
+		id       = c.Args()[0]
+		filename = c.Args()[1]
 		timeout  = c.Duration("timeout")
 	)
 
-	create(filename, id, timeout, true)
+	create(id, filename, timeout, true)
 }

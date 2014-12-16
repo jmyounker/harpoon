@@ -13,10 +13,12 @@ import (
 
 var startCommand = cli.Command{
 	Name:        "start",
-	Usage:       "start <id>",
-	Description: "Starts a created, finished, or failed container.",
+	Usage:       "Start an allocated container",
+	Description: "start <ID>",
 	Action:      startAction,
 }
+
+const startUsage = "start <ID>"
 
 func startAction(c *cli.Context) {
 	var (
@@ -26,7 +28,7 @@ func startAction(c *cli.Context) {
 	)
 
 	if id == "" {
-		log.Fatalf("usage: start <id>")
+		log.Fatalf("usage: %s", startUsage)
 	}
 
 	wg.Add(len(endpoints))

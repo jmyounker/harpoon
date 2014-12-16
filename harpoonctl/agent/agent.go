@@ -25,6 +25,7 @@ var Command = cli.Command{
 		dumpCommand,
 		createCommand,
 		runCommand,
+		replaceCommand,
 		startCommand,
 		stopCommand,
 		destroyCommand,

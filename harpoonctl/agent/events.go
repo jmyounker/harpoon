@@ -15,10 +15,12 @@ import (
 
 var eventsCommand = cli.Command{
 	Name:        "events",
-	Usage:       "Stream events from agent(s)",
-	Description: "Displays events streaming from agent(s).",
+	Usage:       "Stream container and state events from agent(s)",
+	Description: eventsUsage,
 	Action:      eventsAction,
 }
+
+const eventsUsage = "events"
 
 func eventsAction(c *cli.Context) {
 	var (

@@ -14,8 +14,8 @@ import (
 
 var logCommand = cli.Command{
 	Name:        "log",
-	Usage:       "log <id>",
-	Description: "Streams logs from a running container.",
+	Usage:       "Streams logs from a running container",
+	Description: logUsage,
 	Action:      logAction,
 	Flags: []cli.Flag{
 		cli.IntFlag{
@@ -26,6 +26,8 @@ var logCommand = cli.Command{
 	},
 }
 
+const logUsage = "log <ID>"
+
 func logAction(c *cli.Context) {
 	var (
 		id = c.Args().First()
@@ -35,7 +37,7 @@ func logAction(c *cli.Context) {
 	)
 
 	if id == "" {
-		log.Fatalf("usage: log <id>")
+		log.Fatalf("usage: %s", logUsage)
 	}
 
 	// Non-graceful termination, as the agent.Log's Stopper is nonresponsive
