@@ -1,11 +1,8 @@
 package main
 
-// Warhead is a test application for
-// It serves a few notable resources:
-// - / Everybody's favorite rocket ASCII art.
-// - /env The instance's environment variables as they have been set by Bazooka.
-// - /metrics.json The instance's live health statistics, which Prometheus can
-//                 consume and trigger events for.
+// Warhead is a test application for harpoon.
+//
+// It operates as either a simple web server or a stand-alone process.
 
 import (
 	"flag"
@@ -23,63 +20,67 @@ import (
 	"time"
 )
 
-var (
-	host         = flag.String("host", "0.0.0.0", "Bind address for HTTP server")
-	port         = flag.Int("port", 8080, "Bind port for HTTP server")
-	batchMode    = flag.Bool("batch-mode", false, "Do not start up HTTP server, just sleep and then terminate")
-	boomMsg      = flag.String("msg", "Boom\n", "The string returned from HTTP Get /")
-	exitCode     = flag.Int("exit-code", 0, "Exit from batch-mode with this code")
-	leakInterval = flag.Duration("leak-interval", 0, "rate of memory leakage [0 is off]")
-	oom          = flag.Bool("oom", false, "Terminate from batch mode with an OOM")
-	runTime      = flag.Duration("run-time", 0*time.Second, "Time to run when in batch-mode")
-)
-
 func main() {
+	var (
+		host         = flag.String("host", "0.0.0.0", "Bind address for HTTP server")
+		port         = flag.Int("port", 8080, "Bind port for HTTP server")
+		batchMode    = flag.Bool("batch-mode", false, "Do not start up HTTP server, just sleep and then terminate")
+		boomMsg      = flag.String("msg", "Boom\n", "The string returned from HTTP Get /")
+		exitCode     = flag.Int("exit-code", 0, "Exit from batch-mode with this code")
+		leakInterval = flag.Duration("leak-interval", 0, "rate of memory leakage [0 is off]")
+		oom          = flag.Bool("oom", false, "Terminate from batch mode with an OOM")
+		runTime      = flag.Duration("run-time", 0*time.Second, "Time to run when in batch-mode")
+	)
+
+	log.SetOutput(os.Stdout)
+	flag.Parse()
 	go signalWatcher()
 	if *batchMode {
-		batchMain()
+		batchMain(*leakInterval, *runTime, *oom, *exitCode)
 	} else {
-		serverMain()
+		serverMain(*leakInterval, *host, *port, *boomMsg)
 	}
 }
 
-func batchMain() {
-	if *leakInterval != 0 {
-		go leak(*leakInterval)
+func batchMain(leakInterval time.Duration, runTime time.Duration, oom bool, exitCode int) {
+	if leakInterval != 0 {
+		go leak(leakInterval)
 	}
-	time.Sleep(*runTime)
-	if *oom {
-		// Attempt to allocate a lot of memory. This should still fail for a few more years.
-		billion := 1000 * 1000 * 1000
-		for i := 0; i < billion; i++ {
-			b := make([]int, billion)
-			// actually allocate the memory
-			for j := 0; j < billion; j++ {
-				b[j] = 0
-			}
+	time.Sleep(runTime)
+	if oom {
+		allocateTooMuchMemory()
+	}
+	os.Exit(exitCode)
+}
+
+func allocateTooMuchMemory() {
+	// Attempt to allocate a lot of memory. This should still fail for a few more years.
+	billion := 1000 * 1000 * 1000
+	m := map[int](*[]int){}
+	for i := 0; i < billion; i++ {
+		b := make([]int, billion)
+		// actually allocate the memory
+		for j := 0; j < billion; j++ {
+			b[j] = 0
 		}
+		m[i] = &b // make sure it doesn't get collected
 	}
-	os.Exit(*exitCode)
 }
 
-func serverMain() {
-	// routes
-	//
-	// If you are using a single HTTP serving multiplexor or Go's
-	// http.DefaultServeMux, you should try out Prometheus' wrappers
-	// (prometheus.InstrumentHandler and prometheus.InstrumentHandlerFunc),
-	// which will provide metric fan out for {handler name, HTTP method, and
-	// HTTP status code} dimensions with histograms for request and response
-	// size and for latency.
-	http.HandleFunc("/", goBoom)
+func serverMain(leakInterval time.Duration, host string, port int, boomMsg string) {
+	http.HandleFunc(
+		"/",
+		func(w http.ResponseWriter, r *http.Request) {
+			goBoom(w, r, boomMsg)
+		})
 	http.HandleFunc("/fail", failHandler)
 	http.HandleFunc("/env", envHandler)
 
-	if *leakInterval != 0 {
-		go leak(*leakInterval)
+	if leakInterval != 0 {
+		go leak(leakInterval)
 	}
 
-	listen := fmt.Sprintf("%s:%d", *host, *port)
+	listen := fmt.Sprintf("%s:%d", host, port)
 	log.Printf("listening on %s", listen)
 	log.Fatal(http.ListenAndServe(listen, nil)) // Return a rc != 0 on failure
 }
@@ -92,10 +93,10 @@ func envHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("%s %s", r.RemoteAddr, r.URL)
 }
 
-func goBoom(w http.ResponseWriter, r *http.Request) {
+func goBoom(w http.ResponseWriter, r *http.Request, boomMsg string) {
 	w.Header().Set("content-type", "text/plain")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(*boomMsg))
+	w.Write([]byte(boomMsg))
 
 	log.Printf("%s %s", r.RemoteAddr, r.URL)
 }
@@ -125,11 +126,6 @@ func signalWatcher() {
 			log.Printf("received '%s' signal, unhandled", signal)
 		}
 	}
-}
-
-func init() {
-	log.SetOutput(os.Stdout) // All the logs belong to stdout
-	flag.Parse()             // Parse command line arguments
 }
 
 func leak(interval time.Duration) {

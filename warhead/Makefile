@@ -17,19 +17,25 @@ $(TGT): $(SRC)
 	$(GO) build -v -o $(TGT)
 
 clean:
-	rm -rf $(PKGDIR) $(TGT)
+	rm -rf $(PKGDIR) $(TGT) warhead.tgz
 
 $(PKGDIR):
-	mkdir $(PKGDIR)
+	mkdir -p $(PKGDIR)
 
 $(PKGDIR)/warhead: $(PKGDIR)
-	mkdir $(PKGDIR)/warhead
+	mkdir -p $(PKGDIR)/warhead
 
-pkg: $(TGT) $(PKGDIR)/warhead
+$(PKGDIR)/warhead/bin: $(PKGDIR)/warhead
+	mkdir -p $(PKGDIR)/warhead/bin
+
+$(PKGDIR)/warhead/bin/warhead: $(PKGDIR)/warhead/bin $(TGT)
+	cp -p $(TGT) $(PKGDIR)/warhead/bin/warhead
+
+pkg: $(PKGDIR)/warhead/bin/warhead
 	echo "Collecting dependencies"
 	for dep in $$(ldd $(TGT) | egrep -o '/[^ ]+'); do install -D $$dep $(PKGDIR)/warhead/$$dep; done
 	echo "Bundling dependencies"
-	( cd $(PKGDIR); tar cvfz warhead.tgz warhead )
+	tar cvfz warhead.tgz -C $(PKGDIR)/warhead .
 
 .PHONY: build clean pkg
 
