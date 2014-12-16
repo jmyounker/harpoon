@@ -10,7 +10,7 @@ test:
   pre:
     - sudo mkdir -p /srv/harpoon/log
     - sudo chmod o+X /srv/harpoon/log
-    - mkdir /srv/harpoon/log/basic-test
+    - sudo mkdir /srv/harpoon/log/basic-test
     - mkdir -p $HOME/.go_workspace/src/github.com/soundcloud/harpoon
     - mv $HOME/harpoon/* $HOME/.go_workspace/src/github.com/soundcloud/harpoon
   override:
