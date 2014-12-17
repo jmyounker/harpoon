@@ -85,5 +85,5 @@ func stop(id string, waitTimeout time.Duration) {
 
 	wg.Wait()
 
-	log.Printf("stop %s complete, %d successfully stopped", id, ok)
+	log.Printf("%d successfully stopped", ok)
 }

@@ -36,8 +36,11 @@ func replaceAction(c *cli.Context) {
 	log.Verbosef("destroying existing %s, if any", id)
 	destroy(id, waitTimeout)
 
-	log.Verbosef("starting %s with %s", id, filename)
-	create(id, filename, downloadTimeout, true)
+	log.Verbosef("creating %s with %s", id, filename)
+	create(id, filename, downloadTimeout, false)
+
+	log.Verbosef("starting %s", id)
+	start(id, waitTimeout)
 
 	log.Printf("successfully replaced %s", id)
 }

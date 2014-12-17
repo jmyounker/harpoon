@@ -4,6 +4,7 @@ import (
 	"net/url"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/codegangsta/cli"
 
@@ -25,13 +26,20 @@ func startAction(c *cli.Context) {
 	var (
 		id          = c.Args().First()
 		waitTimeout = c.Duration("wait-timeout")
-		wg          = sync.WaitGroup{}
-		ok          = int32(0)
 	)
 
 	if id == "" {
 		log.Fatalf("usage: %s", startUsage)
 	}
+
+	start(id, waitTimeout)
+}
+
+func start(id string, waitTimeout time.Duration) {
+	var (
+		wg = sync.WaitGroup{}
+		ok = int32(0)
+	)
 
 	wg.Add(len(endpoints))
 
@@ -89,5 +97,5 @@ func startAction(c *cli.Context) {
 
 	wg.Wait()
 
-	log.Printf("start %s complete, %d successfully started", id, ok)
+	log.Printf("%d successfully started", ok)
 }

@@ -79,5 +79,5 @@ func destroy(id string, waitTimeout time.Duration) {
 
 	wg.Wait()
 
-	log.Printf("destroy %s complete, %d successfully destroyed", id, ok)
+	log.Printf("%d successfully destroyed", ok)
 }
