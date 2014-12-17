@@ -153,7 +153,7 @@ func (s *supervisor) Run(metricsTick <-chan time.Time, restartTimer func() <-cha
 				}
 			case agent.TermSignal:
 			default:
-				panic(fmt.Sprintf("unknown termination state: '%s'", exitStatus.Cause))
+				panic(fmt.Sprintf("unknown termination state: %q", exitStatus.Cause))
 			}
 
 			if state.Restarting {

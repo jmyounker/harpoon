@@ -452,7 +452,7 @@ type ContainerProcessState struct {
 
 // ContainerExitStatus contains the exit status of a container.
 type ContainerExitStatus struct {
-	// The reason the container terminated.
+	// Cause is reason the container terminated.
 	Cause ExitCause `json:"cause"`
 
 	// ExitStatus will be >= 0 when Cause is Exit.
@@ -470,15 +470,16 @@ type ContainerMetrics struct {
 	MemoryLimit uint64 `json:"memory_limit"` // memory limit in bytes
 }
 
+// ExitCause enumerates a processes's possible causes of termination
 type ExitCause string
 
 const (
-	// Exit indicates the container exited on its own.
+	// TermExit indicates the container exited on its own.
 	TermExit ExitCause = "exited"
 
-	// Signal indicates the container was killed with a signal.
+	// TermSignal indicates the container was killed with a signal.
 	TermSignal = "signal"
 
-	// OOM indicates the container was killed for exceeding its memory limit.
+	// TermOOM indicates the container was killed for exceeding its memory limit.
 	TermOOM = "oomed"
 )
