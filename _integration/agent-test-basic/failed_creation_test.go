@@ -18,8 +18,8 @@ func TestAgent(t *testing.T) {
 		config = agent.ContainerConfig{
 			ArtifactURL: "http://asset-host.test/completely_bogus.tgz",
 			Command: agent.Command{
-				WorkingDir: "/bin",
-				Exec:       []string{"./true"},
+				WorkingDir: "/",
+				Exec:       []string{"bin/warhead", "-port", "$HTTP_PORT"},
 			},
 			Resources: agent.Resources{
 				Mem: 32,

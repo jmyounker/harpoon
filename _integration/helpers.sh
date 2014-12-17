@@ -19,20 +19,20 @@ function copy_dependencies {
   done
 }
 
+# random_int chooses a random integer in the range [$start, $end)
+function random_int {
+    local start end size number
+    start=$1
+    end=$2
+    size=$(($end - $start))
+    ra=$(($RANDOM % $size))
+    echo $(($ra + $start))
+}
+
 # make_rootfs makes the provided directory a minimal busybox rootfs.
 function make_rootfs {
   echo "making rootfs"
   local rootfs=$1
-
-  type busybox >/dev/null || {
-    echo "busybox executable not available"
-    return 1
-  }
-
-  file $(which busybox) | grep -q "statically linked" || {
-    echo "busybox not statically linked"
-    return 1
-  }
 
   mkdir -p \
     $rootfs/bin \
@@ -46,14 +46,21 @@ function make_rootfs {
   touch \
     $rootfs/etc/hostname \
     $rootfs/etc/resolv.conf
+}
 
-  cp $(which busybox) $rootfs/bin/
-  $rootfs/bin/busybox --install $rootfs/bin/
+function nuke {
+  local ptrn found
+  ptrn=$1
+  found=$(ps wwaux | grep "$ptrn" | grep -v grep | awk '{print $2}' | xargs echo)
+  if [ ${#found} -ne 0 ]; then
+    echo $found | xargs kill
+  fi
 }
 
 # shutdown sends SIGTERM and waits for the process to exit. If it takes longer
 # than 5 seconds, it is sent SIGKILL
 function shutdown {
+  local pid found
   pid=$1
 
   sudo kill -SIGTERM $pid
