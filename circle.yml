@@ -12,6 +12,7 @@ test:
     - sudo chmod o+X /srv/harpoon/log
     - sudo mkdir /srv/harpoon/log/basic-test
     - sudo mkdir -p /srv/harpoon/artifacts/asset-host.test/busybox
+    - sudo chmod -R 777 /srv
     - mkdir -p $HOME/.go_workspace/src/github.com/soundcloud/harpoon
     - mv $HOME/harpoon/* $HOME/.go_workspace/src/github.com/soundcloud/harpoon
   override:
