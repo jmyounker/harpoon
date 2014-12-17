@@ -34,7 +34,7 @@ func TestController(t *testing.T) {
 		done <- struct{}{}
 	}()
 
-	<-time.After(5 * time.Second)
+	c.waitReady()
 	conn, err := net.Dial("tcp4", addr)
 	if err != nil {
 		t.Fatal("unable to dial: ", err)
