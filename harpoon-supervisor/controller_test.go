@@ -17,7 +17,7 @@ import (
 func TestController(t *testing.T) {
 	var (
 		s       = newTestSupervisor()
-		ln, err = net.Listen("tcp", ":0")
+		ln, err = net.Listen("tcp4", ":0")
 		addr    = ln.Addr().String()
 		c       = newController(ln, s)
 
@@ -35,7 +35,7 @@ func TestController(t *testing.T) {
 	}()
 
 	<-time.After(5 * time.Second)
-	conn, err := net.Dial("tcp", addr)
+	conn, err := net.Dial("tcp4", addr)
 	if err != nil {
 		t.Fatal("unable to dial: ", err)
 	}
