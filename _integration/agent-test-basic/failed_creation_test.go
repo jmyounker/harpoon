@@ -41,7 +41,7 @@ func TestAgent(t *testing.T) {
 	}
 	wc := client.Wait(id, wanted, 30*time.Second)
 
-	if err := client.Put(id, config); err != nil {
+	if err := client.Create(id, config); err != nil {
 		t.Fatalf("Initial creation failed: %s", err)
 	}
 

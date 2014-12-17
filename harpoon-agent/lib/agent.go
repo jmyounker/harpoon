@@ -18,7 +18,7 @@ const DefaultDownloadTimeout = 120 * time.Second
 // have been received.
 type Agent interface {
 	Endpoint() string
-	Put(containerID string, containerConfig ContainerConfig) error                                         // PUT /containers/{id}
+	Create(containerID string, containerConfig ContainerConfig) error                                      // PUT /containers/{id}
 	Get(containerID string) (ContainerInstance, error)                                                     // GET /containers/{id}
 	Start(containerID string) error                                                                        // POST /containers/{id}/start
 	Stop(containerID string) error                                                                         // POST /containers/{id}/stop
@@ -40,20 +40,42 @@ type WaitResult struct {
 // ContainerConfig describes the information necessary to start a container on
 // an agent.
 type ContainerConfig struct {
-	ArtifactURL string            `json:"artifact_url"`
-	Ports       map[string]uint16 `json:"ports"`
-	Env         map[string]string `json:"env"`
-	Command     `json:"command"`
-	Resources   `json:"resources"`
-	Storage     `json:"storage"`
-	Grace       `json:"grace"`
-	Restart     `json:"restart"`
+	Product      string            `json:"product"`
+	Environment  string            `json:"environment"`
+	Job          string            `json:"job"`
+	HealthChecks []HealthCheck     `json:"health_checks"`
+	ArtifactURL  string            `json:"artifact_url"`
+	Ports        map[string]uint16 `json:"ports"`
+	Env          map[string]string `json:"env"`
+	Command      `json:"command"`
+	Resources    `json:"resources"`
+	Storage      `json:"storage"`
+	Grace        `json:"grace"`
+	Restart      `json:"restart"`
 }
 
 // Valid performs a validation check, to ensure invalid structures may be
 // detected as early as possible.
 func (c ContainerConfig) Valid() error {
 	var errs []string
+
+	if c.Product == "" {
+		errs = append(errs, `"product" not set`)
+	}
+
+	if c.Environment == "" {
+		errs = append(errs, `"environment" not set`)
+	}
+
+	if c.Job == "" {
+		errs = append(errs, `"job" not set`)
+	}
+
+	for i, healthCheck := range c.HealthChecks {
+		if err := healthCheck.Valid(); err != nil {
+			errs = append(errs, fmt.Sprintf("health check %d: %s", i, err))
+		}
+	}
 
 	if _, err := url.Parse(c.ArtifactURL); err != nil {
 		errs = append(errs, fmt.Sprintf("artifact URL %q invalid: %s", c.ArtifactURL, err))
@@ -77,6 +99,73 @@ func (c ContainerConfig) Valid() error {
 
 	if err := c.Restart.Valid(); err != nil {
 		errs = append(errs, fmt.Sprintf("restart policy invalid: %s", err))
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf(strings.Join(errs, "; "))
+	}
+
+	return nil
+}
+
+// HealthCheck defines how a third party can determine if an instance of a
+// given task is healthy. HealthChecks are defined and persisted in the config
+// store, but executed by the agent or scheduler.
+//
+// HealthChecks are largely inspired by the Marathon definition.
+// https://github.com/mesosphere/marathon/blob/master/REST.md
+type HealthCheck struct {
+	Protocol     string       `json:"protocol"` // HTTP, TCP
+	Port         string       `json:"port"`     // from key of ports map in container config, i.e. env var name
+	InitialDelay JSONDuration `json:"initial_delay"`
+	Timeout      JSONDuration `json:"timeout"`
+	Interval     JSONDuration `json:"interval"`
+
+	// Special parameters for HTTP health checks.
+	HTTPPath                string `json:"http_path,omitempty"`                 // e.g. "/-/health"
+	HTTPAcceptableResponses []int  `json:"http_acceptable_responses,omitempty"` // e.g. [200,201,301]
+}
+
+const (
+	protocolHTTP = "HTTP"
+	protocolTCP  = "TCP"
+
+	maxInitialDelay = 30 * time.Second
+	maxTimeout      = 3 * time.Second
+	maxInterval     = 30 * time.Second
+)
+
+// Valid performs a validation check, to ensure invalid structures may be
+// detected as early as possible.
+func (c HealthCheck) Valid() error {
+	var errs []string
+
+	switch c.Protocol {
+	case protocolHTTP, protocolTCP:
+	default:
+		errs = append(errs, fmt.Sprintf("invalid protocol %q", c.Protocol))
+	}
+
+	if c.InitialDelay.Duration > maxInitialDelay {
+		errs = append(errs, fmt.Sprintf("initial delay (%s) too large (max %s)", c.InitialDelay, maxInitialDelay))
+	}
+
+	if c.Timeout.Duration > maxTimeout {
+		errs = append(errs, fmt.Sprintf("timeout (%s) too large (max %s)", c.Timeout, maxTimeout))
+	}
+
+	if c.Interval.Duration > maxInterval {
+		errs = append(errs, fmt.Sprintf("interval (%s) too large (max %s)", c.Interval, maxInterval))
+	}
+
+	if c.Protocol == protocolHTTP {
+		if c.HTTPPath == "" {
+			errs = append(errs, `protocol "HTTP" requires "http_path"`)
+		}
+
+		if len(c.HTTPAcceptableResponses) <= 0 {
+			errs = append(errs, `protocol "HTTP" requires "http_acceptable_responses" (array of integers)`)
+		}
 	}
 
 	if len(errs) > 0 {

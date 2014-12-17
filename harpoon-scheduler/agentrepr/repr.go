@@ -87,7 +87,7 @@ type representation struct {
 type Client interface {
 	Endpoint() string
 	Events() (<-chan agent.StateEvent, agent.Stopper, error)
-	Put(string, agent.ContainerConfig) error
+	Create(string, agent.ContainerConfig) error
 	Start(string) error
 	Stop(string) error
 	Destroy(string) error
@@ -157,33 +157,35 @@ func (r *representation) Schedule(id string, c agent.ContainerConfig) error {
 	}
 
 	// Schedule is a command, and commands are processed asynchronously, i.e.
-	// out of the primary requestLoop. Therefore, when we signal Put to the
-	// remote agent, the response events (Created, then Running) may get to
+	// out of the primary requestLoop. Therefore, when we signal Create/Start
+	// to the remote agent, the response events (Created/Running) may get to
 	// the requestLoop before we actually return from the invocation! So, we
 	// register our "outstanding" ahead of time, and cancel if the Put fails.
 
 	r.outstanding.want(id, agent.ContainerStatusRunning, r.successc, r.failurec)
 
-	statuses := map[agent.ContainerStatus]struct{}{
-		agent.ContainerStatusCreated: struct{}{},
-		agent.ContainerStatusDeleted: struct{}{},
-	}
-	wc := r.Client.Wait(id, statuses, agent.DefaultDownloadTimeout)
+	wc := r.Client.Wait(
+		id,
+		map[agent.ContainerStatus]struct{}{
+			agent.ContainerStatusCreated: struct{}{},
+			agent.ContainerStatusDeleted: struct{}{},
+		},
+		agent.DefaultDownloadTimeout,
+	)
 
-	if err := r.Client.Put(id, c); err != nil {
+	switch err := r.Client.Create(id, c); err {
+	case nil, agent.ErrContainerAlreadyExists:
+	default:
 		r.outstanding.remove(id)
 		return err
 	}
 
-	w := <-wc
-	if w.Err != nil {
+	if w := <-wc; w.Err != nil {
 		r.outstanding.remove(id)
 		return w.Err
-	}
-
-	if w.Status == agent.ContainerStatusDeleted {
+	} else if w.Status == agent.ContainerStatusDeleted {
 		r.outstanding.remove(id)
-		return fmt.Errorf("task ID %s could not be created.", id)
+		return fmt.Errorf("task ID %s could not be created", id)
 	}
 
 	if err := r.Client.Start(id); err != nil {

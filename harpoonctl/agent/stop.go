@@ -4,6 +4,7 @@ import (
 	"net/url"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/codegangsta/cli"
 
@@ -13,21 +14,38 @@ import (
 
 var stopCommand = cli.Command{
 	Name:        "stop",
-	Usage:       "stop <id>",
-	Description: "Stops a running container.",
+	Usage:       "Stop a running container",
+	Description: stopUsage,
 	Action:      stopAction,
+	Flags:       []cli.Flag{waitTimeoutFlag},
+}
+
+const stopUsage = "stop <ID>"
+
+var waitTimeoutFlag = cli.DurationFlag{
+	Name:  "wait-timeout",
+	Value: 10 * time.Second,
+	Usage: "Max time to wait for container to change status",
 }
 
 func stopAction(c *cli.Context) {
+	id := c.Args().First()
+	if id == "" {
+		log.Fatalf("usage: %s", stopUsage)
+	}
+
 	var (
-		id = c.Args().First()
+		waitTimeout = c.Duration("wait-timeout")
+	)
+
+	stop(id, waitTimeout)
+}
+
+func stop(id string, waitTimeout time.Duration) {
+	var (
 		wg = sync.WaitGroup{}
 		ok = int32(0)
 	)
-
-	if id == "" {
-		log.Fatalf("usage: stop <id>")
-	}
 
 	wg.Add(len(endpoints))
 
@@ -41,12 +59,25 @@ func stopAction(c *cli.Context) {
 				return
 			}
 
+			statuses := map[agent.ContainerStatus]struct{}{
+				agent.ContainerStatusFinished: struct{}{},
+			}
+			waitc := c.Wait(id, statuses, waitTimeout)
+
 			if err := c.Stop(id); err != nil {
 				log.Verbosef("%s: %s", u.Host, err)
 				return
 			}
 
-			log.Printf("%s: stop %s OK", u.Host, id)
+			log.Printf("%s: stop %s requested", u.Host, id)
+
+			result := <-waitc
+			if result.Err != nil {
+				log.Errorf("%s: while waiting for stop: %s", u.Host, result.Err)
+				return
+			}
+
+			log.Printf("%s: %s %s", u.Host, id, result.Status)
 
 			atomic.AddInt32(&ok, 1)
 		}(u)
@@ -54,5 +85,5 @@ func stopAction(c *cli.Context) {
 
 	wg.Wait()
 
-	log.Printf("stop %s complete, %d successfully stopped", id, ok)
+	log.Printf("%d successfully stopped", ok)
 }

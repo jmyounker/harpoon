@@ -16,10 +16,12 @@ import (
 
 var dumpCommand = cli.Command{
 	Name:        "dump",
-	Usage:       "dump <id>",
-	Description: "Dumps current state of a container to stdout as JSON.",
+	Usage:       "Dump current state of a container to stdout as JSON",
+	Description: dumpUsage,
 	Action:      dumpAction,
 }
+
+const dumpUsage = "dump <ID>"
 
 func dumpAction(c *cli.Context) {
 	var (
@@ -29,7 +31,7 @@ func dumpAction(c *cli.Context) {
 	)
 
 	if id == "" {
-		log.Fatalf("usage: dump <id>")
+		log.Fatalf("usage: %s", dumpUsage)
 	}
 
 	wg.Add(len(endpoints))

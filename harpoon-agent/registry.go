@@ -1,57 +1,73 @@
 package main
 
-import (
-	"sync"
-
-	"github.com/soundcloud/harpoon/harpoon-agent/lib"
-)
+import "github.com/soundcloud/harpoon/harpoon-agent/lib"
 
 type registry struct {
-	m           map[string]container
-	statec      chan agent.ContainerInstance
-	subscribers map[chan<- agent.ContainerInstance]struct{}
-
-	acceptUpdates bool
-
-	sync.RWMutex
+	statec         chan agent.ContainerInstance
+	removec        chan string
+	notifyc        chan chan<- agent.ContainerInstance
+	stopc          chan chan<- agent.ContainerInstance
+	lenc           chan chan<- int
+	instancesc     chan chan<- map[string]agent.ContainerInstance
+	acceptUpdatesc chan bool
+	getc           chan getRequest
+	registerc      chan registerRequest
 }
 
-func newRegistry() *registry {
+type getRequest struct {
+	id   string
+	outc chan container
+}
+
+type registerRequest struct {
+	c    container
+	outc chan bool
+}
+
+func newRegistry(sd serviceDiscovery) *registry {
 	r := &registry{
-		m:           map[string]container{},
-		statec:      make(chan agent.ContainerInstance),
-		subscribers: map[chan<- agent.ContainerInstance]struct{}{},
+		acceptUpdatesc: make(chan bool),
+		statec:         make(chan agent.ContainerInstance),
+		registerc:      make(chan registerRequest),
+		removec:        make(chan string),
+		notifyc:        make(chan chan<- agent.ContainerInstance),
+		stopc:          make(chan chan<- agent.ContainerInstance),
+		lenc:           make(chan chan<- int),
+		instancesc:     make(chan chan<- map[string]agent.ContainerInstance),
+		getc:           make(chan getRequest),
 	}
 
-	go r.loop()
+	go r.loop(sd)
 
 	return r
 }
 
 func (r *registry) remove(id string) {
-	r.Lock()
-	defer r.Unlock()
-
-	delete(r.m, id)
+	r.removec <- id
 }
 
 func (r *registry) get(id string) (container, bool) {
-	r.RLock()
-	defer r.RUnlock()
-
-	c, ok := r.m[id]
-	return c, ok
+	outc := make(chan container)
+	r.getc <- getRequest{id: id, outc: outc}
+	c := <-outc
+	if c == nil {
+		return c, false
+	}
+	return c, true
 }
 
 func (r *registry) register(c container) bool {
-	r.Lock()
-	defer r.Unlock()
+	outc := make(chan bool)
+	r.registerc <- registerRequest{c: c, outc: outc}
+	return <-outc
+}
 
-	if _, ok := r.m[c.Instance().ID]; ok {
+func (r *registry) registerUnsafe(m map[string]container, c container) bool {
+	if _, ok := m[c.Instance().ID]; ok {
 		return false
 	}
 
-	r.m[c.Instance().ID] = c
+	m[c.Instance().ID] = c
 
 	// The container sends us a copy of its associated ContainerInstance every
 	// time the container changes state. This needs to happen outside of the
@@ -71,58 +87,88 @@ func (r *registry) register(c container) bool {
 }
 
 func (r *registry) len() int {
-	r.RLock()
-	defer r.RUnlock()
-
-	return len(r.m)
+	intc := make(chan int)
+	r.lenc <- intc
+	return <-intc
 }
 
 func (r *registry) instances() map[string]agent.ContainerInstance {
-	r.Lock()
-	defer r.Unlock()
-
-	m := make(map[string]agent.ContainerInstance, len(r.m))
-
-	for id, container := range r.m {
-		m[id] = container.Instance()
-	}
-
-	return m
+	i := make(chan map[string]agent.ContainerInstance)
+	r.instancesc <- i
+	return <-i
 }
 
 func (r *registry) acceptStateUpdates() {
-	r.Lock()
-	defer r.Unlock()
-
-	r.acceptUpdates = true // TODO(pb): this isn't used anywhere
+	r.acceptUpdatesc <- true
 }
 
 func (r *registry) notify(c chan<- agent.ContainerInstance) {
-	r.Lock()
-	defer r.Unlock()
-
-	r.subscribers[c] = struct{}{}
+	r.notifyc <- c
 }
 
 func (r *registry) stop(c chan<- agent.ContainerInstance) {
-	r.Lock()
-	defer r.Unlock()
-
-	delete(r.subscribers, c)
+	r.stopc <- c
 }
 
 // Report state changes in any container to all of our subscribers.
-func (r *registry) loop() {
+func (r *registry) loop(sd serviceDiscovery) {
+	var (
+		m           = make(map[string]container)
+		subscribers = make(map[chan<- agent.ContainerInstance]struct{})
+		// acceptUpdates bool
+	)
 	// Report state changes in any container to all of our subscribers.
-	for containerInstance := range r.statec {
-		r.RLock()
-		s := make(map[chan<- agent.ContainerInstance]struct{}, len(r.subscribers))
-		for k, v := range r.subscribers {
-			s[k] = v
-		}
-		r.RUnlock()
-		for subc := range s {
-			subc <- containerInstance
+	for {
+		select {
+		case <-r.acceptUpdatesc:
+			// acceptUpdates = b
+
+		case containerInstance := <-r.statec:
+			for subc := range subscribers {
+				// Each channel send is being executed in a separate goroutine
+				// because each subscriber can call back into this for-select
+				// loop, causing a deadlock. If we move goroutine up one level
+				// around the for-range loop on r.subscribers, we allow
+				// concurrent access to the r.subscribers map.
+				go func(s chan<- agent.ContainerInstance) {
+					s <- containerInstance
+				}(subc)
+			}
+			sd.Update(instances(m)) // state changes are important
+
+		case req := <-r.registerc:
+			ok := r.registerUnsafe(m, req.c)
+			if ok {
+				sd.Update(instances(m))
+			}
+			req.outc <- ok
+
+		case id := <-r.removec:
+			delete(m, id)
+			sd.Update(instances(m))
+
+		case c := <-r.notifyc:
+			subscribers[c] = struct{}{}
+
+		case c := <-r.stopc:
+			delete(subscribers, c)
+
+		case outc := <-r.lenc:
+			outc <- len(m)
+
+		case outc := <-r.instancesc:
+			outc <- instances(m)
+
+		case req := <-r.getc:
+			req.outc <- m[req.id]
 		}
 	}
+}
+
+func instances(m map[string]container) map[string]agent.ContainerInstance {
+	instances := make(map[string]agent.ContainerInstance, len(m))
+	for id, container := range m {
+		instances[id] = container.Instance()
+	}
+	return instances
 }

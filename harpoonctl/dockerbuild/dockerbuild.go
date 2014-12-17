@@ -178,28 +178,33 @@ func buildContext(contextPath, tag, output string) error {
 		return fmt.Errorf("docker build: %s", err)
 	}
 
-	if err := exec.Command(
-		dockerPath,
-		"run",
-		"--entrypoint",
-		"echo",
-		tag,
-		"no-op",
-	).Run(); err != nil {
+	cmd = exec.Cmd{
+		Path:   dockerPath,
+		Args:   []string{dockerPath, "run", "--entrypoint", "echo", tag, "no-op"},
+		Env:    dockerEnv,
+		Stdout: verboseWriter{},
+		Stderr: verboseWriter{},
+	}
+
+	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("docker run: %s", err)
 	}
 
-	buf, err := exec.Command(
-		dockerPath,
-		"ps",
-		"--latest",
-		"--quiet",
-	).CombinedOutput()
+	cmd = exec.Cmd{
+		Path: dockerPath,
+		Args: []string{dockerPath, "ps", "--latest", "--quiet"},
+		Env:  dockerEnv,
+	}
+
+	buf, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("docker ps --latest: %s", err)
 	}
 
 	containerID := strings.TrimSpace(string(buf))
+	if containerID == "" {
+		return fmt.Errorf("docker ps --latest: no output")
+	}
 
 	log.Verbosef("image %q → container ID %s", tag, containerID)
 
@@ -241,9 +246,21 @@ func export(containerID, output string) error {
 
 	str := strings.Join(chain, " ")
 
-	log.Verbosef(str)
+	log.Verbosef("sh -c %q", str)
 
-	if err := exec.Command("sh", "-c", str).Run(); err != nil {
+	shPath, err := exec.LookPath("sh")
+	if err != nil {
+		return fmt.Errorf("can't find sh: %s", err)
+	}
+
+	cmd := exec.Cmd{
+		Path:   shPath,
+		Args:   []string{shPath, "-c", str},
+		Env:    dockerEnv,
+		Stdout: verboseWriter{},
+		Stderr: verboseWriter{},
+	}
+	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("docker export: %s", err)
 	}
 
@@ -296,11 +313,11 @@ func setGlobalDockerEnv() error {
 			stream.Command("boot2docker", "status"),
 			stream.WriteLines(&buf),
 		); err != nil {
-			return fmt.Errorf("boot2docker status: %s", err)
+			return fmt.Errorf("boot2docker status failed: %s", err)
 		}
 
 		if status := string(bytes.TrimSpace(buf.Bytes())); status != "running" {
-			return fmt.Errorf("boot2docker status: %s", status)
+			return fmt.Errorf("boot2docker status: %s (try: boot2docker up)", status)
 		}
 
 		buf.Reset()
@@ -312,7 +329,7 @@ func setGlobalDockerEnv() error {
 			stream.Substitute(`^[ ]*export ([^=]+)=(.*)$`, `$1=$2`),
 			stream.WriteLines(&buf),
 		); err != nil {
-			return fmt.Errorf("boot2docker shellinit: %s", err)
+			return fmt.Errorf("boot2docker shellinit failed: %s", err)
 		}
 
 		for _, line := range strings.Split(buf.String(), "\n") {

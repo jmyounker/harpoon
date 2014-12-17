@@ -38,6 +38,8 @@ func main() {
 		portsStart        = flag.Uint64("ports.start", 30000, "starting of port allocation range")
 		portsEnd          = flag.Uint64("ports.end", 32767, "ending of port allocation range")
 		downloadTimeout   = flag.Duration("download.timeout", agent.DefaultDownloadTimeout, "max artifact download time")
+		sdFilename        = flag.String("sd.filename", "", "file to write service information")
+		sdReload          = flag.String("sd.reload", "", "command to execute after writing -sd.filename")
 	)
 	flag.Var(&configuredVolumes, "vol", "repeatable list of available volumes")
 
@@ -62,9 +64,20 @@ func main() {
 		log.Fatal("port range start must be before port range end")
 	}
 
-	r := newRegistry()
+	var sd serviceDiscovery
+	if *sdFilename != "" {
+		log.Printf("emitting service discovery information to %s", *sdFilename)
+		sd = newConsulServiceDiscovery(*sdFilename, *sdReload)
+	} else {
+		log.Printf("not emitting service discovery information")
+		sd = nopServiceDiscovery{}
+	}
+
+	r := newRegistry(sd)
+
 	pdb := newPortDB(portsStart16, portsEnd16)
 	defer pdb.exit()
+
 	api := newAPI(*containerRoot, r, pdb, configuredVolumes, *agentCPU, *agentMem, *downloadTimeout, *debug)
 
 	go receiveLogs(r, *logAddr)

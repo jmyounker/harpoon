@@ -3,6 +3,7 @@ package xf
 import (
 	"io/ioutil"
 	"log"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -18,8 +19,8 @@ func TestRemoveDuplicates(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 
 	jobConfig := configstore.JobConfig{
-		Job:   "a",
-		Scale: 1,
+		ContainerConfig: agent.ContainerConfig{Job: "a"},
+		Scale:           1,
 	}
 
 	state := agent.StateEvent{
@@ -54,8 +55,8 @@ func TestRespectPending(t *testing.T) {
 	Debugf = t.Logf
 
 	jobConfig := configstore.JobConfig{
-		Job:   "a",
-		Scale: 2,
+		ContainerConfig: agent.ContainerConfig{Job: "a"},
+		Scale:           2,
 	}
 
 	want := map[string]configstore.JobConfig{
@@ -94,9 +95,11 @@ func TestRespectPending(t *testing.T) {
 
 func TestRespectResourceReservedForPendingTasks(t *testing.T) {
 	jobConfig := configstore.JobConfig{
-		Job:             "a",
-		Scale:           2,
-		ContainerConfig: agent.ContainerConfig{Resources: agent.Resources{Mem: 512}},
+		Scale: 2,
+		ContainerConfig: agent.ContainerConfig{
+			Job:       "a",
+			Resources: agent.Resources{Mem: 512},
+		},
 	}
 
 	want := map[string]configstore.JobConfig{
@@ -157,8 +160,8 @@ func TestPendingExpiration(t *testing.T) {
 	Debugf = t.Logf
 
 	jobConfig := configstore.JobConfig{
-		Job:   "a",
-		Scale: 2,
+		ContainerConfig: agent.ContainerConfig{Job: "a"},
+		Scale:           2,
 	}
 
 	want := map[string]configstore.JobConfig{
@@ -231,8 +234,8 @@ func TestRetryingMutation(t *testing.T) {
 	Debugf = t.Logf
 
 	jobConfig := configstore.JobConfig{
-		Job:   "a",
-		Scale: 1,
+		ContainerConfig: agent.ContainerConfig{Job: "a"},
+		Scale:           1,
 	}
 
 	state := agent.StateEvent{
@@ -354,13 +357,13 @@ func TestSchedulerRestartsDisappearingTasksIndefinitely(t *testing.T) {
 	})
 
 	go Transform(desire, actual, target)
-	time.Sleep(time.Millisecond) // let Transform subscribe
+	runtime.Gosched() // let Transform subscribe
 
 	// Schedule a job with scale = 3
 
-	jobConfig := configstore.JobConfig{Job: "a", Scale: 3}
+	jobConfig := configstore.JobConfig{ContainerConfig: agent.ContainerConfig{Job: "a"}, Scale: 3}
 	desire.set(map[string]configstore.JobConfig{"a": jobConfig})
-	time.Sleep(time.Millisecond)
+	runtime.Gosched()
 
 	if want, have := int32(3), target.schedules; want != have {
 		t.Fatalf("want %d, have %d", want, have)
@@ -379,17 +382,18 @@ func TestSchedulerRestartsDisappearingTasksIndefinitely(t *testing.T) {
 		"leeroy":  agent.StateEvent{Containers: map[string]agent.ContainerInstance{id0: ci0, id1: ci1}},
 		"jenkins": agent.StateEvent{Containers: map[string]agent.ContainerInstance{id2: ci2}},
 	})
-	t.Logf("(all tasks started and running)")
-	time.Sleep(time.Millisecond)
+	runtime.Gosched()
+	t.Logf("all tasks started and running")
 
 	// Disappear one of the tasks
 
+	t.Logf("task 1 disappearing")
 	actual.set(map[string]agent.StateEvent{
 		"leeroy":  agent.StateEvent{Containers: map[string]agent.ContainerInstance{id0: ci0}},
 		"jenkins": agent.StateEvent{Containers: map[string]agent.ContainerInstance{id2: ci2}},
 	})
-	t.Logf("(task 1 has disappeared)")
-	time.Sleep(time.Millisecond)
+	runtime.Gosched()
+	t.Logf("task 1 disappeared")
 
 	// The scheduler (Transform) should restart it
 
@@ -397,33 +401,42 @@ func TestSchedulerRestartsDisappearingTasksIndefinitely(t *testing.T) {
 		t.Fatalf("want %d, have %d", want, have)
 	}
 
+	t.Logf("task 1 returning")
 	actual.set(map[string]agent.StateEvent{
 		"leeroy":  agent.StateEvent{Containers: map[string]agent.ContainerInstance{id0: ci0, id1: ci1}},
 		"jenkins": agent.StateEvent{Containers: map[string]agent.ContainerInstance{id2: ci2}},
 	})
-	t.Logf("(the task comes back)")
-	time.Sleep(time.Millisecond)
+	runtime.Gosched()
+	actual.broadcast() // try to ensure a sync
+	runtime.Gosched()
+	t.Logf("task 1 returned")
 
 	// Disappear the task again
 
+	t.Logf("task 1 disappearing again")
 	actual.set(map[string]agent.StateEvent{
 		"leeroy":  agent.StateEvent{Containers: map[string]agent.ContainerInstance{id0: ci0}},
 		"jenkins": agent.StateEvent{Containers: map[string]agent.ContainerInstance{id2: ci2}},
 	})
-	t.Logf("(task 1 has disappeared again)")
-	time.Sleep(time.Millisecond)
+	runtime.Gosched()
+	actual.broadcast() // try to ensure a sync
+	runtime.Gosched()
+	t.Logf("task 1 disappeared again")
 
 	// The scheduler (Transform) should restart it again
 
+	t.Logf("expecting the scheduler to have restarted it by now")
 	if want, have := int32(5), target.schedules; want != have {
 		t.Fatalf("want %d, have %d", want, have)
 	}
 
+	t.Logf("task 1 returning again")
 	actual.set(map[string]agent.StateEvent{
 		"leeroy":  agent.StateEvent{Containers: map[string]agent.ContainerInstance{id0: ci0, id1: ci1}},
 		"jenkins": agent.StateEvent{Containers: map[string]agent.ContainerInstance{id2: ci2}},
 	})
-	t.Logf("(the task comes back again)")
+	runtime.Gosched()
+	t.Logf("task 1 returned again")
 }
 
 type mockTaskScheduler struct {
