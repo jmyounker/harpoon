@@ -16,8 +16,8 @@ import (
 
 var resourcesCommand = cli.Command{
 	Name:        "resources",
-	Usage:       "Print agent host resources",
-	Description: "Display instantaneous total and reserved CPU, memory, etc. resources of agent(s).",
+	Usage:       "Display current total and reserved CPU, memory, etc. resources of agent(s)",
+	Description: resourcesUsage,
 	Action:      resourcesAction,
 	Flags: []cli.Flag{
 		cli.BoolFlag{
@@ -26,6 +26,8 @@ var resourcesCommand = cli.Command{
 		},
 	},
 }
+
+const resourcesUsage = "resources"
 
 func resourcesAction(c *cli.Context) {
 	var (

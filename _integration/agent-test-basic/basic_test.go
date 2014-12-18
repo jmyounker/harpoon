@@ -19,7 +19,7 @@ func TestAgent(t *testing.T) {
 			ArtifactURL: *warheadURL,
 			Command: agent.Command{
 				WorkingDir: "/",
-				Exec:       []string{"bin/warhead", "-port", "$HTTP_PORT"},
+				Exec:       []string{"bin/warhead", "-listen", "0.0.0.0:$HTTP_PORT"},
 			},
 			Resources: agent.Resources{
 				Mem: 32,

@@ -18,8 +18,8 @@ import (
 
 var psCommand = cli.Command{
 	Name:        "ps",
-	Usage:       "Print instances on agent(s)",
-	Description: "Display instances running on agent(s).",
+	Usage:       "Display instances running on agent(s)",
+	Description: psUsage,
 	Action:      psAction,
 	Flags: []cli.Flag{
 		cli.BoolFlag{
@@ -28,6 +28,8 @@ var psCommand = cli.Command{
 		},
 	},
 }
+
+const psUsage = "ps"
 
 func psAction(c *cli.Context) {
 	var (

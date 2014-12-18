@@ -4,6 +4,7 @@ import (
 	"net/url"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/codegangsta/cli"
 
@@ -13,21 +14,32 @@ import (
 
 var startCommand = cli.Command{
 	Name:        "start",
-	Usage:       "start <id>",
-	Description: "Starts a created, finished, or failed container.",
+	Usage:       "Start an allocated container",
+	Description: "start <ID>",
 	Action:      startAction,
+	Flags:       []cli.Flag{waitTimeoutFlag},
 }
+
+const startUsage = "start <ID>"
 
 func startAction(c *cli.Context) {
 	var (
-		id = c.Args().First()
-		wg = sync.WaitGroup{}
-		ok = int32(0)
+		id          = c.Args().First()
+		waitTimeout = c.Duration("wait-timeout")
 	)
 
 	if id == "" {
-		log.Fatalf("usage: start <id>")
+		log.Fatalf("usage: %s", startUsage)
 	}
+
+	start(id, waitTimeout)
+}
+
+func start(id string, waitTimeout time.Duration) {
+	var (
+		wg = sync.WaitGroup{}
+		ok = int32(0)
+	)
 
 	wg.Add(len(endpoints))
 
@@ -52,6 +64,11 @@ func startAction(c *cli.Context) {
 				return
 			}
 
+			statuses := map[agent.ContainerStatus]struct{}{
+				agent.ContainerStatusRunning: struct{}{},
+			}
+			waitc := c.Wait(id, statuses, waitTimeout)
+
 			switch m[id].ContainerStatus {
 			case agent.ContainerStatusCreated, agent.ContainerStatusFinished, agent.ContainerStatusFailed:
 			case agent.ContainerStatusRunning:
@@ -64,7 +81,15 @@ func startAction(c *cli.Context) {
 				return
 			}
 
-			log.Printf("%s: start %s OK", u.Host, id)
+			log.Printf("%s: start %s requested", u.Host, id)
+
+			result := <-waitc
+			if result.Err != nil {
+				log.Errorf("%s: while waiting for start: %s", u.Host, result.Err)
+				return
+			}
+
+			log.Printf("%s: %s %s", u.Host, id, result.Status)
 
 			atomic.AddInt32(&ok, 1)
 		}(u)
@@ -72,5 +97,5 @@ func startAction(c *cli.Context) {
 
 	wg.Wait()
 
-	log.Printf("start %s complete, %d successfully started", id, ok)
+	log.Printf("%d successfully started", ok)
 }

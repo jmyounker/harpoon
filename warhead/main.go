@@ -6,7 +6,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -22,8 +21,7 @@ import (
 
 func main() {
 	var (
-		host         = flag.String("host", "0.0.0.0", "Bind address for HTTP server")
-		port         = flag.Int("port", 8080, "Bind port for HTTP server")
+		listen       = flag.String("listen", "0.0.0.0:8080", "Bind address for HTTP server")
 		batchMode    = flag.Bool("batch-mode", false, "Do not start up HTTP server, just sleep and then terminate")
 		boomMsg      = flag.String("msg", "Boom\n", "The string returned from HTTP Get /")
 		exitCode     = flag.Int("exit-code", 0, "Exit from batch-mode with this code")
@@ -38,7 +36,7 @@ func main() {
 	if *batchMode {
 		batchMain(*leakInterval, *runTime, *oom, *exitCode)
 	} else {
-		serverMain(*leakInterval, *host, *port, *boomMsg)
+		serverMain(*leakInterval, *listen, *boomMsg)
 	}
 }
 
@@ -67,7 +65,7 @@ func allocateTooMuchMemory() {
 	}
 }
 
-func serverMain(leakInterval time.Duration, host string, port int, boomMsg string) {
+func serverMain(leakInterval time.Duration, listen string, boomMsg string) {
 	http.HandleFunc(
 		"/",
 		func(w http.ResponseWriter, r *http.Request) {
@@ -80,7 +78,6 @@ func serverMain(leakInterval time.Duration, host string, port int, boomMsg strin
 		go leak(leakInterval)
 	}
 
-	listen := fmt.Sprintf("%s:%d", host, port)
 	log.Printf("listening on %s", listen)
 	log.Fatal(http.ListenAndServe(listen, nil)) // Return a rc != 0 on failure
 }
