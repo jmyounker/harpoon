@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
@@ -40,6 +41,7 @@ func main() {
 		downloadTimeout   = flag.Duration("download.timeout", agent.DefaultDownloadTimeout, "max artifact download time")
 		sdFilename        = flag.String("sd.filename", "", "file to write service information")
 		sdReload          = flag.String("sd.reload", "", "command to execute after writing -sd.filename")
+		supervisor        = flag.String("supervisor", "", "path to supervisor binary")
 	)
 	flag.Var(&configuredVolumes, "vol", "repeatable list of available volumes")
 
@@ -48,6 +50,14 @@ func main() {
 	if *showVersion {
 		fmt.Printf("version %s (%s) %s\n", Version, CommitID, ExternalReleaseVersion)
 		os.Exit(0)
+	}
+
+	if *supervisor == "" {
+		fp, err := filepath.Abs(os.Args[0])
+		if err != nil {
+			fp = os.Args[0]
+		}
+		*supervisor = filepath.Join(filepath.Dir(fp), "harpoon-supervisor")
 	}
 
 	if *portsStart > math.MaxUint16 {
@@ -78,14 +88,14 @@ func main() {
 	pdb := newPortDB(portsStart16, portsEnd16)
 	defer pdb.exit()
 
-	api := newAPI(*containerRoot, r, pdb, configuredVolumes, *agentCPU, *agentMem, *downloadTimeout, *debug)
+	api := newAPI(*containerRoot, r, pdb, configuredVolumes, *supervisor, *agentCPU, *agentMem, *downloadTimeout, *debug)
 
 	go receiveLogs(r, *logAddr)
 
 	http.Handle("/", api)
 
 	go func() {
-		recoverContainers(*containerRoot, r, pdb, configuredVolumes, *debug)
+		recoverContainers(*containerRoot, r, pdb, configuredVolumes, *supervisor, *debug)
 
 		r.acceptStateUpdates()
 

@@ -17,9 +17,10 @@ import (
 )
 
 type supervisor struct {
-	ID     string
-	rundir string
-	debug  bool
+	ID             string
+	rundir         string
+	supervisorPath string
+	debug          bool
 
 	exitc        chan chan error
 	stopc        chan time.Duration
@@ -30,17 +31,18 @@ type supervisor struct {
 	exited chan struct{}
 }
 
-func newSupervisor(id string, rundir string, debug bool) *supervisor {
+func newSupervisor(id string, rundir string, supervisorPath string, debug bool) *supervisor {
 	return &supervisor{
-		ID:           id,
-		rundir:       rundir,
-		debug:        debug,
-		exitc:        make(chan chan error),
-		stopc:        make(chan time.Duration),
-		subscribec:   make(chan chan<- agent.ContainerProcessState),
-		unsubscribec: make(chan chan<- agent.ContainerProcessState),
-		statec:       make(chan agent.ContainerProcessState),
-		exited:       make(chan struct{}),
+		ID:             id,
+		rundir:         rundir,
+		debug:          debug,
+		supervisorPath: supervisorPath,
+		exitc:          make(chan chan error),
+		stopc:          make(chan time.Duration),
+		subscribec:     make(chan chan<- agent.ContainerProcessState),
+		unsubscribec:   make(chan chan<- agent.ContainerProcessState),
+		statec:         make(chan agent.ContainerProcessState),
+		exited:         make(chan struct{}),
 	}
 }
 
@@ -54,7 +56,7 @@ func (s *supervisor) Start(config agent.ContainerConfig, stdout, stderr io.Write
 	if s.debug {
 		log.Printf("launching harpoon-supervisor with args: %s", args)
 	}
-	cmd := exec.Command("harpoon-supervisor", args...)
+	cmd := exec.Command(s.supervisorPath, args...)
 
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr

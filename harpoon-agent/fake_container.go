@@ -31,6 +31,7 @@ func newFakeContainer(
 	config agent.ContainerConfig,
 	_ bool,
 	_ *portDB,
+	_ string,
 ) container {
 	c := &fakeContainer{
 		ContainerInstance: agent.ContainerInstance{

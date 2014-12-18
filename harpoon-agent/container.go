@@ -49,6 +49,7 @@ type realContainer struct {
 	portDB            *portDB
 	logs              *containerLog
 	supervisor        *supervisor
+	supervisorPath    string
 	containerStatec   chan agent.ContainerProcessState
 	subscribers       map[chan<- agent.ContainerInstance]struct{}
 	createc           chan createRequest
@@ -70,6 +71,7 @@ func newRealContainer(
 	config agent.ContainerConfig,
 	debug bool,
 	pdb *portDB,
+	supervisorPath string,
 ) container {
 	c := &realContainer{
 		ContainerInstance: agent.ContainerInstance{
@@ -83,6 +85,7 @@ func newRealContainer(
 		debug:             debug,
 		portDB:            pdb,
 		logs:              newContainerLog(containerLogRingBufferSize),
+		supervisorPath:    supervisorPath,
 		subscribers:       map[chan<- agent.ContainerInstance]struct{}{},
 		createc:           make(chan createRequest),
 		destroyc:          make(chan destroyRequest),
@@ -244,7 +247,7 @@ func (c *realContainer) Recover() error {
 	// ensure we don't hold on to the logger
 	defer logPipe.Close()
 
-	c.supervisor = newSupervisor(c.ID, rundir, c.debug)
+	c.supervisor = newSupervisor(c.ID, rundir, c.supervisorPath, c.debug)
 
 	_, err = os.Stat(filepath.Join(rundir, "control"))
 	if err == syscall.ENOENT || err == syscall.ENOTDIR {
@@ -494,7 +497,7 @@ func (c *realContainer) start() error {
 	// ensure we don't hold on to the logger
 	defer logPipe.Close()
 
-	s := newSupervisor(c.ID, rundir, c.debug)
+	s := newSupervisor(c.ID, rundir, c.supervisorPath, c.debug)
 
 	if err := s.Start(c.ContainerConfig, logPipe, supervisorLog); err != nil {
 		return err

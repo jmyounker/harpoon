@@ -28,12 +28,13 @@ func TestContainerList(t *testing.T) {
 		agentMem          int64   = 1000
 		agentCPU          float64 = 2
 		configuredVolumes         = map[string]struct{}{"/tmp": struct{}{}}
+		supervisorPath            = "harpoon-supervisor"
 		debug                     = false
 		timeout                   = agent.DefaultDownloadTimeout
 
 		registry = newRegistry(nopServiceDiscovery{})
 		pdb      = newPortDB(lowTestPort, highTestPort)
-		api      = newAPI(testContainerRoot, registry, pdb, configuredVolumes, agentCPU, agentMem, timeout, debug)
+		api      = newAPI(testContainerRoot, registry, pdb, configuredVolumes, supervisorPath, agentCPU, agentMem, timeout, debug)
 		server   = httptest.NewServer(api)
 	)
 
@@ -81,6 +82,7 @@ func TestContainerList(t *testing.T) {
 		},
 		false,
 		nil,
+		"harpoon-supervisor",
 	)
 
 	registry.register(cont)
@@ -141,11 +143,12 @@ func TestAgentHostResources(t *testing.T) {
 		agentCPU          float64 = 2
 		configuredVolumes         = map[string]struct{}{"/tmp": struct{}{}}
 		debug                     = false
+		supervisorPath            = "harpoon-supervisor"
 		timeout                   = agent.DefaultDownloadTimeout
 
 		registry  = newRegistry(nopServiceDiscovery{})
 		pdb       = newPortDB(lowTestPort, highTestPort)
-		api       = newAPI(testContainerRoot, registry, pdb, configuredVolumes, agentCPU, agentMem, timeout, debug)
+		api       = newAPI(testContainerRoot, registry, pdb, configuredVolumes, supervisorPath, agentCPU, agentMem, timeout, debug)
 		server    = httptest.NewServer(api)
 		client, _ = agent.NewClient(server.URL)
 	)
@@ -237,11 +240,12 @@ func TestLogAPICanTailLogs(t *testing.T) {
 		agentCPU          float64
 		configuredVolumes map[string]struct{}
 		debug             = false
+		supervisorPath    = "harpoon-supervisor"
 		timeout           = agent.DefaultDownloadTimeout
 
 		registry = newRegistry(nopServiceDiscovery{})
 		pdb      = newPortDB(lowTestPort, highTestPort)
-		api      = newAPI(testContainerRoot, registry, pdb, configuredVolumes, agentCPU, agentMem, timeout, debug)
+		api      = newAPI(testContainerRoot, registry, pdb, configuredVolumes, supervisorPath, agentCPU, agentMem, timeout, debug)
 		server   = httptest.NewServer(api)
 	)
 	defer pdb.exit()
@@ -249,7 +253,7 @@ func TestLogAPICanTailLogs(t *testing.T) {
 
 	createReceiveLogsFixture(t, registry)
 
-	c := newFakeContainer("123", "", volumes{}, agent.ContainerConfig{}, false, nil)
+	c := newFakeContainer("123", "", volumes{}, agent.ContainerConfig{}, false, nil, supervisorPath)
 	registry.register(c)
 
 	// UDP has some weirdness with processing, so we use the container log's subscription
@@ -324,11 +328,12 @@ func TestLogAPILogTailIncludesHistory(t *testing.T) {
 		agentCPU          float64 = 2
 		configuredVolumes         = map[string]struct{}{"/tmp": struct{}{}}
 		debug                     = false
+		supervisorPath            = "harpoon-supervisor"
 		timeout                   = agent.DefaultDownloadTimeout
 
 		registry = newRegistry(nopServiceDiscovery{})
 		pdb      = newPortDB(lowTestPort, highTestPort)
-		api      = newAPI(testContainerRoot, registry, pdb, configuredVolumes, agentCPU, agentMem, timeout, debug)
+		api      = newAPI(testContainerRoot, registry, pdb, configuredVolumes, supervisorPath, agentCPU, agentMem, timeout, debug)
 		server   = httptest.NewServer(api)
 	)
 	defer pdb.exit()
@@ -336,7 +341,7 @@ func TestLogAPILogTailIncludesHistory(t *testing.T) {
 
 	createReceiveLogsFixture(t, registry)
 
-	c := newFakeContainer("123", "", volumes{}, agent.ContainerConfig{}, false, nil)
+	c := newFakeContainer("123", "", volumes{}, agent.ContainerConfig{}, false, nil, supervisorPath)
 	registry.register(c)
 
 	// UDP has some weirdness with processing, so we use the container log's subscription
@@ -414,10 +419,11 @@ func TestLogAPICanRetrieveLastLines(t *testing.T) {
 		configuredVolumes         = map[string]struct{}{"/tmp": struct{}{}}
 		debug                     = false
 		timeout                   = agent.DefaultDownloadTimeout
+		supervisorPath            = "harpoon-supervisor"
 
 		registry = newRegistry(nopServiceDiscovery{})
 		pdb      = newPortDB(lowTestPort, highTestPort)
-		api      = newAPI(testContainerRoot, registry, pdb, configuredVolumes, agentCPU, agentMem, timeout, debug)
+		api      = newAPI(testContainerRoot, registry, pdb, configuredVolumes, supervisorPath, agentCPU, agentMem, timeout, debug)
 		server   = httptest.NewServer(api)
 	)
 	defer pdb.exit()
@@ -425,7 +431,7 @@ func TestLogAPICanRetrieveLastLines(t *testing.T) {
 
 	createReceiveLogsFixture(t, registry)
 
-	c := newFakeContainer("123", "", volumes{}, agent.ContainerConfig{}, false, nil)
+	c := newFakeContainer("123", "", volumes{}, agent.ContainerConfig{}, false, nil, supervisorPath)
 	registry.register(c)
 
 	// UDP has some weirdness with processing, so we use the container log's subscription
@@ -479,10 +485,11 @@ func TestFailedCreateDestroysContainer(t *testing.T) {
 		configuredVolumes         = map[string]struct{}{"/tmp": struct{}{}}
 		debug                     = false
 		timeout                   = agent.DefaultDownloadTimeout
+		supervisorPath            = "harpoon-supervisor"
 
 		registry = newRegistry(nopServiceDiscovery{})
 		pdb      = newPortDB(lowTestPort, highTestPort)
-		api      = newAPI(testContainerRoot, registry, pdb, configuredVolumes, agentCPU, agentMem, timeout, debug)
+		api      = newAPI(testContainerRoot, registry, pdb, configuredVolumes, supervisorPath, agentCPU, agentMem, timeout, debug)
 		server   = httptest.NewServer(api)
 		client   = agent.MustNewClient(server.URL)
 	)

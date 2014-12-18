@@ -197,7 +197,7 @@ func TestSupervisor(t *testing.T) {
 
 	var (
 		debug    = false
-		s        = newSupervisor("arbitraryID", tmpdir, debug)
+		s        = newSupervisor("arbitraryID", tmpdir, "harpoon-supervisor", debug)
 		done     = make(chan struct{})
 		exitErrc = make(chan error)
 	)
@@ -348,7 +348,7 @@ func TestSupervisorKillAfterGrace(t *testing.T) {
 
 	var (
 		debug    = false
-		s        = newSupervisor("arbitraryID", tmpdir, debug)
+		s        = newSupervisor("arbitraryID", tmpdir, "harpoon-supervisor", debug)
 		done     = make(chan struct{})
 		exitErrc = make(chan error)
 	)

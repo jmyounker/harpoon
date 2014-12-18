@@ -26,6 +26,7 @@ type api struct {
 	vols            volumes
 	cpu             float64
 	mem             int64
+	supervisorPath  string
 	downloadTimeout time.Duration
 	debug           bool
 	sync.RWMutex
@@ -42,6 +43,7 @@ func newAPI(
 	r *registry,
 	pdb *portDB,
 	vols volumes,
+	supervisorPath string,
 	cpu float64,
 	mem int64,
 	downloadTimeout time.Duration,
@@ -54,6 +56,7 @@ func newAPI(
 			root:            root,
 			registry:        r,
 			portDB:          pdb,
+			supervisorPath:  supervisorPath,
 			vols:            vols,
 			cpu:             cpu,
 			mem:             mem,
@@ -120,7 +123,7 @@ func (a *api) handleCreate(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	container := newContainer(id, a.root, a.vols, config, a.debug, a.portDB)
+	container := newContainer(id, a.root, a.vols, config, a.debug, a.portDB, a.supervisorPath)
 
 	undo = append(undo, func() { container.Exit() })
 

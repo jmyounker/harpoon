@@ -43,7 +43,7 @@ trap "nuke 'SimpleHTTPServer $DOWNLOAD_PORT' && rm -rf $httpdir && rm -rf $rootf
 install -D $(which svlogd) $rootfs/bin/
 
 echo "run: install harpoon binaries"
-go install github.com/soundcloud/harpoon/...
+GOBIN=$rootfs/bin go install github.com/soundcloud/harpoon/...
 
 echo "run: install libcontainer config"
 go run config.go -rootfs /tmp/rootfs >$rootfs/container.json ||
@@ -54,7 +54,7 @@ logfile=$PWD/agent.log
 echo "run: starting agent at localhost:${AGENT_PORT}"
 {
   pushd $rootfs >/dev/null
-  sudo $nsinit exec -- /srv/harpoon/bin/harpoon-agent -run ${rundir} -addr ":${AGENT_PORT}" > $logfile 2>&1  & AGENT_PID=$!
+  sudo $rootfs/bin/harpoon-agent -run ${rundir} -addr ":${AGENT_PORT}" > $logfile 2>&1 & AGENT_PID=$!
   popd >/dev/null
 } || abort "unable to start harpoon-agent"
 trap "nuke 'SimpleHTTPServer $DOWNLOAD_PORT' && rm -rf $httpdir && rm -rf $rootfs && shutdown $AGENT_PID" EXIT
