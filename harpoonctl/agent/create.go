@@ -18,33 +18,36 @@ import (
 
 var createCommand = cli.Command{
 	Name:        "create",
-	Usage:       "create <config.json> <id>",
-	Description: "Creates (allocates) a container.",
+	Usage:       "Create (allocate) a container",
+	Description: createUsage,
 	Action:      createAction,
-	Flags:       []cli.Flag{timeoutFlag},
+	Flags:       []cli.Flag{downloadTimeoutFlag},
 }
 
-var timeoutFlag = cli.DurationFlag{
-	Name:  "t, timeout",
+const createUsage = "create <ID> <manifest.json>"
+
+var downloadTimeoutFlag = cli.DurationFlag{
+	Name:  "download-timeout",
 	Value: agent.DefaultDownloadTimeout + (30 * time.Second), // +30s for call overhead
 	Usage: "Total timeout for remote artifact download and invocation",
 }
 
 func createAction(c *cli.Context) {
 	if len(c.Args()) != 2 {
-		log.Fatalf("usage: create <config.json> <id>")
+		log.Fatalf("usage: %s", createUsage)
 	}
 
 	var (
-		filename = c.Args()[0]
-		id       = c.Args()[1]
-		timeout  = c.Duration("timeout")
+		id              = c.Args()[0]
+		filename        = c.Args()[1]
+		downloadTimeout = c.Duration("download-timeout")
+		andStart        = false
 	)
 
-	create(filename, id, timeout, false)
+	create(id, filename, downloadTimeout, andStart)
 }
 
-func create(filename, id string, timeout time.Duration, andStart bool) {
+func create(id, filename string, downloadTimeout time.Duration, andStart bool) {
 	f, err := os.Open(filename)
 	if err != nil {
 		log.Fatalf("%s: %s", filename, err)
@@ -74,7 +77,7 @@ func create(filename, id string, timeout time.Duration, andStart bool) {
 		agent.ContainerStatusCreated: struct{}{},
 		agent.ContainerStatusDeleted: struct{}{},
 	}
-	wc := client.Wait(id, wanted, timeout)
+	wc := client.Wait(id, wanted, downloadTimeout)
 
 	// Issue create.
 	if err := client.Create(id, cfg); err != nil {
@@ -150,7 +153,7 @@ func chooseEndpoint() *url.URL {
 			ur.URL.Host,
 			ur.HostResources.CPU.Total-ur.HostResources.CPU.Reserved,
 			ur.HostResources.CPU.Total,
-			ur.HostResources.Mem.Total-ur.HostResources.Mem.Reserved,
+			int64(ur.HostResources.Mem.Total)-int64(ur.HostResources.Mem.Reserved),
 			ur.HostResources.Mem.Total,
 			strings.Join(ur.HostResources.Volumes, ", "),
 		)

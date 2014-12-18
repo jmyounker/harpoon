@@ -9,16 +9,17 @@ import (
 )
 
 var (
-	agentURL = flag.String("integ.agent.url", "", "integration test URL")
+	agentURL   = flag.String("integ.agent.url", "", "integration test URL")
+	warheadURL = flag.String("integ.warhead.url", "", "integration test container URL")
 )
 
 func TestAgent(t *testing.T) {
 	var (
 		config = agent.ContainerConfig{
-			ArtifactURL: "http://asset-host.test/busybox.tar.gz",
+			ArtifactURL: *warheadURL,
 			Command: agent.Command{
-				WorkingDir: "/bin",
-				Exec:       []string{"./true"},
+				WorkingDir: "/",
+				Exec:       []string{"bin/warhead", "-listen", "0.0.0.0:$HTTP_PORT"},
 			},
 			Resources: agent.Resources{
 				Mem: 32,
@@ -37,7 +38,7 @@ func TestAgent(t *testing.T) {
 	statuses := map[agent.ContainerStatus]struct{}{
 		agent.ContainerStatusCreated: struct{}{},
 	}
-	wc := client.Wait("basic-test", statuses, time.Second)
+	wc := client.Wait("basic-test", statuses, 10*time.Second)
 	if err := client.Create("basic-test", config); err != nil {
 		t.Fatal(err)
 	}

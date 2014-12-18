@@ -22,6 +22,21 @@ var Command = cli.Command{
 	Action:      configAction,
 	Flags: []cli.Flag{
 		cli.StringFlag{
+			Name:  "product",
+			Value: "harpoon",
+			Usage: "Product category for this container",
+		},
+		cli.StringFlag{
+			Name:  "environment",
+			Value: "dev",
+			Usage: "Environment: dev, staging, or prod",
+		},
+		cli.StringFlag{
+			Name:  "job",
+			Value: "simpleweb",
+			Usage: "Job name for this container",
+		},
+		cli.StringFlag{
 			Name:  "artifact_url",
 			Value: "http://ent.int.s-cloud.net/iss/simpleweb.tar.gz",
 			Usage: "artifact URL",
@@ -166,6 +181,9 @@ func configAction(c *cli.Context) {
 	}
 
 	cfg := agent.ContainerConfig{
+		Product:     c.String("product"),
+		Environment: c.String("environment"),
+		Job:         c.String("job"),
 		ArtifactURL: c.String("artifact_url"),
 		Ports:       ports,
 		Env:         env,
