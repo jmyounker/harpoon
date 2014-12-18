@@ -54,7 +54,7 @@ logfile=$PWD/agent.log
 echo "run: starting agent at localhost:${AGENT_PORT}"
 {
   pushd $rootfs >/dev/null
-  sudo $rootfs/bin/harpoon-agent -run ${rundir} -addr ":${AGENT_PORT}" > $logfile 2>&1 & AGENT_PID=$!
+  sudo $nsinit exec -- $rootfs/bin/harpoon-agent -run ${rundir} -addr ":${AGENT_PORT}" > $logfile 2>&1 & AGENT_PID=$!
   popd >/dev/null
 } || abort "unable to start harpoon-agent"
 trap "nuke 'SimpleHTTPServer $DOWNLOAD_PORT' && rm -rf $httpdir && rm -rf $rootfs && shutdown $AGENT_PID" EXIT
