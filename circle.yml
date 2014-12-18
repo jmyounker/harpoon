@@ -18,4 +18,4 @@ test:
   override:
     - cd $HOME/.go_workspace/src/github.com/soundcloud/harpoon && ./misc/check-style.sh
     - cd $HOME/.go_workspace/src/github.com/soundcloud/harpoon && go test -v ./...
-    - cd $HOME/.go_workspace/src/github.com/soundcloud/harpoon && ./_integration/run.sh
+    - cd $HOME/.go_workspace/src/github.com/soundcloud/harpoon/_integration && ./run.sh
