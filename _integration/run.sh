@@ -33,12 +33,14 @@ fi
 
 # start up http server for artifacts
 DOWNLOAD_PORT=$(random_int 8090 50000)
-(cd $httpdir; python -m SimpleHTTPServer $DOWNLOAD_PORT &)
+pushd $httpdir >/dev/null
+python -m SimpleHTTPServer $DOWNLOAD_PORT & HTTPD_PID=$!
+popd
 # Wait up to six seconds for server to start up
 ./retry 20 0.3 netcat -z localhost $DOWNLOAD_PORT ||
   abort "could not start web server"
 if [ $KEEP_ARTIFACTS -eq 0 ]; then
-   trap "nuke 'SimpleHTTPServer $DOWNLOAD_PORT' && rm -rf $httpdir" EXIT
+   trap "shutdown $HTTPD_PID && rm -rf $httpdir" EXIT
 fi
 
 WARHEAD_URL=http://127.0.0.1:${DOWNLOAD_PORT}/warhead.tgz
@@ -54,7 +56,7 @@ rootfs=/tmp/rootfs.$$.$RANDOM
 echo "run: creating rootfs at $rootfs"
 make_rootfs $rootfs || abort "run: unable to create rootfs"
 if [ $KEEP_ARTIFACTS -eq 0 ]; then
-  trap "nuke 'SimpleHTTPServer $DOWNLOAD_PORT' && rm -rf $httpdir && sudo rm -rf $rootfs" EXIT
+  trap "shutdown $HTTPD_PID && rm -rf $httpdir && sudo rm -rf $rootfs" EXIT
 fi
 
 # svlogd is necessary for collecting logs
@@ -97,18 +99,6 @@ go run config.go -rootfs $rootfs >$rootfs/container.json ||
 
 logfile=$PWD/agent.log
 
-#echo "run: starting dnld"
-#{
-#  # Change into the $rootfs. Nsinit will configure itself from ./container.json
-#  pushd $rootfs >/dev/null
-#  # The path to harpoon-agent is the absolute path *within* the container, as is /run.
-#  sudo $nsinit exec -- /srv/harpoon/bin/dnld -url "${WARHEAD_URL}" > $logfile 2>&1  & DNLD_PID=$!
-#  popd >/dev/null
-#} || abort "unable to start dnld"
-#if [ $KEEP_ARTIFACTS -eq 0 ]; then
-#  trap "shutdown $DNLD_PID && nuke 'SimpleHTTPServer $DOWNLOAD_PORT' && rm -rf $httpdir && sudo rm -rf $rootfs" EXIT
-#fi
-
 echo "run: starting agent at localhost:${AGENT_PORT}"
 {
   # Change into the $rootfs. Nsinit will configure itself from ./container.json
@@ -118,7 +108,7 @@ echo "run: starting agent at localhost:${AGENT_PORT}"
   popd >/dev/null
 } || abort "unable to start harpoon-agent"
 if [ $KEEP_ARTIFACTS -eq 0 ]; then
-  trap "shutdown $AGENT_PID && nuke 'SimpleHTTPServer $DOWNLOAD_PORT' && rm -rf $httpdir && sudo rm -rf $rootfs" EXIT
+  trap "shutdown $AGENT_PID && shutdown $HTTPD_PID && rm -rf $httpdir && sudo rm -rf $rootfs" EXIT
 fi
 
 echo "run: waiting for agent to start"
@@ -142,7 +132,7 @@ echo "run: starting scheduler at localhost:${SCHEDULER_PORT}"
   popd >/dev/null
 } || abort "unable to start harpoon-scheduler"
 if [ $KEEP_ARTIFACTS -eq 0 ]; then
-  trap "shutdown $AGENT_PID && shutdown $SCHEDULER_PID && nuke 'SimpleHTTPServer $DOWNLOAD_PORT' && rm -rf $httpdir && sudo rm -rf $rootfs" EXIT
+  trap "shutdown $SCHEDULER_PID && shutdown $AGENT_PID && shutdown $HTTPED_PID && rm -rf $httpdir && sudo rm -rf $rootfs" EXIT
 fi
 
 echo "run: waiting for scheduler to start"

@@ -48,21 +48,13 @@ function make_rootfs {
     $rootfs/etc/resolv.conf
 }
 
-function nuke {
-  local ptrn found
-  ptrn=$1
-  found=$(ps wwaux | grep "$ptrn" | grep -v grep | awk '{print $2}' | xargs echo)
-  if [ ${#found} -ne 0 ]; then
-    echo $found | xargs kill
-  fi
-}
-
 # shutdown sends SIGTERM and waits for the process to exit. If it takes longer
 # than 5 seconds, it is sent SIGKILL
 function shutdown {
   local pid found
   pid=$1
 
+  echo "Killing $pid"
   sudo kill -SIGTERM $pid
 
   # Can't do the sensible thing with wait because nsinit is detached from
