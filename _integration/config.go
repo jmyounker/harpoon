@@ -30,11 +30,14 @@ func main() {
 		Capabilities: []string{
 			"CHOWN",
 			"DAC_OVERRIDE",
+			"FOWNER",
 			"MKNOD",
 			"SETGID",
 			"SETUID",
 			"SYS_ADMIN",
 			"SYS_CHROOT",
+			//			"SETFCAP",
+			//			"SETPCAP",
 		},
 
 		Namespaces: map[string]bool{
