@@ -310,9 +310,12 @@ func (a *api) handleLog(w http.ResponseWriter, r *http.Request) {
 	h := container.Logs().last(history)
 
 	if isStreamAccept(r.Header.Get("Accept")) {
-		eventsource.Handler(func(_ string, enc *eventsource.Encoder, stop <-chan bool) {
-			a.streamLog(h, container.Logs(), enc, stop)
-		}).ServeHTTP(w, r)
+		// The handler blocks, so it's necessary to put it into a goroutine.
+		go func() {
+			eventsource.Handler(func(_ string, enc *eventsource.Encoder, stop <-chan bool) {
+				a.streamLog(h, container.Logs(), enc, stop)
+			}).ServeHTTP(w, r)
+		}()
 		return
 	}
 
