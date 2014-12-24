@@ -116,7 +116,7 @@ echo "==== Agent: Basic Tests ===="
 go test -v agent-test-basic/basic_test.go -integ.agent.url=${AGENT_URL} -integ.warhead.url=${WARHEAD_URL}
 
 echo "==== Agent: Failed Creation Tests ===="
-# go test -v agent-test-basic/failed_creation_test.go -integ.agent.url=${AGENT_URL}
+go test -v agent-test-basic/failed_creation_test.go -integ.agent.url=${AGENT_URL}
 
 echo "agent logfile: $logfile"
 
