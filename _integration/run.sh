@@ -29,10 +29,12 @@ if [ $KEEP_ARTIFACTS -eq 0 ]; then
     trap "rm -rf $httpdir" EXIT
 fi
 
+logfile=$PWD/httpd.log
+
 # start up http server for artifacts
 DOWNLOAD_PORT=$(random_int 8090 50000)
 pushd $httpdir >/dev/null
-python -m SimpleHTTPServer $DOWNLOAD_PORT & HTTPD_PID=$!
+python -m SimpleHTTPServer $DOWNLOAD_PORT >$logfile 2>&1 & HTTPD_PID=$!
 popd
 # Wait up to six seconds for server to start up
 ./retry 20 0.3 netcat -z localhost $DOWNLOAD_PORT ||
@@ -40,6 +42,8 @@ popd
 if [ $KEEP_ARTIFACTS -eq 0 ]; then
    trap "shutdown $HTTPD_PID && rm -rf $httpdir" EXIT
 fi
+
+echo "httpd logfile: $logfile"
 
 WARHEAD_URL=http://127.0.0.1:${DOWNLOAD_PORT}/warhead.tgz
 
@@ -130,7 +134,7 @@ echo "run: starting scheduler at localhost:${SCHEDULER_PORT}"
   popd >/dev/null
 } || abort "unable to start harpoon-scheduler"
 if [ $KEEP_ARTIFACTS -eq 0 ]; then
-  trap "shutdown $SCHEDULER_PID && shutdown $AGENT_PID && shutdown $HTTPED_PID && rm -rf $httpdir && sudo rm -rf $rootfs" EXIT
+  trap "shutdown $SCHEDULER_PID && shutdown $AGENT_PID && shutdown $HTTPD_PID && rm -rf $httpdir && sudo rm -rf $rootfs" EXIT
 fi
 
 echo "run: waiting for scheduler to start"
