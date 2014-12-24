@@ -10,8 +10,6 @@ KEEP_ARTIFACTS=0
 AGENT_PORT=$(random_int 7000 50000)
 AGENT_URL="http://127.0.0.1:$AGENT_PORT"
 
-AGENT_LOG_PORT=$(random_int 3000 50000)
-
 SCHEDULER_PORT=$(random_int 4000 50000)
 SCHEDULER_URL="http://127.0.0.1:$SCHEDULER_PORT"
 
@@ -104,7 +102,7 @@ echo "run: starting agent at localhost:${AGENT_PORT}"
   # Change into the $rootfs. Nsinit will configure itself from ./container.json
   pushd $rootfs >/dev/null
   # The path to harpoon-agent is the absolute path *within* the container, as is /run.
-  sudo $nsinit exec -- /srv/harpoon/bin/harpoon-agent -addr ":${AGENT_PORT}" -log.addr ":${AGENT_LOG_PORT}" -download.timeout=20s -debug > $logfile 2>&1  & AGENT_PID=$!
+  sudo $nsinit exec -- /srv/harpoon/bin/harpoon-agent -addr ":${AGENT_PORT}" -download.timeout=20s -debug > $logfile 2>&1  & AGENT_PID=$!
   popd >/dev/null
 } || abort "unable to start harpoon-agent"
 if [ $KEEP_ARTIFACTS -eq 0 ]; then
