@@ -30,14 +30,15 @@ func main() {
 		Capabilities: []string{
 			"CHOWN",
 			"DAC_OVERRIDE",
+			// FOWNER is necessary for tar to set file utimes.
 			"FOWNER",
+			// KILL is necessary for stopping containers.
+			"KILL",
 			"MKNOD",
 			"SETGID",
 			"SETUID",
 			"SYS_ADMIN",
 			"SYS_CHROOT",
-			//			"SETFCAP",
-			//			"SETPCAP",
 		},
 
 		Namespaces: map[string]bool{
