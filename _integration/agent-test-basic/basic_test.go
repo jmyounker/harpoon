@@ -15,7 +15,7 @@ var (
 	warheadURL = flag.String("integ.warhead.url", "", "integration test container URL")
 )
 
-func watchEvents(agentURL string, id string) chan struct{} {
+func watchEvents(agentURL string, id string) func() {
 	c, err := agent.NewClient(agentURL)
 	if err != nil {
 		panic("can't connect to agent to watch events")
@@ -26,7 +26,7 @@ func watchEvents(agentURL string, id string) chan struct{} {
 		panic("can't watch events")
 	}
 
-	stop := make(chan struct{})
+	stopc := make(chan struct{})
 
 	go func() {
 		for {
@@ -43,45 +43,48 @@ func watchEvents(agentURL string, id string) chan struct{} {
 					fmt.Printf("EVENT: %#v\n", event)
 				}
 
-			case <-stop:
+			case <-stopc:
 				stopper.Stop()
 				return
 			}
 		}
 	}()
 
-	return stop
+	return func() {
+		stopc <- struct{}{}
+	}
 }
 
-func watchLogs(agentURL string, id string) chan struct{} {
+func watchLogs(agentURL string, id string) func() {
 	c, err := agent.NewClient(agentURL)
 	if err != nil {
 		panic("can't connect to agent to watch events")
 	}
 
-	logs, stopper, err := c.Log(id, 1)
+	logs, _, err := c.Log(id, 10)
 	if err != nil {
 		panic("can't watch logs")
 	}
 
-	stop := make(chan struct{})
+	stopc := make(chan struct{})
 
 	go func() {
 		for {
 			select {
-			case log := <-logs:
-				if log == "" {
+			case line := <-logs:
+				if line == "" {
 					continue
 				}
-				fmt.Printf("LOG: %s\n", log)
-			case <-stop:
-				stopper.Stop()
+				fmt.Printf("LOG: %s", line)
+			case <-stopc:
 				return
 			}
 		}
 	}()
 
-	return stop
+	return func() {
+		stopc <- struct{}{}
+	}
 }
 
 func TestAgent(t *testing.T) {
@@ -90,7 +93,7 @@ func TestAgent(t *testing.T) {
 			ArtifactURL: *warheadURL,
 			Command: agent.Command{
 				WorkingDir: "/",
-				Exec:       []string{"bin/warhead", "-listen", "0.0.0.0:$PORT_HTTP"},
+				Exec:       []string{"bin/warhead", "-listen", "0.0.0.0:$PORT_HTTP", "-log-interval", "0.1s"},
 			},
 			Resources: agent.Resources{
 				Mem: 32,
@@ -109,9 +112,6 @@ func TestAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	stopec := watchEvents(*agentURL, cid)
-	defer func() { stopec <- struct{}{} }()
-
 	// Create container
 	statuses := map[agent.ContainerStatus]struct{}{
 		agent.ContainerStatusCreated: struct{}{},
@@ -124,9 +124,6 @@ func TestAgent(t *testing.T) {
 	if w.Err != nil {
 		t.Fatal(w.Err)
 	}
-
-	stoplc := watchLogs(*agentURL, cid)
-	defer func() { stoplc <- struct{}{} }()
 
 	// Start container.  When successful the container will transition from created->running.
 	statuses = map[agent.ContainerStatus]struct{}{
