@@ -311,11 +311,9 @@ func (a *api) handleLog(w http.ResponseWriter, r *http.Request) {
 
 	if isStreamAccept(r.Header.Get("Accept")) {
 		// The handler blocks, so it's necessary to put it into a goroutine.
-		go func() {
-			eventsource.Handler(func(_ string, enc *eventsource.Encoder, stop <-chan bool) {
-				a.streamLog(h, container.Logs(), enc, stop)
-			}).ServeHTTP(w, r)
-		}()
+		eventsource.Handler(func(_ string, enc *eventsource.Encoder, stop <-chan bool) {
+			a.streamLog(h, container.Logs(), enc, stop)
+		}).ServeHTTP(w, r)
 		return
 	}
 
