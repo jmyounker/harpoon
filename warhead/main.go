@@ -6,6 +6,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -28,19 +29,51 @@ func main() {
 		leakInterval = flag.Duration("leak-interval", 0, "rate of memory leakage [0 is off]")
 		oom          = flag.Bool("oom", false, "Terminate from batch mode with an OOM")
 		runTime      = flag.Duration("run-time", 0*time.Second, "Time to run when in batch-mode")
+		logInterval  = flag.Duration("log-interval", 0*time.Second, "Time between log messages [0 is off]")
 	)
 
 	log.SetOutput(os.Stdout)
 	flag.Parse()
 	go signalWatcher()
 	if *batchMode {
-		batchMain(*leakInterval, *runTime, *oom, *exitCode)
+		batchMain(*leakInterval, *logInterval, *runTime, *oom, *exitCode)
 	} else {
-		serverMain(*leakInterval, *listen, *boomMsg)
+		serverMain(*leakInterval, *logInterval, *listen, *boomMsg)
 	}
 }
 
-func batchMain(leakInterval time.Duration, runTime time.Duration, oom bool, exitCode int) {
+// logMessages produces a log message every logInterval seconds.
+// Calling the returned function terminates the log message printing.
+func logMessages(logInterval time.Duration) func() {
+	// Do nothing with a duration of zero.
+	if logInterval == 0*time.Second {
+		return func() {}
+	}
+
+	stopc := make(chan struct{})
+
+	i := 0
+	go func() {
+		for {
+			select {
+			case <-time.After(logInterval):
+				fmt.Printf("log msg %d\n", i)
+				time.Sleep(logInterval)
+				i += 1
+			case <-stopc:
+				return
+			}
+		}
+	}()
+
+	return func() {
+		stopc <- struct{}{}
+	}
+}
+
+func batchMain(leakInterval time.Duration, logInterval time.Duration, runTime time.Duration, oom bool, exitCode int) {
+	stop := logMessages(logInterval)
+	defer stop()
 	if leakInterval != 0 {
 		go leak(leakInterval)
 	}
@@ -65,7 +98,9 @@ func allocateTooMuchMemory() {
 	}
 }
 
-func serverMain(leakInterval time.Duration, listen string, boomMsg string) {
+func serverMain(leakInterval time.Duration, logInterval time.Duration, listen string, boomMsg string) {
+	stop := logMessages(logInterval)
+	defer stop()
 	http.HandleFunc(
 		"/",
 		func(w http.ResponseWriter, r *http.Request) {
