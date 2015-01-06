@@ -54,8 +54,9 @@ func TestGetPortRecordsAllocation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, ok := pdb.ports[p1]; !ok {
-		t.Error("Port allocation was not recorded")
+	allocations := pdb.allocations()
+	if _, ok := allocations[p1]; !ok {
+		t.Error("could not claim port")
 	}
 }
 
@@ -71,8 +72,9 @@ func TestReleasePortRemovesAllocation(t *testing.T) {
 	}
 
 	pdb.releasePorts(ports)
-	if _, ok := pdb.ports[p1]; ok {
-		t.Error("Port allocation was not returned")
+	allocations := pdb.allocations()
+	if _, ok := allocations[p1]; ok {
+		t.Error("could not claim port")
 	}
 }
 
@@ -81,8 +83,7 @@ func TestCantGetAPortFromAFullyAllocatedRange(t *testing.T) {
 	defer pdb.exit()
 	ports := map[string]uint16{"p1": 0, "p2": 0, "p3": 0, "p4": 0}
 
-	err := pdb.acquirePorts(ports)
-	if err == nil {
+	if err := pdb.acquirePorts(ports); err == nil {
 		t.Error("want error")
 	}
 }
@@ -137,7 +138,8 @@ func TestClaimPort(t *testing.T) {
 
 	pdb.claimPorts(ports)
 
-	if _, ok := pdb.ports[p1]; !ok {
+	allocations := pdb.allocations()
+	if _, ok := allocations[p1]; !ok {
 		t.Error("could not claim port")
 	}
 }
@@ -158,7 +160,7 @@ func TestStaticReacquisitionFailsWithoutAlteringClaimedPorts(t *testing.T) {
 		t.Error("intersecting ports should have failed")
 	}
 
-	if want, have := map[uint16]struct{}{p1: {}}, pdb.ports; !reflect.DeepEqual(want, have) {
+	if want, have := map[uint16]struct{}{p1: {}}, pdb.allocations(); !reflect.DeepEqual(want, have) {
 		t.Errorf("wrong port allocations received: want %v, have %v", want, have)
 	}
 }
@@ -180,7 +182,7 @@ func TestDynamicReacquisitionFailsWithoutAlteringClaimedPorts(t *testing.T) {
 		t.Error("intersecting ports should have failed")
 	}
 
-	if want, have := map[uint16]struct{}{p1: struct{}{}}, pdb.ports; !reflect.DeepEqual(want, have) {
+	if want, have := map[uint16]struct{}{p1: struct{}{}}, pdb.allocations(); !reflect.DeepEqual(want, have) {
 		t.Errorf("wrong port allocations received: want %v, have %v", want, have)
 	}
 }
@@ -201,18 +203,17 @@ func TestReclaimingFailsWithoutAlteringClaimedPorts(t *testing.T) {
 		t.Error("intersecting ports should have failed")
 	}
 
-	if want, have := map[uint16]struct{}{p1: {}}, pdb.ports; !reflect.DeepEqual(want, have) {
+	if want, have := map[uint16]struct{}{p1: {}}, pdb.allocations(); !reflect.DeepEqual(want, have) {
 		t.Errorf("wrong port allocations received: want %v, have %v", want, have)
 	}
 }
 
 func TestNextPort(t *testing.T) {
-	pdb := newPortDB(7, 9)
-	defer pdb.exit()
+	dr := newPortRange(7, 9)
 
 	var a string
 	for i := 0; i < 4; i++ {
-		a += fmt.Sprintf("%d", pdb.dynamicRange.nextPort())
+		a += fmt.Sprintf("%d", dr.nextPort())
 	}
 
 	if want, have := "7897", a; want != have {
