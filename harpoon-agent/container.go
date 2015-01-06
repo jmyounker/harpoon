@@ -549,7 +549,10 @@ func extractArtifact(src io.Reader, dst string, compression string) (err error) 
 	cmd.Stdin = src
 
 	// It's incredibly hard to debug failures in tar unless stderr is available.
-	// Fortunately tar only spews to stderr when something goes wrong.
+	//
+	// Sadly tar has error conditions in which it reports success even though it fails.
+	// (Seen when missing the FOWNER capability.)  Therefore we can't depend upon the
+	// error code to determine when to report stderr.
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		return errors.New("could not open tar's stderr")
@@ -561,7 +564,7 @@ func extractArtifact(src io.Reader, dst string, compression string) (err error) 
 
 	tarout, err := ioutil.ReadAll(stderr)
 	if err != nil {
-		log.Printf("error while from tar's stderr: %s", err)
+		log.Printf("error while reading from tar's stderr: %s", err)
 	}
 	if len(tarout) != 0 {
 		log.Printf("stderr from tar: %s", string(tarout))
