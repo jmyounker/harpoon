@@ -536,12 +536,10 @@ const (
 	containerStop                    = "stop"
 )
 
-type logWriter struct {
-	fmt string
-}
+type logWriter string
 
 func (w logWriter) Write(s []byte) (int, error) {
-	log.Printf(w.fmt, string(s))
+	log.Printf(string(w), string(s))
 	return len(s), nil
 }
 
@@ -554,8 +552,8 @@ func extractArtifact(src io.Reader, dst string, compression string) (err error) 
 
 	// An ID to associate stderr messages with a process. A number between [1,999] should
 	// be enough to prevent a collision while small enough to be easily readable.
-	logId := strconv.Itoa(rand.Intn(999) + 1)
-	log.Printf("extracting with cmd[%s]: tar -xv%s -C %s ", logId, compression, dst)
+	logID := strconv.Itoa(rand.Intn(999) + 1)
+	log.Printf("extracting with cmd[%s]: tar -xv%s -C %s ", logID, compression, dst)
 	cmd := exec.Command("tar", "-xv"+compression, "-C", dst)
 	cmd.Stdin = src
 	// It's incredibly hard to debug failures in tar unless stderr is available.
@@ -563,7 +561,7 @@ func extractArtifact(src io.Reader, dst string, compression string) (err error) 
 	// Sadly tar has error conditions in which it reports success even though it fails.
 	// (Seen when missing the FOWNER capability.)  Therefore we can't depend upon the
 	// error code to determine when to report stderr.
-	cmd.Stderr = logWriter{"tar[" + logId + "]> %s"}
+	cmd.Stderr = logWriter("tar[" + logID + "]> %s")
 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("tar extraction failed: %s", err)
