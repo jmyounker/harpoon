@@ -2,8 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -542,13 +544,35 @@ func extractArtifact(src io.Reader, dst string, compression string) (err error) 
 		}
 	}()
 
-	cmd := exec.Command("tar", "-C", dst, "-x"+compression)
+	log.Printf("extracting with cmd: tar -xv%s -C %s ", compression, dst)
+	cmd := exec.Command("tar", "-xv"+compression, "-C", dst)
 	cmd.Stdin = src
 
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("tar extraction failed: %s", err)
+	// It's incredibly hard to debug failures in tar unless stderr is available.
+	//
+	// Sadly tar has error conditions in which it reports success even though it fails.
+	// (Seen when missing the FOWNER capability.)  Therefore we can't depend upon the
+	// error code to determine when to report stderr.
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return errors.New("could not open tar's stderr")
 	}
 
+	if err := cmd.Start(); err != nil {
+		log.Printf("could not start tar command: %s", err)
+	}
+
+	tarout, err := ioutil.ReadAll(stderr)
+	if err != nil {
+		log.Printf("error while reading from tar's stderr: %s", err)
+	}
+	if len(tarout) != 0 {
+		log.Printf("stderr from tar: %s", string(tarout))
+	}
+
+	if err := cmd.Wait(); err != nil {
+		return fmt.Errorf("tar extraction failed: %s", err)
+	}
 	return nil
 }
 
