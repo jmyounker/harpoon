@@ -11,12 +11,10 @@ import (
 // It provides threadsafe and atomic operations.  All ports are claimed, acquired,
 // or released atomically.
 type portDB struct {
-	ports        map[uint16]struct{} // set of static ports
-	dynamicRange *portRange          // portRange operates on dynamicPorts
-
 	acquirePortsc chan acquirePortCmd
 	claimPortsc   chan acquirePortCmd
 	releasePortsc chan acquirePortCmd
+	allocationsc  chan chan<- map[uint16]struct{}
 	exitc         chan chan struct{}
 }
 
@@ -26,18 +24,15 @@ type acquirePortCmd struct {
 }
 
 func newPortDB(startPort, endPort uint16) *portDB {
-	ports := map[uint16]struct{}{}
 	pdb := &portDB{
-		ports:        ports,
-		dynamicRange: newPortRange(startPort, endPort),
-
 		acquirePortsc: make(chan acquirePortCmd),
 		claimPortsc:   make(chan acquirePortCmd),
 		releasePortsc: make(chan acquirePortCmd),
+		allocationsc:  make(chan chan<- map[uint16]struct{}),
 		exitc:         make(chan chan struct{}),
 	}
 
-	go pdb.loop()
+	go pdb.loop(startPort, endPort)
 
 	return pdb
 }
@@ -87,22 +82,38 @@ func (pdb *portDB) releasePorts(ports map[string]uint16) {
 	<-errc
 }
 
+func (pdb *portDB) allocations() map[uint16]struct{} {
+	outc := make(chan map[uint16]struct{})
+	pdb.allocationsc <- outc
+	return <-outc
+}
+
 func (pdb *portDB) exit() {
 	exitc := make(chan struct{})
 	pdb.exitc <- exitc
 	<-exitc
 }
 
-func (pdb *portDB) loop() {
+func (pdb *portDB) loop(startPort, endPort uint16) {
+	var (
+		ports        = map[uint16]struct{}{}
+		dynamicRange = newPortRange(startPort, endPort)
+	)
 	for {
 		select {
 		case cmd := <-pdb.acquirePortsc:
-			cmd.errc <- pdb.acquirePortsUnsafe(cmd.ports)
+			cmd.errc <- pdb.acquirePortsUnsafe(ports, cmd.ports, dynamicRange)
 		case cmd := <-pdb.claimPortsc:
-			cmd.errc <- pdb.claimPortsUnsafe(cmd.ports)
+			cmd.errc <- pdb.claimPortsUnsafe(ports, cmd.ports)
 		case cmd := <-pdb.releasePortsc:
-			pdb.releasePortsUnsafe(cmd.ports)
+			pdb.releasePortsUnsafe(ports, cmd.ports)
 			close(cmd.errc)
+		case out := <-pdb.allocationsc:
+			p := make(map[uint16]struct{}, len(ports))
+			for k, v := range ports {
+				p[k] = v
+			}
+			out <- p
 		case exitc := <-pdb.exitc:
 			close(exitc)
 			return
@@ -112,9 +123,9 @@ func (pdb *portDB) loop() {
 
 // acquirePortsUnsafe has the same interfaces as acquirePorts, destructively
 // replacing port values of zero in the 'ports' map with allocated port numbers.
-func (pdb *portDB) acquirePortsUnsafe(ports map[string]uint16) error {
+func (pdb *portDB) acquirePortsUnsafe(held map[uint16]struct{}, requested map[string]uint16, dr *portRange) error {
 	staticPorts := map[uint16]struct{}{}
-	for _, port := range ports {
+	for _, port := range requested {
 		if port != 0 {
 			staticPorts[port] = struct{}{}
 		}
@@ -122,7 +133,7 @@ func (pdb *portDB) acquirePortsUnsafe(ports map[string]uint16) error {
 
 	// Check if the requested ports are available. If this passes then the sets are
 	// mutually exclusive.
-	if areSetsIntersecting(pdb.ports, staticPorts) {
+	if areSetsIntersecting(held, staticPorts) {
 		return errors.New("at least one static port already claimed")
 	}
 	if anyPortsInUse(staticPorts) {
@@ -132,46 +143,46 @@ func (pdb *portDB) acquirePortsUnsafe(ports map[string]uint16) error {
 	// Marks all statically allocated ports as being claimed. This must be done before
 	// attempting dynamic allocation, because dynamic allocation depends on knowing if
 	// any ports in the range it manages were explicitly allocated.
-	setUnionInto(pdb.ports, staticPorts)
+	setUnionInto(held, staticPorts)
 
 	// Chooses the dynamic set of ports. This happens atomically, with no update to 'ports',
 	// so there's no need for cleanup 'ports'.
-	err := pdb.dynamicRange.choosePorts(pdb.ports, ports)
+	err := dr.choosePorts(held, requested)
 	// However if it fails, we do need to undo the static allocations we made.  We can do this
 	// because we ensure the port sets are mutually exclusive.
 	if err != nil {
-		setSubtractInto(pdb.ports, staticPorts)
+		setSubtractInto(held, staticPorts)
 		return err
 	}
 	return nil
 }
 
-func (pdb *portDB) claimPortsUnsafe(ports map[string]uint16) error {
+func (pdb *portDB) claimPortsUnsafe(held map[uint16]struct{}, requested map[string]uint16) error {
 	// Get set of ports
 	portSet := map[uint16]struct{}{}
-	for _, port := range ports {
+	for _, port := range requested {
 		portSet[port] = struct{}{}
 	}
 
 	// Check if ports are available for claiming
-	if areSetsIntersecting(pdb.ports, portSet) {
+	if areSetsIntersecting(held, portSet) {
 		return errors.New("at least one static port already claimed")
 	}
 
 	// Previous guard should prevent double-dipping from the port bowl
-	setUnionInto(pdb.ports, portSet)
+	setUnionInto(held, portSet)
 
 	return nil
 }
 
-func (pdb *portDB) releasePortsUnsafe(ports map[string]uint16) {
+func (pdb *portDB) releasePortsUnsafe(held map[uint16]struct{}, requested map[string]uint16) {
 	// Get set of ports
 	portSet := map[uint16]struct{}{}
-	for _, port := range ports {
+	for _, port := range requested {
 		portSet[port] = struct{}{}
 	}
 
-	setSubtractInto(pdb.ports, portSet)
+	setSubtractInto(held, portSet)
 }
 
 // portRange manages a range of dynamically allocated ports.
