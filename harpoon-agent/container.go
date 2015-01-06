@@ -552,8 +552,9 @@ func extractArtifact(src io.Reader, dst string, compression string) (err error) 
 		}
 	}()
 
-	// Include an ID to associate stderr messages with a process
-	logId := strconv.Itoa(rand.Intn(998) + 1)
+	// An ID to associate stderr messages with a process. A number between [1,999] should
+	// be enough to prevent a collision while small enough to be easily readable.
+	logId := strconv.Itoa(rand.Intn(999) + 1)
 	log.Printf("extracting with cmd[%s]: tar -xv%s -C %s ", logId, compression, dst)
 	cmd := exec.Command("tar", "-xv"+compression, "-C", dst)
 	cmd.Stdin = src
