@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
+	"math/rand"
 )
 
 // container is a high level interface to an operating system container. The
@@ -551,7 +552,9 @@ func extractArtifact(src io.Reader, dst string, compression string) (err error) 
 		}
 	}()
 
-	log.Printf("extracting with cmd: tar -xv%s -C %s ", compression, dst)
+	// Include an ID to associate stderr messages with a process
+	logId := strconv.Itoa(rand.Intn(998) + 1)
+	log.Printf("extracting with cmd[%s]: tar -xv%s -C %s ", logId, compression, dst)
 	cmd := exec.Command("tar", "-xv"+compression, "-C", dst)
 	cmd.Stdin = src
 	// It's incredibly hard to debug failures in tar unless stderr is available.
@@ -559,7 +562,7 @@ func extractArtifact(src io.Reader, dst string, compression string) (err error) 
 	// Sadly tar has error conditions in which it reports success even though it fails.
 	// (Seen when missing the FOWNER capability.)  Therefore we can't depend upon the
 	// error code to determine when to report stderr.
-	cmd.Stderr = logWriter{"tar> %s"}
+	cmd.Stderr = logWriter{"tar[" + logId + "]> %s"}
 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("tar extraction failed: %s", err)
