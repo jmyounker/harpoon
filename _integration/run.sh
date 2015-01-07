@@ -116,11 +116,16 @@ fi
 echo "run: waiting for agent to start"
 ./retry 5 1 curl -s ${AGENT_URL}/api/v0/containers || abort "could not start agent"
 
+function integ_test_agent {
+  go test -v $1 agent-test-basic/integ_test.go -integ.agent.url=${AGENT_URL} -integ.warhead.url=${WARHEAD_URL}
+}
+
 echo "==== Agent: Basic Tests ===="
-go test -v agent-test-basic/basic_test.go -integ.agent.url=${AGENT_URL} -integ.warhead.url=${WARHEAD_URL}
+integ_test_agent agent-test-basic/basic_test.go
 
 echo "==== Agent: Failed Creation Tests ===="
-go test -v agent-test-basic/failed_creation_test.go -integ.agent.url=${AGENT_URL}
+integ_test_agent agent-test-basic/failed_creation_test.go
+
 
 echo "agent logfile: $logfile"
 
