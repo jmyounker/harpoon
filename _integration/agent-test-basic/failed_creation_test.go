@@ -6,7 +6,7 @@ import (
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
 
-func TestAgent(t *testing.T) {
+func TestFailure(t *testing.T) {
 	cf := newContainerFixture(t, "stillborn-instance")
 	// Useless URL which will never load
 	cf.config.ArtifactURL = "http://asset-host.testisquat/completely_bogus.tgz"

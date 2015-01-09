@@ -100,9 +100,25 @@ func (cf *containerFixture) stop(statuses ...agent.ContainerStatus) {
 }
 
 func (cf *containerFixture) destroy() {
+	statusSet := map[agent.ContainerStatus]struct{}{
+		agent.ContainerStatusDeleted: struct{}{},
+	}
+	wc := cf.client.Wait(cf.id, statusSet, 2*time.Second)
 	if err := cf.client.Destroy(cf.id); err != nil {
 		cf.t.Fatal(err)
 	}
+	w := <-wc
+	if w.Err != nil {
+		cf.t.Fatalf("Stop failed: %s", w.Err)
+	}
+}
+
+func (cf *containerFixture) wait(t time.Duration, statuses ...agent.ContainerStatus) chan agent.WaitResult {
+	statusSet := map[agent.ContainerStatus]struct{}{}
+	for _, s := range statuses {
+		statusSet[s] = struct{}{}
+	}
+	return cf.client.Wait(cf.id, statusSet, t)
 }
 
 func (cf *containerFixture) watchEvents() func() {
