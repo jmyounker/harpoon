@@ -24,7 +24,7 @@ import (
 // API interacts directly with this interface. Implementers of this interface
 // must be safe for concurrent access.
 type container interface {
-	Create(unregisterAtFailure func(), downloadTimeout time.Duration) error
+	Create() error
 	Instance() agent.ContainerInstance
 	Destroy() error
 	Start() error
@@ -48,6 +48,8 @@ type realContainer struct {
 	configuredVolumes volumes
 	containerRoot     string
 	portDB            *portDB
+	unregister        func()
+	downloadTimeout   time.Duration
 	logs              *containerLog
 	supervisor        *supervisor
 	containerStatec   chan agent.ContainerProcessState
@@ -71,6 +73,8 @@ func newRealContainer(
 	config agent.ContainerConfig,
 	debug bool,
 	pdb *portDB,
+	unregister func(),
+	downloadTimeout time.Duration,
 ) container {
 	c := &realContainer{
 		ContainerInstance: agent.ContainerInstance{
@@ -83,6 +87,8 @@ func newRealContainer(
 		containerRoot:     containerRoot,
 		debug:             debug,
 		portDB:            pdb,
+		unregister:        unregister,
+		downloadTimeout:   downloadTimeout,
 		logs:              newContainerLog(containerLogRingBufferSize),
 		subscribers:       map[chan<- agent.ContainerInstance]struct{}{},
 		createc:           make(chan createRequest),
@@ -100,11 +106,9 @@ func newRealContainer(
 	return c
 }
 
-func (c *realContainer) Create(unregister func(), downloadTimeout time.Duration) error {
+func (c *realContainer) Create() error {
 	req := createRequest{
-		unregister:      unregister,
-		downloadTimeout: downloadTimeout,
-		resp:            make(chan error),
+		resp: make(chan error),
 	}
 	c.createc <- req
 	return <-req.resp
@@ -158,7 +162,7 @@ func (c *realContainer) loop() {
 		select {
 		case req := <-c.createc:
 			incContainerCreate(1)
-			err := c.create(req.unregister, req.downloadTimeout)
+			err := c.create()
 			if err != nil {
 				incContainerCreateFailure(1)
 			}
@@ -266,7 +270,7 @@ func (c *realContainer) Exit() {
 	<-q
 }
 
-func (c *realContainer) create(unregister func(), downloadTimeout time.Duration) error {
+func (c *realContainer) create() error {
 	var (
 		rundir = filepath.Join(c.containerRoot, c.ID)
 		logdir = filepath.Join("/srv/harpoon/log/", c.ID)
@@ -282,7 +286,7 @@ func (c *realContainer) create(unregister func(), downloadTimeout time.Duration)
 	defer func() {
 		if !success {
 			c.destroy()
-			unregister()
+			c.unregister()
 		}
 	}()
 
@@ -323,13 +327,13 @@ func (c *realContainer) create(unregister func(), downloadTimeout time.Duration)
 		log.Printf("agent file written to: %s", agentJSONPath)
 	}
 
-	go c.secondPhaseCreate(unregister, downloadTimeout)
+	go c.secondPhaseCreate()
 
 	success = true
 	return nil
 }
 
-func (c *realContainer) secondPhaseCreate(unregister func(), downloadTimeout time.Duration) {
+func (c *realContainer) secondPhaseCreate() {
 	var (
 		rundir = filepath.Join(c.containerRoot, c.ID)
 		logdir = filepath.Join("/srv/harpoon/log/", c.ID)
@@ -342,11 +346,11 @@ func (c *realContainer) secondPhaseCreate(unregister func(), downloadTimeout tim
 	defer func() {
 		if !success {
 			c.destroy()
-			unregister()
+			c.unregister()
 		}
 	}()
 
-	rootfs, err := c.fetchArtifact(downloadTimeout)
+	rootfs, err := c.fetchArtifact()
 	if err != nil {
 		log.Printf("fetch: %s", err)
 		return
@@ -429,10 +433,11 @@ func (c *realContainer) destroy() error {
 
 	c.subscribers = map[chan<- agent.ContainerInstance]struct{}{}
 
+	c.unregister() // remove self from registry
 	return nil
 }
 
-func (c *realContainer) fetchArtifact(downloadTimeout time.Duration) (string, error) {
+func (c *realContainer) fetchArtifact() (string, error) {
 	var (
 		artifactURL                            = c.ContainerConfig.ArtifactURL
 		artifactPath, artifactCompression, err = getArtifactDetails(artifactURL)
@@ -452,7 +457,7 @@ func (c *realContainer) fetchArtifact(downloadTimeout time.Duration) (string, er
 		return "", err
 	}
 
-	client := http.Client{Timeout: downloadTimeout}
+	client := http.Client{Timeout: c.downloadTimeout}
 	resp, err := client.Get(artifactURL)
 	if err != nil {
 		incContainerArtifactDownloadFailure(1)
@@ -599,9 +604,7 @@ func getArtifactDetails(artifactURL string) (string, string, error) {
 }
 
 type createRequest struct {
-	unregister      func()
-	downloadTimeout time.Duration
-	resp            chan error
+	resp chan error
 }
 
 type destroyRequest struct {

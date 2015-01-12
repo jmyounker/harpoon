@@ -16,7 +16,7 @@ func TestMessagesGetWrittenToLogs(t *testing.T) {
 
 	createReceiveLogsFixture(t, registry)
 
-	c := newFakeContainer("123", "", volumes{}, agent.ContainerConfig{}, false, nil)
+	c := newFakeContainer("123", "", volumes{}, agent.ContainerConfig{}, false, nil, func() {}, 0)
 	registry.register(c)
 
 	// UDP has some weirdness with processing, so we use the container log's subscription
@@ -42,7 +42,7 @@ func TestLogRoutingOfDefectiveMessages(t *testing.T) {
 
 	createReceiveLogsFixture(t, registry)
 
-	c := newFakeContainer("123", "", volumes{}, agent.ContainerConfig{}, false, nil)
+	c := newFakeContainer("123", "", volumes{}, agent.ContainerConfig{}, false, nil, func() {}, 0)
 	registry.register(c)
 
 	linec := make(chan string, 10) // Plenty of room before anything gets dropped
@@ -58,7 +58,7 @@ func TestLogRoutingOfDefectiveMessages(t *testing.T) {
 
 func TestNonBlockingLoop(t *testing.T) {
 	r := newRegistry(nopServiceDiscovery{})
-	c := newFakeContainer("123", "", volumes{}, agent.ContainerConfig{}, false, nil)
+	c := newFakeContainer("123", "", volumes{}, agent.ContainerConfig{}, false, nil, func() {}, 0)
 	r.register(c)
 	statec := make(chan agent.ContainerInstance)
 	statec2 := make(chan agent.ContainerInstance)

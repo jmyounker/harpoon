@@ -120,7 +120,7 @@ func (a *api) handleCreate(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	container := newContainer(id, a.root, a.vols, config, a.debug, a.portDB)
+	container := newContainer(id, a.root, a.vols, config, a.debug, a.portDB, func() { a.registry.remove(id) }, a.downloadTimeout)
 
 	undo = append(undo, func() { container.Exit() })
 
@@ -131,7 +131,7 @@ func (a *api) handleCreate(w http.ResponseWriter, r *http.Request) {
 
 	undo = append(undo, func() { a.registry.remove(id) })
 
-	if err := container.Create(func() { a.registry.remove(id) }, a.downloadTimeout); err != nil {
+	if err := container.Create(); err != nil {
 		log.Printf("[%s] create: %s", id, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -207,8 +207,6 @@ func (a *api) handleDestroy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	a.registry.remove(id)
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("destroy OK"))
