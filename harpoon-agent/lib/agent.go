@@ -370,16 +370,35 @@ type ContainerInstance struct {
 type ContainerStatus string
 
 const (
+	// ContainerStatusCreating is the starting state.
+	ContainerStatusInitial ContainerStatus = "initial"
+
+	// ContainerStatusCreating indicates the container has been successfully
+	// PUT on the agent, but that hasn't completed. The creating state transitions
+	// to created or destroyed depending upon whether creation succeeds or fails.
+	ContainerStatusCreating ContainerStatus = "creating"
+
 	// ContainerStatusCreated indicates the container has been successfully
 	// PUT on the agent, but hasn't yet been started. Once a container leaves
 	// the created state, it will only come back if the agent is restarted
 	// while the container is in a stopped state.
 	ContainerStatusCreated ContainerStatus = "created"
 
+	// ContainerStatusStarting indicates the container is transitioning
+	// from a down state to a running state.
+	ContainerStatusStarting ContainerStatus = "starting"
+
 	// ContainerStatusRunning indicates the container is succesfully running
 	// from the perspective of the agent. It implies nothing about the
 	// healthiness of the process.
 	ContainerStatusRunning ContainerStatus = "running"
+
+	// ContainerStatusStopping indicates the container is transitioning
+	// from running to down state.
+	ContainerStatusStopping ContainerStatus = "stopping"
+
+	// ContainerStatusStopped indicates the container has been manually stopped.
+	ContainerStatusStopped ContainerStatus = "stopped"
 
 	// ContainerStatusFailed indicates the container has exited with a nonzero
 	// return code. In most cases, this is a very short-lived state, as the
@@ -391,6 +410,10 @@ const (
 	// state, as the agent will not restart the container. (We should probably
 	// think about if and how to reap finished containers.)
 	ContainerStatusFinished ContainerStatus = "finished"
+
+	// ContainerStatusRestartWait indicates the container will soon transition from
+	// failed or finished to starting.
+	ContainerStatusRestartWait ContainerStatus = "restartWait"
 
 	// ContainerStatusDeleted is a special meta-state used only in event
 	// signaling. It's sent to event stream subscribers when a container is
