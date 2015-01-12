@@ -286,7 +286,6 @@ func (c *realContainer) create() error {
 	defer func() {
 		if !success {
 			c.destroy()
-			c.unregister()
 		}
 	}()
 
@@ -346,7 +345,6 @@ func (c *realContainer) secondPhaseCreate() {
 	defer func() {
 		if !success {
 			c.destroy()
-			c.unregister()
 		}
 	}()
 
