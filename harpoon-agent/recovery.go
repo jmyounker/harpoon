@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/soundcloud/harpoon/harpoon-agent/lib"
 )
@@ -54,7 +55,9 @@ func recoverContainer(id string, containerRoot string, r *registry, pdb *portDB,
 		return fmt.Errorf("could not parse agent file: %s", err)
 	}
 
-	c := newContainer(id, containerRoot, vols, agentConfig, debug, pdb)
+	// Because the container already exists the download argument will never be used, and
+	// therefore its value is completely arbitrary.
+	c := newContainer(id, containerRoot, vols, agentConfig, debug, pdb, func() { r.remove(id) }, 42*time.Second)
 	if err := c.Recover(); err != nil {
 		c.Exit()
 		return err
