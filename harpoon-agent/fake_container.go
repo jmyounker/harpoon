@@ -31,6 +31,8 @@ func newFakeContainer(
 	config agent.ContainerConfig,
 	_ bool,
 	_ *portDB,
+	_ func(),
+	_ time.Duration,
 ) container {
 	c := &fakeContainer{
 		ContainerInstance: agent.ContainerInstance{
@@ -54,11 +56,9 @@ func newFakeContainer(
 	return c
 }
 
-func (c *fakeContainer) Create(unregister func(), downloadTimeout time.Duration) error {
+func (c *fakeContainer) Create() error {
 	req := createRequest{
-		unregister:      unregister,
-		downloadTimeout: downloadTimeout,
-		resp:            make(chan error),
+		resp: make(chan error),
 	}
 	c.createc <- req
 	return <-req.resp

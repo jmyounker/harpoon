@@ -81,6 +81,8 @@ func TestContainerList(t *testing.T) {
 		},
 		false,
 		nil,
+		func() {},
+		0,
 	)
 
 	registry.register(cont)
@@ -249,7 +251,7 @@ func TestLogAPICanTailLogs(t *testing.T) {
 
 	createReceiveLogsFixture(t, registry)
 
-	c := newFakeContainer("123", "", volumes{}, agent.ContainerConfig{}, false, nil)
+	c := newFakeContainer("123", "", volumes{}, agent.ContainerConfig{}, false, nil, func() {}, 0)
 	registry.register(c)
 
 	// UDP has some weirdness with processing, so we use the container log's subscription
@@ -336,7 +338,7 @@ func TestLogAPILogTailIncludesHistory(t *testing.T) {
 
 	createReceiveLogsFixture(t, registry)
 
-	c := newFakeContainer("123", "", volumes{}, agent.ContainerConfig{}, false, nil)
+	c := newFakeContainer("123", "", volumes{}, agent.ContainerConfig{}, false, nil, func() {}, 0)
 	registry.register(c)
 
 	// UDP has some weirdness with processing, so we use the container log's subscription
@@ -425,7 +427,7 @@ func TestLogAPICanRetrieveLastLines(t *testing.T) {
 
 	createReceiveLogsFixture(t, registry)
 
-	c := newFakeContainer("123", "", volumes{}, agent.ContainerConfig{}, false, nil)
+	c := newFakeContainer("123", "", volumes{}, agent.ContainerConfig{}, false, nil, func() {}, 0)
 	registry.register(c)
 
 	// UDP has some weirdness with processing, so we use the container log's subscription
